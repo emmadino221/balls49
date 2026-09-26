@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balls49 Quant Extension</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #09090b;
+            --bg-card: rgba(20, 20, 25, 0.88);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border: rgba(255, 255, 255, 0.08);
+            --text-main: #f4f4f5;
+            --text-muted: #71717a;
+            --accent-green: #10b981;
+            --accent-gold: #fbbf24;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { width: 360px; min-height: 400px; background-color: var(--bg-main); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; font-size: 11px; padding: 12px; user-select: none; }
+        
+        .panel { min-height: 375px; background: var(--bg-card); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border); border-radius: 12px; padding: 14px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); position: relative; overflow: hidden; }
+
+        #auth-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-main); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+        #auth-overlay h2 { margin-bottom: 15px; font-size: 16px; letter-spacing: 1px; }
+        #auth-message { color: var(--accent-red); margin-top: 10px; font-weight: 600; text-align: center; }
+
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+        .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; }
+        .status-badge { font-size: 9px; font-weight: 700; background: rgba(16, 185, 129, 0.1); color: var(--accent-green); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .status-badge.stopped { background: rgba(239, 68, 68, 0.1); color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2); }
+
+        .section { background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+        .section-label { font-size: 9px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+
+        input[type="text"], input[type="number"], input[type="password"], select { width: 100%; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: #fff; padding: 6px 8px; font-size: 11px; font-family: 'JetBrains Mono', monospace; outline: none; transition: 0.2s; }
+        select option { background: #141419; color: #fff; }
+        input:focus, select:focus { border-color: rgba(255, 255, 255, 0.25); }
+        
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+        .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+
+        .game-btn { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted); padding: 6px; border-radius: 6px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .game-btn.active { background: rgba(16, 185, 129, 0.1); border-color: var(--accent-green); color: var(--accent-green); }
+
+        .master-btn { width: 100%; padding: 8px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; border: none; transition: 0.2s; background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .master-btn.stopped { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border-color: rgba(16, 185, 129, 0.3); }
+        
+        .btn-primary { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #000; padding: 8px; border-radius: 6px; font-weight: 700; cursor: pointer; border: none; width: 100%; text-transform: uppercase; }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 6px; border-radius: 6px; font-size: 9px; cursor: pointer; width: 100%; }
+
+        .tel-box { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; padding: 6px; text-align: center; }
+        .tel-val { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: #fff; }
+        .tel-label { font-size: 8px; color: var(--text-muted); text-transform: uppercase; }
+        .ml-rec { font-size: 9px; font-weight: 800; padding: 2px 4px; border-radius: 4px; margin-top: 4px; }
+        .ml-rec.enter { background: var(--accent-green); color: #000; }
+        .ml-rec.hold { background: var(--text-muted); color: #000; }
+
+        .check-wrap { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-main); margin-bottom: 6px; }
+        .check-wrap input { accent-color: var(--accent-green); }
+    </style>
+</head>
+<body>
+
+<div class="panel">
+    <div id="auth-overlay">
+        <h2>🔒 SaaS Authentication</h2>
+        <input type="password" id="license-key-input" placeholder="Enter License Key..." style="margin-bottom: 10px; text-align: center;">
+        <button class="btn-primary" id="verify-license-btn">Unlock Terminal</button>
+        <div id="auth-message"></div>
+    </div>
+
+    <div id="main-content" style="display: none;">
+        <div class="header">
+            <div class="brand">Balls49 Quant</div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <span id="header-status" class="status-badge stopped">🔴 Engine Inactive</span>
+                <button id="logout-btn" class="btn-outline" style="width: auto; padding: 4px 8px;">Logout</button>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <button id="toggle-btn" class="master-btn stopped">▶ Start Automation</button>
+            <button id="sound-btn" class="btn-outline">🔊 Sound ON</button>
+        </div>
+
+        <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+            <div style="font-size: 9px; color: var(--accent-blue); font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
+                ⚡ Strategy Presets (Game & Profile Calibration)
+            </div>
+            
+            <div style="margin-bottom: 6px;">
+                <input type="number" id="base-stake-percent" min="0.01" max="100" step="0.01" placeholder="Base Stake %" value="0.5">
+            </div>
+            <div style="margin-bottom: 6px;">
+                <select id="backtest-draws" title="Number of recent draws to test">
+                    <option value="50">Backtest last 50 draws</option>
+                    <option value="100">Backtest last 100 draws</option>
+                    <option value="500">Backtest last 500 draws</option>
+                    <option value="1000" selected>Backtest last 1,000 draws</option>
+                    <option value="5000">Backtest last 5,000 draws</option>
+                    <option value="10000">Backtest last 10,000 draws</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 6px;">
+                <input type="number" id="auto-capital" placeholder="Capital (₦)" value="100000">
+            </div>
+
+            <div class="grid-2" style="margin-bottom: 8px;">
+                <select id="preset-game-select" title="Target Game">
+                    <option value="betzero">🎯 BetZero</option>
+                    <option value="rainbow">🌈 Rainbow</option>
+                    <option value="hilo">📈 High/Low</option>
+                    <option value="totalColor">🎨 TC (3-Way)</option>
+                    <option value="totalColor2">🎨 TC (2-Way)</option>
+                </select>
+                <select id="preset-profile-select" title="Strategy Profile">
+                    <option value="conservative">1. Conservative Compounder</option>
+                    <option value="unified_sniper">2. Unified Sniper (ML)</option>
+                    <option value="tc3_aggressive">3. TC3 Rollover Hunter</option>
+                    <option value="antivol_ghost">4. Anti-Volatility Ghost</option>
+                    <option value="highroller_scale">5. High-Roller Scale</option>
+                </select>
+            </div>
+
+            <button id="btn-apply-preset" class="btn-primary" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: #fff;">
+                🚀 Load & Calibrate Selected Preset
+            </button>
+            
+            <button id="btn-run-backtest" class="btn-primary" style="margin-top: 6px; background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); color: #fff;">
+                Run Dry-Run Backtest
+            </button>
+            <div id="preset-preview" style="display: none; margin-top: 8px; padding: 8px; border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 6px; font-size: 9px; color: var(--text-muted);"></div>
+            <div id="setup-feedback" style="font-size: 9px; margin-top: 6px; font-weight: 600; display: none; text-align: center;"></div>
+        </div>
+
+        <div class="section">
+            <div class="section-label">🎯 Active Markets</div>
+            <div class="grid-3" style="margin-bottom: 6px;">
+                <div id="btn-betzero" class="game-btn">BetZero</div>
+                <div id="btn-rainbow" class="game-btn">Rainbow</div>
+                <div id="btn-hilo" class="game-btn">High/Low</div>
+            </div>
+            <div class="grid-2">
+                <div id="btn-totalColor" class="game-btn">TC (3-Way)</div>
+                <div id="btn-totalColor2" class="game-btn">TC (2-Way)</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-label">💰 Base Stakes (₦)</div>
+            <div class="grid-3" style="margin-bottom: 6px;">
+                <input type="number" id="stake-betzero" placeholder="BZ Stake">
+                <input type="number" id="stake-rainbow" placeholder="RB Stake">
+                <input type="number" id="stake-hilo" placeholder="H/L Stake">
+            </div>
+            <div class="grid-2" style="margin-bottom: 10px;">
+                <input type="number" id="stake-totalColor" placeholder="TC 3-Way Stake">
+                <input type="number" id="stake-totalColor2" placeholder="TC 2-Way Stake">
+            </div>
+            
+            <div class="section-label" style="color: var(--accent-red);">🛡️ Risk Limits</div>
+            <div style="margin-bottom: 4px; font-size: 9px; color: var(--text-muted);">Max Step Constraints:</div>
+            
+            <div class="grid-5" style="margin-bottom: 8px;">
+                <input type="number" id="step-betzero" placeholder="BZ" title="BetZero Max Step">
+                <input type="number" id="step-rainbow" placeholder="RB" title="Rainbow Max Step">
+                <input type="number" id="step-hilo" placeholder="HL" title="Hi/Lo Max Step">
+                <input type="number" id="step-totalColor" placeholder="TC3" title="Total Color (3W) Max Step">
+                <input type="number" id="step-totalColor2" placeholder="TC2" title="Total Color (2W) Max Step">
+            </div>
+            
+            <div class="grid-2">
+                <input type="number" id="take-profit" placeholder="Take Profit (₦)">
+                <input type="number" id="stop-loss" placeholder="Stop Loss (₦)">
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-label">⚙️ Expert Settings</div>
+            
+            <div class="grid-2" style="margin-bottom: 6px;">
+                <label class="check-wrap"><input type="checkbox" id="shadowMode"> 👻 Shadow Mode CB</label>
+                <label class="check-wrap"><input type="checkbox" id="weightedStaking"> ⚖️ Weighted Stakes</label>
+            </div>
+            
+            <div class="grid-3" style="margin-bottom: 8px;">
+                <label class="check-wrap"><input type="checkbox" id="flat-betting-toggle"> Flat Betting</label>
+                <label class="check-wrap"><input type="checkbox" id="sniper-mode-toggle"> Sniper Mode</label>
+                <label class="check-wrap"><input type="checkbox" id="unified-mode-toggle"> Unified Master</label>
+            </div>
+            
+            <div class="grid-3" style="margin-bottom: 8px;">
+                <label class="check-wrap" title="Allow active general predictions to bypass ML confidence thresholds"><input type="checkbox" id="ml-override-toggle"> ML Override</label>
+                <label class="check-wrap"><input type="checkbox" id="bzrb-rollover-toggle"> BZ/RB/HL Rollover</label>
+                <label class="check-wrap"><input type="checkbox" id="tc3-rollover-toggle"> TC3 Rollover</label>
+            </div>
+            
+            <div class="grid-2" style="margin-bottom: 8px;">
+                <select id="hilo-multiplier" title="High/Low Multiplier">
+                    <option value="1.40">H/L Mult: 1.40x</option>
+                    <option value="2.00">H/L Mult: 2.00x</option>
+                </select>
+                <input type="number" id="tc3-rollover-target" placeholder="TC3 Target Stage (Default: 3)">
+            </div>
+            
+            <div class="grid-2" style="margin-bottom: 8px;">
+                <input type="number" id="sniper-step-target" placeholder="Sniper Target Step">
+                <input type="number" id="sniper-reset-losses" min="0" max="50" placeholder="Sniper Reset Losses">
+                <input type="text" id="telegram-chat-id" placeholder="Telegram Chat ID">
+            </div>
+            
+            <div class="grid-2" style="margin-bottom: 8px;">
+                <input type="number" id="cb-max-losses" placeholder="CB Max Loss">
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-label" style="color: var(--accent-blue);">🛰️ Live Telemetry</div>
+            <div class="grid-3">
+                <div class="tel-box">
+                    <div class="tel-label">BetZero Step</div>
+                    <div class="tel-val" id="stats-bz-step">0</div>
+                    <div id="ml-bz-rec" class="ml-rec hold">WAIT</div>
+                    <div id="ml-bz-score" style="font-size: 8px; margin-top:2px;">Score: --</div>
+                </div>
+                <div class="tel-box">
+                    <div class="tel-label">Rainbow Step</div>
+                    <div class="tel-val" id="stats-rb-step">0</div>
+                    <div id="ml-rb-rec" class="ml-rec hold">WAIT</div>
+                    <div id="ml-rb-score" style="font-size: 8px; margin-top:2px;">Score: --</div>
+                </div>
+                <div class="tel-box">
+                    <div class="tel-label">Hi/Lo Step</div>
+                    <div class="tel-val" id="stats-hl-step">0</div>
+                    <div id="ml-hl-rec" class="ml-rec hold">WAIT</div>
+                    <div id="ml-hl-score" style="font-size: 8px; margin-top:2px;">Score: --</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <button id="save-btn" class="btn-primary">💾 Save Settings</button>
+            <button id="reset-btn" class="btn-outline" style="color: var(--accent-red); border-color: rgba(239,68,68,0.3);">🔄 Wipe Execution</button>
+        </div>
+    </div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

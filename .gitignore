@@ -1,0 +1,32 @@
+node_modules/
+web/node_modules/
+web/dist/
+dist/
+output/
+work.txt
+venv/
+__pycache__/
+*.py[cod]
+
+# Secrets and browser session material
+.env
+.env.*
+!.env.example
+cookies.txt
+
+# Local accounts, sessions, predictions, and learned state
+site_users.json
+site_users.sqlite*
+session_state.json
+draws.json
+predictions.json
+last_prediction.json
+streaks.json
+win_steps.json
+ml_streaks.json
+ml_retraining_model.json
+
+# Local logs and OS files
+*.log
+.DS_Store
+Thumbs.db

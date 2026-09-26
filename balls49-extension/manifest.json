@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Balls49 Auto-Clicker",
+  "version": "1.0",
+  "permissions": ["storage", "notifications", "tabs", "activeTab"],
+ "host_permissions": [
+    "http://localhost:3001/*"
+],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Balls49 Game Selector",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "48": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://logigames.bet9ja.com/Games/Launcher*",
+        "https://logigames.bet9ja.com/*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}
