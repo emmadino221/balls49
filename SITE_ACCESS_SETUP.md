@@ -27,7 +27,7 @@ The person first creates an account using their email at **Sign up**. In **Site 
 - Elite Telegram access is recorded as a plan entitlement here. Automatic Telegram channel membership/invite delivery is not connected yet and must be handled manually.
 - The separate Free Trial page lets a visitor choose one market, then reveals it during the final 10 seconds before the draw.
 - In local mode, the API accepts browser requests from the Bet9ja game page and Chrome extension pages so the browser extension can receive live signals. Keep the API on loopback; the extension and bot need to run on the same computer.
-- Prediction broadcasts read `TELEGRAM_BOT_TOKEN` and send to both `TELEGRAM_CHAT_ID` (your personal chat, if set) and `TELEGRAM_CHANNEL_ID` (your channel/group, if set) when `bot.js` starts. Keep the IDs separate. If a prediction cannot be sent, the terminal reports only the destination label and HTTP status or network error; it never prints either ID or the token.
+- Prediction broadcasts read `TELEGRAM_BOT_TOKEN` and send only to `TELEGRAM_CHANNEL_ID` when `bot.js` starts. Add the bot as an administrator with permission to post in the channel. If a prediction cannot be sent, the terminal reports the destination label, HTTP status, and Telegram's short error description; it never prints the channel ID or token.
 
 ## Public hosting boundary
 

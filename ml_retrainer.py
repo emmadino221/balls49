@@ -126,20 +126,109 @@ def parse_prediction_log(path):
         return []
 
 def compute_rate(history, key, window):
-    target = result_map[key]
-    slice_data = history[:window]
-    wins = 0
-    records = 0
-    for item in slice_data:
-        res = item.get('result') or {}
-        outcome = res.get(target)
-        if outcome in ('WIN', 'LOSS'):
-            records += 1
-            if outcome == 'WIN':
-                wins += 1
+    recent = settled_records(history, key)[:window]
+    wins = sum(1 for item in recent if (item.get('result') or {}).get(result_map[key]) == 'WIN')
+    records = len(recent)
     if records == 0:
         return 0.50
     return wins / records
+
+def settled_records(history, key):
+    target = result_map[key]
+    return [item for item in history if (item.get('result') or {}).get(target) in ('WIN', 'LOSS')]
+
+def feature_bucket_values(entry, key):
+    """Keep these buckets in sync with getShadowFeatureBuckets() in bot.js."""
+    predicted = entry.get('predicted') or {}
+    brain = entry.get('brainData') or {}
+    scores = entry.get('mlScores') or {}
+    steps = entry.get('steps') or {}
+
+    def score_bucket(value):
+        value = safe_float(value, 0.0)
+        return 'low' if value < 0.40 else ('mid' if value < 0.70 else 'high')
+
+    def step_bucket(value):
+        value = int(safe_float(value, 0))
+        return '1' if value <= 1 else ('2' if value == 2 else '3+')
+
+    if key == 'u4':
+        pool = safe_float((brain.get('betzero') or {}).get('poolSize'), 0)
+        return {
+            'score': score_bucket(scores.get('betzero')),
+            'step': step_bucket(steps.get('betzero')),
+            'pool': 'under12' if pool < 12 else ('12to14' if pool < 15 else '15plus'),
+        }
+    if key == 'color':
+        freq = safe_float((brain.get('rainbow') or {}).get('maxFreq'), 0)
+        return {
+            'score': score_bucket(scores.get('rainbow')),
+            'step': step_bucket(steps.get('rainbow')),
+            'frequency': 'under29' if freq < 29 else ('29to31' if freq < 32 else '32plus'),
+        }
+    if key == 'sum':
+        signal = str(predicted.get('hilo') or '').upper()
+        return {
+            'score': score_bucket(scores.get('hilo')),
+            'step': step_bucket(steps.get('hilo')),
+            'signal': signal if signal in ('LOW', 'MID', 'HIGH') else 'unknown',
+        }
+    if key == 'totalColor':
+        total = predicted.get('totalColor') or {}
+        gap = safe_float(total.get('gap'), 0)
+        return {
+            'score': score_bucket(scores.get('totalColor')),
+            'step': step_bucket(steps.get('totalColor')),
+            'gap': 'under010' if gap < 0.10 else ('010to019' if gap < 0.20 else '20plus'),
+        }
+    return {}
+
+def build_feature_buckets(history, key):
+    buckets = {}
+    for item in settled_records(history, key):
+        outcome = (item.get('result') or {}).get(result_map[key])
+        for feature, value in feature_bucket_values(item, key).items():
+            bucket = buckets.setdefault(feature, {}).setdefault(value, {'samples': 0, 'wins': 0})
+            bucket['samples'] += 1
+            bucket['wins'] += 1 if outcome == 'WIN' else 0
+
+    for feature_groups in buckets.values():
+        for bucket in feature_groups.values():
+            bucket['winRate'] = round(bucket['wins'] / bucket['samples'], 4) if bucket['samples'] else 0.0
+            del bucket['wins']
+    return buckets
+
+def evaluate_shadow_history(history):
+    evaluation = {}
+    for key in result_map:
+        stats = {'ENTER': {'samples': 0, 'wins': 0}, 'HOLD': {'samples': 0, 'wins': 0}}
+        baseline = {'samples': 0, 'wins': 0}
+        for item in history:
+            outcome = (item.get('result') or {}).get(result_map[key])
+            if outcome in ('WIN', 'LOSS'):
+                baseline['samples'] += 1
+                baseline['wins'] += 1 if outcome == 'WIN' else 0
+            shadow = (item.get('mlShadow') or {}).get(key) or {}
+            action = shadow.get('recommendation')
+            if outcome not in ('WIN', 'LOSS') or action not in stats:
+                continue
+            stats[action]['samples'] += 1
+            stats[action]['wins'] += 1 if outcome == 'WIN' else 0
+        action_stats = {
+            action.lower(): {
+                'samples': values['samples'],
+                'winRate': round(values['wins'] / values['samples'], 4) if values['samples'] else None,
+            }
+            for action, values in stats.items()
+        }
+        evaluation[key] = {
+            'baseline': {
+                'samples': baseline['samples'],
+                'winRate': round(baseline['wins'] / baseline['samples'], 4) if baseline['samples'] else None,
+            },
+            **action_stats,
+        }
+    return evaluation
 
 def fit_market_models(history):
     market_models = {}
@@ -150,7 +239,7 @@ def fit_market_models(history):
         window100 = compute_rate(history, key, 100)
         observed = (window10 + window50 + window100) / 3
         bias = max(-0.20, min(0.20, (observed - 0.50) * 0.30))
-        samples = len(history)
+        samples = len(settled_records(history, key))
         feature_vector = aggregate_feature_vector(history, key)
         market_models[key] = {
             'samples': samples,
@@ -159,6 +248,7 @@ def fit_market_models(history):
             'winRate50': round(window50, 4),
             'winRate100': round(window100, 4),
             'featureVector': feature_vector,
+            'featureBuckets': build_feature_buckets(history, key),
         }
 
     return market_models
@@ -202,9 +292,10 @@ def main():
     history = history[:1000]
 
     model = {
-        'version': 2,
+        'version': 3,
         'updatedAt': datetime.now(timezone.utc).isoformat(),
-        'marketModels': fit_market_models(history)
+        'marketModels': fit_market_models(history),
+        'shadowEvaluation': evaluate_shadow_history(history),
     }
 
     os.makedirs(os.path.dirname(model_file) or '.', exist_ok=True)

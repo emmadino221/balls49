@@ -84,6 +84,16 @@ function getOutcome(record, market) {
   return record.result?.[market.resultKey] || (record.status === 'PENDING' ? 'PENDING' : 'SKIP');
 }
 
+function getSummaryLabel(record, marketId) {
+  let sourceMarket = marketId;
+  if (marketId === 'unified') {
+    const key = record.predicted?.unified?.key;
+    sourceMarket = ({ u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' })[key] || 'unified';
+  }
+  const label = record.summaryModel?.[sourceMarket];
+  return ['ENTER', 'HOLD', 'LEARNING'].includes(label) ? label : null;
+}
+
 export default function HistoryPage() {
   const [predictions, setPredictions] = useState([]);
   const [total, setTotal] = useState(0);
@@ -290,9 +300,10 @@ export default function HistoryPage() {
                 <div className="market-history-list">
                   {visibleMarkets.map((market) => {
                     const outcome = getOutcome(record, market);
+                    const summaryLabel = getSummaryLabel(record, market.id);
                     return (
                       <div className="market-history-row" key={market.id}>
-                        <div className="market-history-name"><strong>{market.label}</strong><div className="market-pick"><MarketPick record={record} market={market} /></div></div>
+                        <div className="market-history-name"><strong>{market.label}</strong><div className="market-pick"><MarketPick record={record} market={market} /></div>{summaryLabel && <span className={`summary-model-badge summary-model-${summaryLabel.toLowerCase()}`}>Summary · {summaryLabel}</span>}</div>
                         <span className={`outcome-badge ${outcome.toLowerCase()}`}>{outcome}</span>
                       </div>
                     );

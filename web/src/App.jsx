@@ -9,6 +9,7 @@ const navLinks = [
   { path: 'predictions.html', page: 'predictions', label: 'Predictions' },
   { path: 'history.html', page: 'history', label: 'History' },
   { path: 'guide.html', page: 'guide', label: 'Guide' },
+  { path: 'calculator.html', page: 'calculator', label: 'Calculator' },
   { path: 'testimonials.html', page: 'testimonials', label: 'Testimonials' },
   { path: 'contact.html', page: 'contact', label: 'Contact' },
 ];
@@ -127,6 +128,7 @@ export default function App() {
             <a href="predictions.html">Predictions</a>
             <a href="history.html">Prediction history</a>
             <a href="guide.html">Prediction guide</a>
+            <a href="calculator.html">Martingale calculator</a>
             <a href="testimonials.html">Member stories</a>
           </div>
           <div className="footer-col">

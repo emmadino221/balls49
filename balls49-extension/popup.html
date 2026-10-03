@@ -43,6 +43,13 @@
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
         .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+        .sniper-settings-heading { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0 6px; color: var(--text-muted); font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .45px; }
+        .sniper-config-list { display: grid; gap: 5px; }
+        .sniper-config-row { display: grid; grid-template-columns: minmax(102px, 1.05fr) minmax(62px, .75fr) minmax(67px, .8fr); align-items: center; gap: 6px; }
+        .sniper-market-toggle { display: flex; align-items: center; gap: 5px; color: var(--text-main); font-size: 9px; font-weight: 600; white-space: nowrap; }
+        .sniper-market-toggle input { accent-color: var(--accent-green); }
+        .sniper-config-row input[type="number"] { min-width: 0; padding: 5px 6px; font-size: 9px; }
+        .sniper-help { margin: 7px 0 10px; color: var(--text-muted); font-size: 8px; line-height: 1.5; }
 
         .game-btn { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted); padding: 6px; border-radius: 6px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center; }
         .game-btn.active { background: rgba(16, 185, 129, 0.1); border-color: var(--accent-green); color: var(--accent-green); }
@@ -191,7 +198,6 @@
             
             <div class="grid-3" style="margin-bottom: 8px;">
                 <label class="check-wrap"><input type="checkbox" id="flat-betting-toggle"> Flat Betting</label>
-                <label class="check-wrap"><input type="checkbox" id="sniper-mode-toggle"> Sniper Mode</label>
                 <label class="check-wrap"><input type="checkbox" id="unified-mode-toggle"> Unified Master</label>
             </div>
             
@@ -200,18 +206,42 @@
                 <label class="check-wrap"><input type="checkbox" id="bzrb-rollover-toggle"> BZ/RB/HL Rollover</label>
                 <label class="check-wrap"><input type="checkbox" id="tc3-rollover-toggle"> TC3 Rollover</label>
             </div>
+
+            <div class="sniper-settings-heading">
+                <span>Summary model entry gate</span>
+                <span>Off by default</span>
+            </div>
+            <div class="grid-2" style="margin-bottom: 4px;">
+                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-betzero"> BetZero</label>
+                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-rainbow"> Rainbow</label>
+                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-hilo"> High/Low</label>
+                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-totalColor"> Total Color (3-Way)</label>
+            </div>
+            <p class="sniper-help">When enabled, the model must say ENTER as well as the existing rules. HOLD or insufficient history pauses that market's automated bet. This does not change displayed predictions, and ML Override does not bypass this gate. A bet already queued is not recalled.</p>
             
             <div class="grid-2" style="margin-bottom: 8px;">
                 <select id="hilo-multiplier" title="High/Low Multiplier">
                     <option value="1.40">H/L Mult: 1.40x</option>
                     <option value="2.00">H/L Mult: 2.00x</option>
                 </select>
-                <input type="number" id="tc3-rollover-target" placeholder="TC3 Target Stage (Default: 3)">
+                <input type="number" id="tc3-rollover-target" min="2" max="10" step="1" value="3" placeholder="TC3 Target Stage (2–10; default: 3)">
             </div>
             
+            <div class="sniper-settings-heading">
+                <span>Per-market sniper settings</span>
+                <span>Step / reset after losses</span>
+            </div>
+            <div class="sniper-config-list">
+                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-betzero"> BetZero</label><input type="number" id="sniper-step-betzero" min="1" max="10" placeholder="Step" title="BetZero sniper target step"><input type="number" id="sniper-losses-betzero" min="1" max="50" placeholder="Losses" title="BetZero reset after losses"></div>
+                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-rainbow"> Rainbow</label><input type="number" id="sniper-step-rainbow" min="1" max="10" placeholder="Step" title="Rainbow sniper target step"><input type="number" id="sniper-losses-rainbow" min="1" max="50" placeholder="Losses" title="Rainbow reset after losses"></div>
+                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-hilo"> High/Low</label><input type="number" id="sniper-step-hilo" min="1" max="10" placeholder="Step" title="High/Low sniper target step"><input type="number" id="sniper-losses-hilo" min="1" max="50" placeholder="Losses" title="High/Low reset after losses"></div>
+                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor"> TC (3-Way)</label><input type="number" id="sniper-step-totalColor" min="1" max="10" placeholder="Step" title="Total Color 3-way sniper target step"><input type="number" id="sniper-losses-totalColor" min="1" max="50" placeholder="Losses" title="Total Color 3-way reset after losses"></div>
+                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor2"> TC (2-Way)</label><input type="number" id="sniper-step-totalColor2" min="1" max="10" placeholder="Step" title="Total Color 2-way sniper target step"><input type="number" id="sniper-losses-totalColor2" min="1" max="50" placeholder="Losses" title="Total Color 2-way reset after losses"></div>
+                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-unified"> Unified</label><input type="number" id="sniper-step-unified" min="1" max="10" placeholder="Step" title="Unified sniper target step"><input type="number" id="sniper-losses-unified" min="1" max="50" placeholder="Losses" title="Unified reset after losses"></div>
+            </div>
+            <p class="sniper-help">Each market waits for its target global step. After the loss limit, it pauses until the global step reaches that target again. Its Martingale progress is kept.</p>
+            <p id="sniper-settings-error" class="sniper-help" role="alert" style="display:none; color: var(--accent-red);"></p>
             <div class="grid-2" style="margin-bottom: 8px;">
-                <input type="number" id="sniper-step-target" placeholder="Sniper Target Step">
-                <input type="number" id="sniper-reset-losses" min="0" max="50" placeholder="Sniper Reset Losses">
                 <input type="text" id="telegram-chat-id" placeholder="Telegram Chat ID">
             </div>
             
@@ -248,6 +278,7 @@
             <button id="save-btn" class="btn-primary">💾 Save Settings</button>
             <button id="reset-btn" class="btn-outline" style="color: var(--accent-red); border-color: rgba(239,68,68,0.3);">🔄 Wipe Execution</button>
         </div>
+        <div id="save-feedback" role="status" aria-live="polite" style="display:none; margin-top:8px; font-size:9px; text-align:center;"></div>
     </div>
 </div>
 

@@ -23,6 +23,7 @@ function OwnerTools({ onSession }) {
   const [gamesSelected, setGamesSelected] = useState(['betzero']);
   const [notice, setNotice] = useState('');
   const [users, setUsers] = useState([]);
+  const [resettingStats, setResettingStats] = useState(false);
   useEffect(() => {
     apiRequest('/admin/preview')
       .then(plan => { setUnlocked(true); onSession('admin', plan); })
@@ -55,8 +56,17 @@ function OwnerTools({ onSession }) {
     catch { /* Reload to re-check the cookie session if the API is unavailable. */ }
     finally { window.location.reload(); }
   }
+  async function resetMarketStats() {
+    if (!window.confirm('Start a fresh max-loss tracking period now? Existing prediction history will be kept.')) return;
+    setResettingStats(true);
+    try {
+      const result = await apiRequest('/admin/reset-market-stats', { method: 'POST' });
+      setNotice(`Max-loss tracking restarted ${new Date(result.resetAt).toLocaleString()}. Previous history is preserved.`);
+    } catch (error) { setNotice(error.message); }
+    finally { setResettingStats(false); }
+  }
   if (!unlocked) return <section className="content-card owner-tools"><h2>Owner tools</h2><p>Sign in with the server-side admin key to approve accounts or preview each plan. This key must never be placed in website code.</p><form className="auth-form" onSubmit={login}><label htmlFor="owner-key">Site admin key</label><input id="owner-key" type="password" value={key} onChange={(event) => setKey(event.target.value)} autoComplete="off" required /><button className="btn btn-secondary">Unlock owner tools</button>{notice && <p role="status">{notice}</p>}</form></section>;
-  return <section className="content-card owner-tools"><div className="prediction-section-heading"><div><span className="overline">OWNER CONTROLS</span><h2>Approvals &amp; plan preview</h2></div><button className="btn btn-secondary" type="button" onClick={logout}>End owner session</button></div><p>Preview mode changes only this owner session. Approvals change the selected user account.</p><div className="owner-preview-actions"><button className="btn btn-secondary" onClick={() => preview('trial')}>Preview Free Trial</button><button className="btn btn-secondary" onClick={() => preview('premium')}>Preview Premium</button><button className="btn btn-primary" onClick={() => preview('elite')}>Preview Elite</button></div><form className="auth-form" onSubmit={approve}><h3>Manually approve an account</h3><label htmlFor="approval-email">Registered account email</label><input id="approval-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /><label htmlFor="approval-tier">Plan</label><select id="approval-tier" value={tier} onChange={(event) => setTier(event.target.value)}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select><label htmlFor="approval-months">Duration (months)</label><input id="approval-months" type="number" min="1" max="12" value={months} onChange={(event) => setMonths(event.target.value)} /><fieldset className="premium-game-picker"><legend>Premium games / preview selection</legend>{games.map(game => <label key={game.id}><input type="checkbox" checked={gamesSelected.includes(game.id)} onChange={() => setGamesSelected(current => current.includes(game.id) ? current.filter(id => id !== game.id) : [...current, game.id])} /><span>{game.name}</span></label>)}</fieldset><button className="btn btn-primary">Save manual approval</button><button className="btn btn-secondary" type="button" onClick={loadUsers}>Refresh account list</button>{notice && <p role="status">{notice}</p>}</form>{users.length > 0 && <div className="owner-user-list"><h3>Accounts</h3>{users.map(user => <p key={user.email}><strong>{user.email}</strong> · {user.plan?.tier || 'trial'} · {user.expiresAt > Date.now() ? new Date(user.expiresAt).toLocaleDateString() : 'expired / trial'}</p>)}</div>}</section>;
+  return <section className="content-card owner-tools"><div className="prediction-section-heading"><div><span className="overline">OWNER CONTROLS</span><h2>Approvals &amp; plan preview</h2></div><button className="btn btn-secondary" type="button" onClick={logout}>End owner session</button></div><p>Preview mode changes only this owner session. Approvals change the selected user account.</p><div className="owner-preview-actions"><button className="btn btn-secondary" onClick={() => preview('trial')}>Preview Free Trial</button><button className="btn btn-secondary" onClick={() => preview('premium')}>Preview Premium</button><button className="btn btn-primary" onClick={() => preview('elite')}>Preview Elite</button></div><div className="owner-stats-reset"><div><h3>Prediction statistics</h3><p>Start max-loss tracking from zero while keeping all existing prediction history.</p></div><button className="btn btn-secondary" type="button" onClick={resetMarketStats} disabled={resettingStats}>{resettingStats ? 'Restarting…' : 'Reset max-loss tracking'}</button></div><form className="auth-form" onSubmit={approve}><h3>Manually approve an account</h3><label htmlFor="approval-email">Registered account email</label><input id="approval-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /><label htmlFor="approval-tier">Plan</label><select id="approval-tier" value={tier} onChange={(event) => setTier(event.target.value)}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select><label htmlFor="approval-months">Duration (months)</label><input id="approval-months" type="number" min="1" max="12" value={months} onChange={(event) => setMonths(event.target.value)} /><fieldset className="premium-game-picker"><legend>Premium games / preview selection</legend>{games.map(game => <label key={game.id}><input type="checkbox" checked={gamesSelected.includes(game.id)} onChange={() => setGamesSelected(current => current.includes(game.id) ? current.filter(id => id !== game.id) : [...current, game.id])} /><span>{game.name}</span></label>)}</fieldset><button className="btn btn-primary">Save manual approval</button><button className="btn btn-secondary" type="button" onClick={loadUsers}>Refresh account list</button>{notice && <p role="status">{notice}</p>}</form>{users.length > 0 && <div className="owner-user-list"><h3>Accounts</h3>{users.map(user => <p key={user.email}><strong>{user.email}</strong> · {user.plan?.tier || 'trial'} · {user.expiresAt > Date.now() ? new Date(user.expiresAt).toLocaleDateString() : 'expired / trial'}</p>)}</div>}</section>;
 }
 
 function formatCountdown(seconds) {
@@ -68,6 +78,11 @@ function formatCountdown(seconds) {
   return hours > 0
     ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
     : `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function SummaryModelBadge({ label }) {
+  if (!['ENTER', 'HOLD', 'LEARNING'].includes(label)) return null;
+  return <span className={`summary-model-badge summary-model-${label.toLowerCase()}`} aria-label={`Summary model recommendation: ${label.toLowerCase()}`}>Summary · {label}</span>;
 }
 
 function getBallColor(number) {
@@ -251,6 +266,13 @@ export default function PredictionsPage() {
                 ? <LiveMarketPick record={activeMarketPrediction} marketId={activeGame.id} />
                 : <span className="trial-pick-message">{activeMarketHasAccess ? 'No prediction is available for this market yet. It will appear here when the bot publishes one.' : previewPlan?.tier === 'trial' || accountPlan?.tier === 'trial' ? 'Your trial pick is on the Free Trial page' : 'Unlock this market with Premium or Elite'}</span>}
             </div>
+            {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
+            {activeMarketReveal && activeMarketPrediction.marketStats && (
+              <div className="prediction-market-stats" aria-label={`${activeGame.name} step and losing streak statistics`}>
+                <div><span>Current step</span><strong>{activeMarketPrediction.marketStats.step > 0 ? `Step ${activeMarketPrediction.marketStats.step}` : '—'}</strong></div>
+                <div><span>Max losing streak · tracking period</span><strong>{activeMarketPrediction.marketStats.maxLosingStreak} {activeMarketPrediction.marketStats.maxLosingStreak === 1 ? 'loss' : 'losses'}</strong></div>
+              </div>
+            )}
             <div className="game-last-result">
               <div className="game-last-result-label"><span>LAST DRAW{previousPrediction ? ` · #${previousPrediction.drawId}` : ''}</span><small>Previous pick</small></div>
               <div className="game-last-pick"><LiveMarketPick record={previousPrediction} marketId={activeGame.id} /></div>

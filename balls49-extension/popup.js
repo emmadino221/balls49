@@ -1,4 +1,11 @@
 const GAMES = ['betzero', 'rainbow', 'totalColor', 'totalColor2', 'hilo'];
+const SNIPER_MARKETS = ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'unified'];
+const SUMMARY_MODEL_MARKETS = [
+    { id: 'betzero', key: 'u4' },
+    { id: 'rainbow', key: 'color' },
+    { id: 'hilo', key: 'sum' },
+    { id: 'totalColor', key: 'totalColor' }
+];
 let CLIENT_ID = ""; 
 let LICENSE_KEY = ""; 
 const SERVER_URL = "http://localhost:3001"; 
@@ -398,7 +405,7 @@ async function applyHistoricalPreset() {
     setTimeout(() => { btn.textContent = origText; }, 2000);
 }
 
-document.getElementById('save-btn')?.addEventListener('click', () => {
+document.getElementById('save-btn')?.addEventListener('click', async () => {
     if (!LICENSE_KEY) return;
     const btn = document.getElementById('save-btn');
     const originalText = btn.textContent;
@@ -439,35 +446,89 @@ document.getElementById('save-btn')?.addEventListener('click', () => {
 
     const telegramChatId = (document.getElementById('telegram-chat-id')?.value || '').trim();
     const flatBetting = getToggleValue('flat-betting');
-    const sniperMode = getToggleValue('sniper-mode');
     const unifiedMode = getToggleValue('unified-mode'); 
     const bzRbRollover = getToggleValue('bzrb-rollover');
     const mlOverrideMode = getToggleValue('ml-override');
+    const summaryModelMarkets = Object.fromEntries(SUMMARY_MODEL_MARKETS.map(({ id, key }) => ([
+        key,
+        !!document.getElementById(`summary-model-${id}`)?.checked
+    ])));
     const shadowMode = getToggleValue('shadowMode');
     const weightedStaking = getToggleValue('weightedStaking');
     
     const tc3Rollover = getToggleValue('tc3-rollover');
-    const tc3RolloverTarget = parseInt(document.getElementById('tc3-rollover-target')?.value) || 3;
+    const tc3TargetInput = document.getElementById('tc3-rollover-target');
+    const requestedTc3Target = parseInt(tc3TargetInput?.value, 10);
+    const tc3RolloverTarget = Number.isNaN(requestedTc3Target)
+        ? 3
+        : Math.min(10, Math.max(2, requestedTc3Target));
+    if (tc3TargetInput) tc3TargetInput.value = String(tc3RolloverTarget);
     const hiloMultiplier = parseFloat(document.getElementById('hilo-multiplier')?.value) || 2.0;
     const baseStakePercent = Math.min(100, Math.max(0.01, parseFloat(document.getElementById('base-stake-percent')?.value) || 0.5));
     const backtestDraws = parseInt(document.getElementById('backtest-draws')?.value, 10) || 1000;
 
-    const sniperStep = parseInt(document.getElementById('sniper-step-target')?.value) || 0;
-    const sniperResetLosses = Math.min(50, Math.max(0, parseInt(document.getElementById('sniper-reset-losses')?.value, 10) || 0));
+    const sniperSettings = Object.fromEntries(SNIPER_MARKETS.map(market => ([market, {
+        enabled: !!document.getElementById(`sniper-enabled-${market}`)?.checked,
+        step: Math.min(10, Math.max(0, parseInt(document.getElementById(`sniper-step-${market}`)?.value, 10) || 0)),
+        resetLosses: Math.min(50, Math.max(0, parseInt(document.getElementById(`sniper-losses-${market}`)?.value, 10) || 0))
+    }])));
+    const marketLabels = { betzero: 'BetZero', rainbow: 'Rainbow', hilo: 'High/Low', totalColor: 'Total Color 3-Way', totalColor2: 'Total Color 2-Way', unified: 'Unified' };
+    const invalidSniperMarket = SNIPER_MARKETS.find(market => sniperSettings[market].enabled
+        && (sniperSettings[market].step < 1 || sniperSettings[market].resetLosses < 1));
+    const sniperError = document.getElementById('sniper-settings-error');
+    if (invalidSniperMarket) {
+        if (sniperError) {
+            sniperError.textContent = `${marketLabels[invalidSniperMarket]} is enabled for Sniper Mode. Enter a target step (1–10) and reset loss count (1–50).`;
+            sniperError.style.display = 'block';
+        }
+        btn.textContent = originalText;
+        return;
+    }
+    if (sniperError) sniperError.style.display = 'none';
     const cbMaxLosses = parseInt(document.getElementById('cb-max-losses')?.value) || 0;
 
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
-        telegramChatId, flatBetting, sniperMode, sniperStep, sniperResetLosses, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloMultiplier, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode,
+        telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
+        unifiedMode, bzRbRollover, hiloMultiplier, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets,
         shadowMode, weightedStaking 
     };
 
-    chrome.storage.sync.set(payload, () => {
-        fetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).catch(() => {});
+    chrome.storage.sync.set(payload, async () => {
+        const feedback = document.getElementById('save-feedback');
+        const setFeedback = (message, success) => {
+            if (!feedback) return;
+            feedback.textContent = message;
+            feedback.style.color = success ? 'var(--accent-green)' : 'var(--accent-red)';
+            feedback.style.display = 'block';
+        };
+        const storageError = chrome.runtime.lastError;
+        if (storageError) {
+            btn.textContent = 'Save failed';
+            setFeedback(`Could not save settings in Chrome: ${storageError.message}`, false);
+            setTimeout(() => { btn.textContent = originalText; }, 2500);
+            return;
+        }
+
+        try {
+            const response = await fetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.ok !== true) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            setFeedback('Settings saved in Chrome and accepted by the bot.', true);
+        } catch (error) {
+            btn.textContent = 'Bot sync failed';
+            const detail = error instanceof TypeError
+                ? 'The bot could not be reached. Make sure it is running, then save again.'
+                : `The bot rejected the settings: ${error.message}`;
+            setFeedback(`Settings are saved in Chrome, but not applied by the bot. ${detail}`, false);
+            setTimeout(() => { btn.textContent = originalText; }, 2500);
+            return;
+        }
         
         setTimeout(() => { btn.textContent = '✅ Saved'; setTimeout(() => btn.textContent = originalText, 1200); }, 400);
     });
@@ -511,9 +572,9 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
 function loadParameters() {
     chrome.storage.sync.get([
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
-        'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperMode', 
+        'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
         'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'baseStakePercent', 'backtestDraws',
-        'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'shadowMode', 'weightedStaking'
+        'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'shadowMode', 'weightedStaking'
     ], (data) => {
         let enabledGames = data.enabledGames || { betzero: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
         const stakes = data.stakes || { betzero: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
@@ -546,10 +607,12 @@ function loadParameters() {
         };
 
         setCheckState('flat-betting', data.flatBetting);
-        setCheckState('sniper-mode', data.sniperMode);
         setCheckState('unified-mode', data.unifiedMode);
         setCheckState('bzrb-rollover', data.bzRbRollover);
         setCheckState('ml-override', data.mlOverrideMode);
+        SUMMARY_MODEL_MARKETS.forEach(({ id, key }) => {
+            setCheckState(`summary-model-${id}`, data.summaryModelMarkets?.[key]);
+        });
         setCheckState('shadowMode', data.shadowMode);
         setCheckState('weightedStaking', data.weightedStaking);
         setCheckState('tc3-rollover', data.tc3Rollover);
@@ -557,9 +620,22 @@ function loadParameters() {
         if (document.getElementById('base-stake-percent')) document.getElementById('base-stake-percent').value = data.baseStakePercent || '0.5';
         if (document.getElementById('backtest-draws')) document.getElementById('backtest-draws').value = data.backtestDraws || '1000';
         
-        if (document.getElementById('tc3-rollover-target')) document.getElementById('tc3-rollover-target').value = data.tc3RolloverTarget || '';
-        if (document.getElementById('sniper-step-target')) document.getElementById('sniper-step-target').value = data.sniperStep || '';
-        if (document.getElementById('sniper-reset-losses')) document.getElementById('sniper-reset-losses').value = data.sniperResetLosses || '';
+        const tc3TargetInput = document.getElementById('tc3-rollover-target');
+        if (tc3TargetInput) {
+            const savedTarget = parseInt(data.tc3RolloverTarget, 10);
+            tc3TargetInput.value = String(Number.isNaN(savedTarget) ? 3 : Math.min(10, Math.max(2, savedTarget)));
+        }
+        SNIPER_MARKETS.forEach(market => {
+            const saved = data.sniperSettings?.[market];
+            const legacy = { enabled: !!data.sniperMode, step: data.sniperStep || '', resetLosses: data.sniperResetLosses || '' };
+            const settings = saved || legacy;
+            const enabled = document.getElementById(`sniper-enabled-${market}`);
+            const targetStep = document.getElementById(`sniper-step-${market}`);
+            const resetLosses = document.getElementById(`sniper-losses-${market}`);
+            if (enabled) enabled.checked = !!settings.enabled;
+            if (targetStep) targetStep.value = settings.step || '';
+            if (resetLosses) resetLosses.value = settings.resetLosses || '';
+        });
         if (document.getElementById('cb-max-losses')) document.getElementById('cb-max-losses').value = data.cbMaxLosses || '';
 
         setToggleBtn(!!data.running);

@@ -9,10 +9,9 @@ const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const PERSONAL_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const CHANNEL_CHAT_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 if (!TOKEN) console.warn('[WARNING] TELEGRAM_BOT_TOKEN is not set; Telegram features are disabled.');
-if (TOKEN && !PERSONAL_CHAT_ID && !CHANNEL_CHAT_ID) console.warn('[WARNING] Set TELEGRAM_CHAT_ID and/or TELEGRAM_CHANNEL_ID; prediction broadcasts are disabled.');
+if (TOKEN && !CHANNEL_CHAT_ID) console.warn('[WARNING] TELEGRAM_CHANNEL_ID is not set; prediction broadcasts are disabled.');
 
 const GAME_ID = 11000;
 const BTC_NUM = 11090; 
@@ -54,6 +53,10 @@ siteDb.exec(`
         record_json TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS public_prediction_history_sort_idx ON public_prediction_history(sort_draw_id DESC);
+    CREATE TABLE IF NOT EXISTS site_settings (
+        setting_key TEXT PRIMARY KEY,
+        setting_value TEXT NOT NULL
+    );
 `);
 function migrateLegacySiteUsers() {
     const userCount = siteDb.prepare('SELECT COUNT(*) AS count FROM site_users').get().count;
@@ -87,6 +90,11 @@ const saveSiteUserStatement = siteDb.prepare(`
 `);
 const createSiteUserStatement = siteDb.prepare('INSERT INTO site_users(email, user_json) VALUES (?, ?)');
 const getPublicPredictionFeedStatement = siteDb.prepare('SELECT * FROM public_prediction_feed WHERE id = 1');
+const getSiteSettingStatement = siteDb.prepare('SELECT setting_value FROM site_settings WHERE setting_key = ?');
+const setSiteSettingStatement = siteDb.prepare(`
+    INSERT INTO site_settings(setting_key, setting_value) VALUES (?, ?)
+    ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value
+`);
 const listPublicPredictionHistoryStatement = siteDb.prepare('SELECT record_json FROM public_prediction_history ORDER BY sort_draw_id DESC, draw_id DESC');
 const upsertPublicPredictionHistoryStatement = siteDb.prepare(`
     INSERT INTO public_prediction_history(draw_id, sort_draw_id, record_json) VALUES (?, ?, ?)
@@ -157,7 +165,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
-    'POST /admin/session', 'GET /admin/users', 'POST /admin/approve',
+    'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
     'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout'
 ]);
 
@@ -290,13 +298,40 @@ function publicAccount(session) {
 }
 
 let globalTracker = { 
-    u4: { step: 1, sniperLosses: 0 }, 
-    color: { step: 1, sniperLosses: 0 }, 
-    sum: { step: 1, sniperLosses: 0 },
-    totalColor: { step: 1, sniperLosses: 0 },
-    totalColor2: { step: 1, sniperLosses: 0 },
-    unified: { step: 1, sniperLosses: 0 }
+    u4: { step: 1 },
+    color: { step: 1 },
+    sum: { step: 1 },
+    totalColor: { step: 1 },
+    totalColor2: { step: 1 },
+    unified: { step: 1 }
 };
+const SNIPER_SETTING_MARKETS = ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'unified'];
+const SNIPER_TRACKERS = ['u4', 'color', 'sum', 'totalColor', 'totalColor2', 'unified'];
+const TRACKER_TO_SNIPER_MARKET = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor2: 'totalColor2', unified: 'unified' };
+const makeDefaultSniperSettings = () => Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, { enabled: false, step: 0, resetLosses: 0 }]));
+const makeDefaultSniperState = () => Object.fromEntries(SNIPER_TRACKERS.map(tracker => [tracker, { losses: 0, waitingForTarget: false }]));
+const SUMMARY_MODEL_MARKETS = ['u4', 'color', 'sum', 'totalColor'];
+const makeDefaultSummaryModelMarkets = () => Object.fromEntries(SUMMARY_MODEL_MARKETS.map(market => [market, false]));
+
+function getSniperSettings(config, trackerKey) {
+    const market = TRACKER_TO_SNIPER_MARKET[trackerKey];
+    const saved = market && config.sniperSettings?.[market];
+    if (saved) return saved;
+    return { enabled: !!config.sniperMode, step: config.sniperStep || 0, resetLosses: config.sniperResetLosses || 0 };
+}
+
+function sniperAllowsEntry(session, trackerKey) {
+    const settings = getSniperSettings(session.config, trackerKey);
+    if (!settings.enabled || settings.step < 1 || settings.resetLosses < 1) return true;
+
+    const currentGlobalStep = globalTracker[trackerKey]?.step || 1;
+    const state = session.sniperState[trackerKey] || (session.sniperState[trackerKey] = { losses: 0, waitingForTarget: false });
+    if (state.waitingForTarget) {
+        if (currentGlobalStep !== settings.step) return false;
+        state.waitingForTarget = false;
+    }
+    return currentGlobalStep >= settings.step;
+}
 let lastDrawId = null, predSentForId = null, lastPrediction = null;
 let lastGlobalDrawId = null; 
 let publicClock = { drawId: null, timeLeftSeconds: null, drawDate: null, observedAt: null };
@@ -340,6 +375,7 @@ function getSession(clientId) {
                 inShadowMode: false
             },
             cooldowns: { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, unified: 0 },
+            sniperState: makeDefaultSniperState(),
             config: {
                 initialStakes: { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 },
                 maxSteps: { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 },
@@ -348,6 +384,8 @@ function getSession(clientId) {
                 schedule: { stopTime: '', active: false },
                 step1Only: false, flatBetting: false,
                 sniperMode: false, sniperStep: 0, sniperResetLosses: 0,
+                sniperSettings: makeDefaultSniperSettings(),
+                summaryModelMarkets: makeDefaultSummaryModelMarkets(),
                 dynamicStakePercent: 0, cbMaxLosses: 0, cbCooldown: 0,
                 mlOverrideMode: false,
                 unifiedMode: false,
@@ -445,6 +483,7 @@ function snapshotSession(session) {
         martingaleState: session.martingaleState,
         masterState: session.masterState,
         cooldowns: session.cooldowns,
+        sniperState: session.sniperState,
         config: session.config,
         stats: session.stats,
         lastBetDrawId: session.lastBetDrawId,
@@ -473,9 +512,24 @@ function restoreSession(session, clientId) {
     const saved = persistedSessions[clientId];
     if (!saved) return;
 
-    for (const key of ['userTracker', 'wallets', 'martingaleState', 'masterState', 'cooldowns', 'config', 'stats', 'balanceVerification']) {
+    for (const key of ['userTracker', 'wallets', 'martingaleState', 'masterState', 'cooldowns', 'sniperState', 'config', 'stats', 'balanceVerification']) {
         if (saved[key] && typeof saved[key] === 'object') Object.assign(session[key], saved[key]);
     }
+    for (const tracker of SNIPER_TRACKERS) {
+        const savedState = saved.sniperState?.[tracker];
+        session.sniperState[tracker] = {
+            losses: Number.isSafeInteger(savedState?.losses) && savedState.losses >= 0 ? savedState.losses : 0,
+            waitingForTarget: savedState?.waitingForTarget === true
+        };
+    }
+    if (saved.config && !saved.config.sniperSettings) {
+        const legacy = { enabled: !!saved.config.sniperMode, step: saved.config.sniperStep || 0, resetLosses: saved.config.sniperResetLosses || 0 };
+        session.config.sniperSettings = Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, { ...legacy }]));
+    }
+    session.config.summaryModelMarkets = {
+        ...makeDefaultSummaryModelMarkets(),
+        ...(saved.config?.summaryModelMarkets || {})
+    };
     session.lastBetDrawId = saved.lastBetDrawId || null;
     session.lastBetDetails = saved.lastBetDetails || null;
     session.pendingBetPayload = null;
@@ -534,6 +588,7 @@ function buildPublicFeedHistory() {
         drawId: String(record.drawId ?? ''),
         drawDate: record.drawDate || null,
         timestamp: record.timestamp || null,
+        summaryModel: buildPublicSummaryModel(record.mlShadow || record.summaryModel, record.predicted?.unified?.key),
         predicted: {
             betzero: Array.isArray(record.predicted?.betzero) ? record.predicted.betzero : [],
             rainbow: record.predicted?.rainbow || 'SKIP',
@@ -564,11 +619,90 @@ function buildPublicFeedHistory() {
     })).filter(record => record.drawId);
 }
 
+function getPublicSummaryLabel(value) {
+    if (value === 'ENTER' || value === 'HOLD' || value === 'LEARNING') return value;
+    if (!value || typeof value !== 'object') return null;
+    if (value.recommendation === 'ENTER' || value.recommendation === 'HOLD') return value.recommendation;
+    if (value.status === 'LEARNING' || value.status === 'INSUFFICIENT_BUCKET_DATA') return 'LEARNING';
+    return null;
+}
+
+function buildPublicSummaryModel(source, unifiedKey = null) {
+    const model = source && typeof source === 'object' ? source : {};
+    const labels = {
+        betzero: getPublicSummaryLabel(model.u4 ?? model.betzero),
+        rainbow: getPublicSummaryLabel(model.color ?? model.rainbow),
+        hilo: getPublicSummaryLabel(model.sum ?? model.hilo),
+        totalColor: getPublicSummaryLabel(model.totalColor),
+        unified: getPublicSummaryLabel(model.unified)
+    };
+    const unifiedMarket = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' }[unifiedKey];
+    if (unifiedMarket) labels.unified = labels[unifiedMarket];
+    return labels;
+}
+
+function getPublicSummaryLabelForMarket(summaryModel, market, unifiedKey = null) {
+    if (market === 'unified') {
+        const sourceMarket = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' }[unifiedKey];
+        return sourceMarket ? summaryModel?.[sourceMarket] || null : summaryModel?.unified || null;
+    }
+    return summaryModel?.[market] || null;
+}
+
+const PUBLIC_MARKET_RESULT_KEYS = {
+    betzero: 'betzero',
+    rainbow: 'rainbow',
+    totalColor: 'totalColor',
+    totalColor2: 'totalColor2',
+    hilo: 'hilo',
+    unified: 'unified'
+};
+
+function safePublicCount(value) {
+    const count = Number(value);
+    return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+function getMarketStatsResetAt() {
+    const raw = getSiteSettingStatement.get('market_stats_reset_at')?.setting_value;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function buildPublicMarketStats(currentRecord, records = predictionLog) {
+    const runningLosses = Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, 0]));
+    const maximumLosses = Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, 0]));
+    const resetAt = getMarketStatsResetAt();
+
+    for (const record of records.slice().reverse()) {
+        const recordTime = Date.parse(record?.timestamp || '');
+        if (resetAt && (!Number.isFinite(recordTime) || recordTime <= resetAt)) continue;
+        if (!record?.result || typeof record.result !== 'object') continue;
+        for (const [market, resultKey] of Object.entries(PUBLIC_MARKET_RESULT_KEYS)) {
+            const outcome = record.result[resultKey];
+            if (outcome === 'WIN') {
+                runningLosses[market] = 0;
+            } else if (outcome === 'LOSS') {
+                runningLosses[market] += 1;
+                maximumLosses[market] = Math.max(maximumLosses[market], runningLosses[market]);
+            }
+        }
+    }
+
+    return Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, {
+        step: safePublicCount(currentRecord?.steps?.[market]),
+        maxLosingStreak: maximumLosses[market]
+    }]));
+}
+
 function buildPublicFeedCurrent() {
     if (!lastPrediction?.pred || lastPrediction.drawId === undefined || lastPrediction.drawId === null) return null;
     const pred = lastPrediction.pred;
+    const currentRecord = predictionLog.find(record => String(record.drawId) === String(lastPrediction.drawId));
     return {
         drawId: String(lastPrediction.drawId),
+        marketStats: buildPublicMarketStats(currentRecord),
+        summaryModel: buildPublicSummaryModel(currentRecord?.mlShadow || lastPrediction.summaryModel, pred.unifiedPick?.key),
         pred: {
             betzeroStatus: pred.betzeroStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             unlikely4: Array.isArray(pred.unlikely4) ? pred.unlikely4.map(item => ({ number: Number(item.number) })) : [],
@@ -841,6 +975,98 @@ function getRetrainedModelBias(key, predData) {
     return parseFloat(Math.max(-0.20, Math.min(0.20, market.bias || 0)).toFixed(4));
 }
 
+function getShadowFeatureBuckets(key, pred, score, currentStep) {
+    const scoreBucket = score < 0.40 ? 'low' : (score < 0.70 ? 'mid' : 'high');
+    const stepBucket = currentStep <= 1 ? '1' : (currentStep === 2 ? '2' : '3+');
+
+    if (key === 'u4') {
+        const pool = Number(pred?.brainData?.betzero?.poolSize || 0);
+        return {
+            score: scoreBucket,
+            step: stepBucket,
+            pool: pool < 12 ? 'under12' : (pool < 15 ? '12to14' : '15plus')
+        };
+    }
+    if (key === 'color') {
+        const freq = Number(pred?.brainData?.rainbow?.maxFreq || 0);
+        return {
+            score: scoreBucket,
+            step: stepBucket,
+            frequency: freq < 29 ? 'under29' : (freq < 32 ? '29to31' : '32plus')
+        };
+    }
+    if (key === 'sum') {
+        const signal = String(pred?.sumRange || '').toUpperCase();
+        return {
+            score: scoreBucket,
+            step: stepBucket,
+            signal: ['LOW', 'MID', 'HIGH'].includes(signal) ? signal : 'unknown'
+        };
+    }
+    if (key === 'totalColor') {
+        const gap = Number(pred?.totalColorPred?.gap || 0);
+        return {
+            score: scoreBucket,
+            step: stepBucket,
+            gap: gap < 0.10 ? 'under010' : (gap < 0.20 ? '010to019' : '20plus')
+        };
+    }
+    return {};
+}
+
+function getShadowModelDecision(key, pred, score, currentStep) {
+    const active = {
+        u4: pred?.betzeroStatus === 'ACTIVE',
+        color: pred?.rainbowStatus === 'ACTIVE',
+        sum: pred?.hiloStatus === 'ACTIVE',
+        totalColor: pred?.totalColorPred?.status === 'ACTIVE'
+    }[key];
+    if (!active) return { status: 'NO_ACTIVE_PREDICTION', recommendation: null };
+
+    const store = loadJSON(ML_RETRAIN_FILE, { marketModels: {} });
+    const model = store.marketModels?.[key];
+    if (!model || model.samples < 30) {
+        return { status: 'LEARNING', recommendation: null, settledSamples: model?.samples || 0 };
+    }
+
+    const candidateBuckets = getShadowFeatureBuckets(key, pred, score, currentStep);
+    const supportBuckets = {};
+    for (const [feature, value] of Object.entries(candidateBuckets)) {
+        const bucket = model.featureBuckets?.[feature]?.[value];
+        if (bucket && bucket.samples >= 20 && Number.isFinite(bucket.winRate)) {
+            supportBuckets[feature] = { samples: bucket.samples, winRate: bucket.winRate };
+        }
+    }
+
+    const evidence = Object.values(supportBuckets);
+    if (evidence.length < 2) {
+        return {
+            status: 'INSUFFICIENT_BUCKET_DATA',
+            recommendation: null,
+            settledSamples: model.samples,
+            supportedFeatures: evidence.length
+        };
+    }
+
+    const shadowScore = evidence.reduce((sum, item) => sum + item.winRate, 0) / evidence.length;
+    const baseline = ['winRate10', 'winRate50', 'winRate100']
+        .reduce((sum, field) => sum + Number(model[field] || 0.5), 0) / 3;
+    return {
+        status: 'OBSERVING',
+        recommendation: shadowScore >= baseline + 0.03 ? 'ENTER' : 'HOLD',
+        score: Number(shadowScore.toFixed(4)),
+        baseline: Number(baseline.toFixed(4)),
+        settledSamples: model.samples,
+        supportBuckets
+    };
+}
+
+function passesSummaryModelGate(session, key, pred, score) {
+    if (!session.config.summaryModelMarkets?.[key]) return true;
+    const currentStep = globalTracker[key]?.step || 1;
+    return getShadowModelDecision(key, pred, score, currentStep).recommendation === 'ENTER';
+}
+
 function refreshRetrainingModelArtifactFromLog() {
     try {
         const python = process.env.PYTHON_CMD || 'python';
@@ -848,8 +1074,14 @@ function refreshRetrainingModelArtifactFromLog() {
             cwd: __dirname,
             stdio: 'ignore'
         });
+        const model = loadJSON(ML_RETRAIN_FILE, null);
+        if (!model?.marketModels) throw new Error('Retrainer completed without writing a valid model artifact.');
+        const sampleCounts = Object.entries(model.marketModels)
+            .map(([key, market]) => `${key}=${Number(market.samples) || 0}`)
+            .join(', ');
+        console.log(`[ML] Retraining complete. Settled samples: ${sampleCounts || 'none'}.`);
     } catch (e) {
-        // Keep the bot alive and safe if the Python retrainer is unavailable.
+        console.error(`[ML] Retraining failed: ${e.message || e}. Bot will continue with the last available model.`);
     }
 }
 
@@ -1458,12 +1690,8 @@ function pushToGoogleSheet(data) {
 
 function sendTelegram(text) {
     if (!TOKEN) return Promise.resolve();
-    const destinations = [
-        PERSONAL_CHAT_ID ? { id: PERSONAL_CHAT_ID, label: 'personal chat' } : null,
-        CHANNEL_CHAT_ID ? { id: CHANNEL_CHAT_ID, label: 'channel' } : null
-    ].filter(Boolean);
-    if (!destinations.length) return Promise.resolve();
-    return Promise.all(destinations.map(destination => sendTelegramToChat(destination.id, destination.label, text)));
+    if (!CHANNEL_CHAT_ID) return Promise.resolve();
+    return sendTelegramToChat(CHANNEL_CHAT_ID, 'channel', text);
 }
 
 function sendTelegramToChat(chatId, label, text) {
@@ -1480,7 +1708,10 @@ function sendTelegramToChat(chatId, label, text) {
                 let result;
                 try { result = JSON.parse(responseBody); } catch (e) {}
                 if (res.statusCode < 200 || res.statusCode >= 300 || !result?.ok) {
-                    console.error(`[Telegram] Prediction send to ${label} failed (HTTP ${res.statusCode || 'unknown'}).`);
+                    const detail = typeof result?.description === 'string'
+                        ? `: ${result.description.replace(/[\r\n]+/g, ' ').slice(0, 240)}`
+                        : '';
+                    console.error(`[Telegram] Prediction send to ${label} failed (HTTP ${res.statusCode || 'unknown'}${detail}).`);
                 }
                 resolve();
             });
@@ -1514,17 +1745,27 @@ async function sendPrediction(drawId, drawDate, pred) {
     var mlRb = evaluateMLEntryConfidence('color', globalTracker.color.step, pred, liveStreaks);
     var mlHl = evaluateMLEntryConfidence('sum', globalTracker.sum.step, pred, liveStreaks);
     var mlTc = evaluateMLEntryConfidence('totalColor', globalTracker.totalColor.step, pred, liveStreaks);
+    const mlShadow = {
+        u4: getShadowModelDecision('u4', pred, mlBz.score, globalTracker.u4.step),
+        color: getShadowModelDecision('color', pred, mlRb.score, globalTracker.color.step),
+        sum: getShadowModelDecision('sum', pred, mlHl.score, globalTracker.sum.step),
+        totalColor: getShadowModelDecision('totalColor', pred, mlTc.score, globalTracker.totalColor.step)
+    };
+    const summaryLine = key => {
+        const label = getPublicSummaryLabel(mlShadow[key]);
+        return label ? `\n🧠 <b>SUMMARY · ${label}</b>` : '';
+    };
 
     var u4Format = pred.betzeroStatus === 'ACTIVE'
-        ? `👉 ${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')}\n⚡ <code>[GLOBAL STEP ${globalTracker.u4.step} | ML: ${mlBz.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlBz.score * 100).toFixed(0)}%)]</code>`
+        ? `👉 ${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')}\n⚡ <code>[GLOBAL STEP ${globalTracker.u4.step} | ML: ${mlBz.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlBz.score * 100).toFixed(0)}%)]</code>${summaryLine('u4')}`
         : `👉 ⏳ <b>WAITING</b> (${pred.bzSkipReason})\n⚡ <code>[GLOBAL STEP ${globalTracker.u4.step} | ML: ${mlBz.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlBz.score * 100).toFixed(0)}%)]</code>`;
 
     var rainbowFormat = pred.rainbowStatus === 'ACTIVE'
-        ? `👉 ${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b> (${pred.topColor.freq}%)\n⚡ <code>[GLOBAL STEP ${globalTracker.color.step} | ML: ${mlRb.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlRb.score * 100).toFixed(0)}%)]</code>`
+        ? `👉 ${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b> (${pred.topColor.freq}%)\n⚡ <code>[GLOBAL STEP ${globalTracker.color.step} | ML: ${mlRb.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlRb.score * 100).toFixed(0)}%)]</code>${summaryLine('color')}`
         : `👉 ⏳ <b>WAITING</b> (${pred.rbSkipReason})\n⚡ <code>[GLOBAL STEP ${globalTracker.color.step} | ML: ${mlRb.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlRb.score * 100).toFixed(0)}%)]</code>`;
 
     var tcFormat = pred.totalColorPred.status === 'ACTIVE'
-        ? `👉 ${cEm[pred.totalColorPred.topColors[0]]} <b>${pred.totalColorPred.topColors[0].toUpperCase()}</b> & ${cEm[pred.totalColorPred.topColors[1]]} <b>${pred.totalColorPred.topColors[1].toUpperCase()}</b> & ⚫ <b>NO WINNING COLOR</b>\n🚫 ELIMINATED: ${cEm[pred.totalColorPred.noWinColor]} <b>${pred.totalColorPred.noWinColor.toUpperCase()}</b>\n⚡ <code>[GLOBAL STEP ${globalTracker.totalColor.step} | ML: ${mlTc.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlTc.score * 100).toFixed(0)}%)]</code>`
+        ? `👉 ${cEm[pred.totalColorPred.topColors[0]]} <b>${pred.totalColorPred.topColors[0].toUpperCase()}</b> & ${cEm[pred.totalColorPred.topColors[1]]} <b>${pred.totalColorPred.topColors[1].toUpperCase()}</b> & ⚫ <b>NO WINNING COLOR</b>\n🚫 ELIMINATED: ${cEm[pred.totalColorPred.noWinColor]} <b>${pred.totalColorPred.noWinColor.toUpperCase()}</b>\n⚡ <code>[GLOBAL STEP ${globalTracker.totalColor.step} | ML: ${mlTc.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlTc.score * 100).toFixed(0)}%)]</code>${summaryLine('totalColor')}`
         : `👉 ⏳ <b>WAITING</b> (Zero Data)\n⚡ <code>[GLOBAL STEP ${globalTracker.totalColor.step} | ML: ${mlTc.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlTc.score * 100).toFixed(0)}%)]</code>`;
 
     var tc2Format = pred.totalColor2Pred.status === 'ACTIVE'
@@ -1532,7 +1773,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         : `👉 ⏳ <b>WAITING</b>`;
 
     var hlFormat = pred.hiloStatus === 'ACTIVE'
-        ? `👉 ${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> (🛡️ Max Loss Limit: <b>${pred.oppositeStreakLimit}</b>)\n⚡ <code>[GLOBAL STEP ${globalTracker.sum.step} | ML: ${mlHl.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlHl.score * 100).toFixed(0)}%)]</code>`
+        ? `👉 ${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> (🛡️ Max Loss Limit: <b>${pred.oppositeStreakLimit}</b>)\n⚡ <code>[GLOBAL STEP ${globalTracker.sum.step} | ML: ${mlHl.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlHl.score * 100).toFixed(0)}%)]</code>${summaryLine('sum')}`
         : `👉 ⏳ <b>WAITING</b> (${pred.hlSkipReason})\n⚡ <code>[GLOBAL STEP ${globalTracker.sum.step} | ML: ${mlHl.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlHl.score * 100).toFixed(0)}%)]</code>`;
 
     let candidateGames = [];
@@ -1562,17 +1803,23 @@ async function sendPrediction(drawId, drawDate, pred) {
         pred.unifiedPick = best;
         
         if (best.key === 'u4') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 🔵 <b>BetZero</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')}`;
+            unifiedFormat = `🎯 <b>Target Market:</b> 🔵 <b>BetZero</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')}${summaryLine(best.key)}`;
         } else if (best.key === 'color') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 🌈 <b>Rainbow Color</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b>`;
+            unifiedFormat = `🎯 <b>Target Market:</b> 🌈 <b>Rainbow Color</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b>${summaryLine(best.key)}`;
         } else if (best.key === 'sum') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 📊 <b>High / Low</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> (🛡️ Max Loss Limit: <b>${pred.oppositeStreakLimit}</b>)`;
+            unifiedFormat = `🎯 <b>Target Market:</b> 📊 <b>High / Low</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> (🛡️ Max Loss Limit: <b>${pred.oppositeStreakLimit}</b>)${summaryLine(best.key)}`;
         } else if (best.key === 'totalColor') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 🎨 <b>Total Color 3W</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${cEm[pred.totalColorPred.topColors[0]]} <b>${pred.totalColorPred.topColors[0].toUpperCase()}</b> & ${cEm[pred.totalColorPred.topColors[1]]} <b>${pred.totalColorPred.topColors[1].toUpperCase()}</b>`;
+            unifiedFormat = `🎯 <b>Target Market:</b> 🎨 <b>Total Color 3W</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${cEm[pred.totalColorPred.topColors[0]]} <b>${pred.totalColorPred.topColors[0].toUpperCase()}</b> & ${cEm[pred.totalColorPred.topColors[1]]} <b>${pred.totalColorPred.topColors[1].toUpperCase()}</b>${summaryLine(best.key)}`;
         }
     } else {
         pred.unifiedPick = null;
         unifiedFormat = `👉 ⏳ <b>WAITING FOR HIGH CONFIDENCE ENTRY</b>`;
+    }
+
+    const publicSummaryModel = buildPublicSummaryModel(mlShadow, pred.unifiedPick?.key);
+    if (lastPrediction && String(lastPrediction.drawId) === String(drawId)) {
+        lastPrediction.summaryModel = publicSummaryModel;
+        saveJSON(LAST_PRED_FILE, lastPrediction);
     }
 
     var lines = [
@@ -1607,6 +1854,8 @@ async function sendPrediction(drawId, drawDate, pred) {
             unified: globalTracker.unified.step
         },
         mlScores: { betzero: mlBz.score, rainbow: mlRb.score, hilo: mlHl.score, totalColor: mlTc.score },
+        mlShadow,
+        summaryModel: publicSummaryModel,
         brainData: pred.brainData,
         result: null, timestamp: new Date().toISOString()
     });
@@ -1934,6 +2183,10 @@ function processUpdates(pred, actualDraw) {
             hilo: pred.hiloStatus === 'SKIP' ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
             unified: unifiedStatus === 'SKIP' ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
         };
+        const shadowResultKeys = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' };
+        for (const [key, resultKey] of Object.entries(shadowResultKeys)) {
+            if (targetItem.mlShadow?.[key]) targetItem.mlShadow[key].outcome = targetItem.result[resultKey];
+        }
         saveJSON(PREDICTIONS_FILE, predictionLog);
         scheduleRetrainingRefresh(predictionLog.length);
     }
@@ -1992,60 +2245,45 @@ function processUpdates(pred, actualDraw) {
         if (unifiedWin) globalTracker.unified.step = 1; else globalTracker.unified.step++; 
     }
 
-    const sniperConfigs = Object.values(userSessions)
-        .map(session => ({ config: session.config, enabledGames: session.config.enabledGames }))
-        .filter(({ config }) => config.sniperMode && config.sniperStep > 0 && config.sniperResetLosses > 0);
-    if (sniperConfigs.length > 0) {
-        const applySniperReset = (trackerKey, status, won) => {
-            const tracker = globalTracker[trackerKey];
-            const gameKeyByTracker = {
-                u4: 'u4',
-                color: 'color',
-                sum: 'sum',
-                totalColor: 'totalColor',
-                totalColor2: 'totalColor2'
-            };
-            const matchingEntry = ({ config, enabledGames }) => {
-                if (config.unifiedMode) {
-                    return trackerKey === 'unified' && Object.values(enabledGames).some(Boolean);
-                }
-                return trackerKey !== 'unified' && enabledGames[gameKeyByTracker[trackerKey]];
-            };
-            const sniperEntry = sniperConfigs.find(matchingEntry);
-            if (!sniperEntry) return;
-            const sniperConfig = sniperEntry.config;
-            const automatedBetPlaced = Object.values(userSessions).some(session => {
-                if (!matchingEntry({ config: session.config, enabledGames: session.config.enabledGames })) return false;
-                if (String(session.lastBetDrawId) !== String(actualDraw.id)) return false;
-                const games = session.lastBetDetails?.games || [];
-                return trackerKey === 'unified' ? games.length > 0 : games.includes(gameKeyByTracker[trackerKey]);
-            });
-            if (!automatedBetPlaced) return;
-            if (status === 'SKIP') {
-                return;
-            }
+    const applySniperReset = (trackerKey, status, won) => {
+        const tracker = globalTracker[trackerKey];
+        if (status === 'SKIP') return;
+
+        const outcomeStep = won ? null : tracker.step - 1;
+        for (const session of Object.values(userSessions)) {
+            const config = session.config;
+            const enabledMarket = trackerKey === 'unified'
+                ? config.unifiedMode && Object.values(config.enabledGames).some(Boolean)
+                : !config.unifiedMode && config.enabledGames[trackerKey];
+            const sniper = getSniperSettings(config, trackerKey);
+            if (!enabledMarket || !sniper.enabled || sniper.step < 1 || sniper.resetLosses < 1) continue;
+            if (String(session.lastBetDrawId) !== String(actualDraw.id)) continue;
+            const games = session.lastBetDetails?.games || [];
+            const placedMarketBet = trackerKey === 'unified' ? games.length > 0 : games.includes(trackerKey);
+            if (!placedMarketBet) continue;
+
+            const state = session.sniperState[trackerKey] || (session.sniperState[trackerKey] = { losses: 0, waitingForTarget: false });
             if (won) {
-                tracker.sniperLosses = 0;
-                return;
+                state.losses = 0;
+                continue;
             }
 
-            const wasAtSniperStep = tracker.step - 1 === sniperConfig.sniperStep;
-            if (wasAtSniperStep || tracker.sniperLosses > 0) {
-                tracker.sniperLosses = (tracker.sniperLosses || 0) + 1;
-                if (tracker.sniperLosses >= sniperConfig.sniperResetLosses) {
-                    tracker.step = sniperConfig.sniperStep;
-                    tracker.sniperLosses = 0;
+            if (outcomeStep >= sniper.step) {
+                state.losses += 1;
+                if (state.losses >= sniper.resetLosses) {
+                    state.losses = 0;
+                    state.waitingForTarget = true;
                 }
             }
-        };
+        }
+    };
 
-        applySniperReset('u4', pred.betzeroStatus, u4Win);
-        applySniperReset('color', pred.rainbowStatus, colorWin);
-        applySniperReset('totalColor', pred.totalColorPred.status, tcWin);
-        applySniperReset('totalColor2', pred.totalColor2Pred.status, tc2Win);
-        applySniperReset('sum', pred.hiloStatus, sumWin);
-        applySniperReset('unified', unifiedStatus, unifiedWin);
-    }
+    applySniperReset('u4', pred.betzeroStatus, u4Win);
+    applySniperReset('color', pred.rainbowStatus, colorWin);
+    applySniperReset('totalColor', pred.totalColorPred.status, tcWin);
+    applySniperReset('totalColor2', pred.totalColor2Pred.status, tc2Win);
+    applySniperReset('sum', pred.hiloStatus, sumWin);
+    applySniperReset('unified', unifiedStatus, unifiedWin);
 
     if (!s.u4) s.u4 = {}; if ((globalTracker.u4.step - 1) > (s.u4.worst || 0)) s.u4.worst = globalTracker.u4.step - 1;
     if (!s.color) s.color = {}; if ((globalTracker.color.step - 1) > (s.color.worst || 0)) s.color.worst = globalTracker.color.step - 1;
@@ -2327,6 +2565,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
         ['u4', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
             const state = session.martingaleState[key];
             if (state.active && session.config.enabledGames[key]) {
+                if (!details.games?.includes(key)) return;
                 const activeWin = key === 'u4' ? u4Win : key === 'color' ? colorWin : key === 'sum' ? sumWin : key === 'totalColor' ? tcWin : tc2Win;
                 
                 if (key === 'u4' && pLogItem.predicted.betzero === 'SKIP') return;
@@ -2565,6 +2804,11 @@ async function tick() {
             if (updatedLog) saveJSON(PREDICTIONS_FILE, predictionLog);
         }
 
+        if (lastPrediction && draws.length > 0) {
+            const matched = draws.find(d => String(d.id) === String(lastPrediction.drawId));
+            if (matched) { processUpdates(lastPrediction.pred, matched); lastPrediction = null; try { fs.unlinkSync(LAST_PRED_FILE); } catch (e) {} }
+        }
+
         for (const clientId in userSessions) {
             const session = userSessions[clientId];
             if (session.lastBetDetails && session.lastBetDrawId) {
@@ -2575,10 +2819,6 @@ async function tick() {
             }
         }
 
-        if (lastPrediction && draws.length > 0) {
-            const matched = draws.find(d => String(d.id) === String(lastPrediction.drawId));
-            if (matched) { processUpdates(lastPrediction.pred, matched); lastPrediction = null; try { fs.unlinkSync(LAST_PRED_FILE); } catch (e) {} }
-        }
         if (lastPrediction && nextId && Number(nextId) >= Number(lastPrediction.drawId) + 2) { lastPrediction = null; try { fs.unlinkSync(LAST_PRED_FILE); } catch (e) {} }
 
         if (nextId && nextId !== lastGlobalDrawId && !lastPrediction) {
@@ -2661,6 +2901,8 @@ async function tick() {
                         else if (pred.hiloStatus === 'ACTIVE') globalPick = { key: 'sum' };
                         else if (pred.totalColorPred.status === 'ACTIVE') globalPick = { key: 'totalColor' };
                     }
+
+                    if (globalPick && !passesSummaryModelGate(session, globalPick.key, pred, localMlScores[globalPick.key] || 0)) continue;
                     
                     let isUnifiedCoolingDown = false;
                     if (session.cooldowns.unified >= Number(nextId)) {
@@ -2676,11 +2918,7 @@ async function tick() {
                         }
                     }
 
-                    if (session.config.sniperMode && session.config.sniperStep > 0) {
-                        if (globalTracker.unified.step < session.config.sniperStep) {
-                            continue;
-                        }
-                    }
+                    if (!sniperAllowsEntry(session, 'unified')) continue;
 
                     if (globalPick && session.config.enabledGames[globalPick.key] && !isUnifiedCoolingDown
                         && String(session.lastBetDrawId) !== String(nextId)) {
@@ -2756,12 +2994,7 @@ async function tick() {
                                 }
                             }
 
-                            if (session.config.sniperMode && session.config.sniperStep > 0) {
-                                let currentGlobalStep = globalTracker[key].step;
-                                if (currentGlobalStep < session.config.sniperStep) {
-                                    return;
-                                }
-                            }
+                            if (!sniperAllowsEntry(session, key)) return;
 
                             if (session.config.maxSteps[key] > 0 && state.localStep > session.config.maxSteps[key]) {
                                 session.stats.isHalted = true;
@@ -2780,6 +3013,10 @@ async function tick() {
                             if (key === 'sum' && pred.hiloStatus === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.sum >= 0.55)) { isActivePrediction = true; activeMlScore = localMlScores.sum; }
                             if (key === 'totalColor' && pred.totalColorPred.status === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.totalColor >= 0.45)) { isActivePrediction = true; activeMlScore = localMlScores.totalColor; }
                             if (key === 'totalColor2' && pred.totalColor2Pred.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = 0; }
+
+                            if (isActivePrediction && !passesSummaryModelGate(session, key, pred, activeMlScore)) {
+                                isActivePrediction = false;
+                            }
 
                             if (isActivePrediction && !isCoolingDown) {
                                 if (!state.active) {
@@ -2936,6 +3173,7 @@ http.createServer(async (req, res) => {
                     drawId,
                     drawDate: safeText(record.drawDate, 64),
                     timestamp: safeText(record.timestamp, 64),
+                    summaryModel: buildPublicSummaryModel(record.summaryModel, record.predicted.unified?.key),
                     predicted: {
                         betzero: safeArray(record.predicted.betzero, 4).map(Number).filter(value => Number.isInteger(value) && value >= 1 && value <= 49),
                         rainbow: safeText(record.predicted.rainbow),
@@ -3069,6 +3307,13 @@ http.createServer(async (req, res) => {
         return sendJson(res, 200, { users: getSiteUsers().map(({ email, name, createdAt, plan, expiresAt }) => ({ email, name, createdAt, plan, expiresAt })) });
     }
 
+    if (parsedUrl.pathname === '/admin/reset-market-stats' && req.method === 'POST') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        const resetAt = Date.now();
+        setSiteSettingStatement.run('market_stats_reset_at', String(resetAt));
+        return sendJson(res, 200, { ok: true, resetAt: new Date(resetAt).toISOString() });
+    }
+
     if (parsedUrl.pathname === '/admin/approve' && req.method === 'POST') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
         try {
@@ -3191,6 +3436,7 @@ http.createServer(async (req, res) => {
             drawId: String(p.drawId ?? ''),
             drawDate: p.drawDate || p.timestamp || null,
             status: p.result && typeof p.result === 'object' ? 'SETTLED' : 'PENDING',
+            summaryModel: buildPublicSummaryModel(p.mlShadow || p.summaryModel, p.predicted?.unified?.key),
             predicted: {
                 betzero: Array.isArray(p.predicted?.betzero) ? p.predicted.betzero : [],
                 rainbow: p.result?.rainbow === 'SKIP' ? 'SKIP' : (p.predicted?.rainbow || 'SKIP'),
@@ -3298,6 +3544,11 @@ http.createServer(async (req, res) => {
         const selectedMarket = parsedUrl.searchParams.get('market');
         const allowedMarkets = ['betzero', 'rainbow', 'totalColor', 'totalColor2', 'hilo', 'unified'];
         const market = allowedMarkets.includes(selectedMarket) ? selectedMarket : 'betzero';
+        const currentSummaryModel = buildPublicSummaryModel(
+            logged?.mlShadow || logged?.summaryModel || lastPrediction.summaryModel,
+            live.unifiedPick?.key
+        );
+        publicPrediction.summaryLabel = getPublicSummaryLabelForMarket(currentSummaryModel, market, live.unifiedPick?.key);
         const clockFresh = publicClock.observedAt && Date.now() - publicClock.observedAt <= POLL_SEC * 3000;
         const secondsRemaining = clockFresh
             ? Math.max(0, publicClock.timeLeftSeconds - Math.floor((Date.now() - publicClock.observedAt) / 1000))
@@ -3314,6 +3565,12 @@ http.createServer(async (req, res) => {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
             return res.end(JSON.stringify({ prediction: null, previous: publicPrevious, secondsUntilReveal: secondsRemaining === null ? null : Math.max(0, secondsRemaining - 10), access: { tier: planTier || 'trial', games: planGames || [] } }));
         }
+        const suppliedMarketStats = lastPrediction.marketStats?.[market] || {};
+        const calculatedMarketStats = buildPublicMarketStats(logged);
+        publicPrediction.marketStats = {
+            step: safePublicCount(suppliedMarketStats.step ?? calculatedMarketStats[market].step),
+            maxLosingStreak: calculatedMarketStats[market].maxLosingStreak
+        };
         const selectedPicks = {
             betzero: [], rainbow: 'SKIP',
             totalColor: { status: 'SKIP', topColors: [], noWinColor: null },
@@ -3533,12 +3790,18 @@ http.createServer(async (req, res) => {
             const skipReasons = { u4: livePred.bzSkipReason, color: livePred.rbSkipReason, sum: livePred.hlSkipReason };
             const mlScores = { u4: mlBz.score, color: mlRb.score, sum: mlHl.score, totalColor: mlTc.score, totalColor2: 1 };
             const blockedKey = enabledKeys.find(key => predictionByKey[key] === 'SKIP');
+            const summaryHoldKey = enabledKeys.find(key => SUMMARY_MODEL_MARKETS.includes(key)
+                && session.config.summaryModelMarkets?.[key]
+                && predictionByKey[key] === 'ACTIVE'
+                && getShadowModelDecision(key, livePred, mlScores[key], globalTracker[key]?.step || 1).recommendation !== 'ENTER');
             const thresholdKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE' && !session.config.mlOverrideMode && mlScores[key] < decisionThresholds[key]);
             const readyKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE' && (session.config.mlOverrideMode || mlScores[key] >= decisionThresholds[key]));
             if (!enabledKeys.length) {
                 decisionReason = 'No prediction market is enabled.';
             } else if (blockedKey) {
                 decisionReason = `${decisionLabels[blockedKey]} is skipped${skipReasons[blockedKey] ? `: ${skipReasons[blockedKey]}` : '.'}`;
+            } else if (summaryHoldKey) {
+                decisionReason = `${decisionLabels[summaryHoldKey]} is held by its enabled summary model gate.`;
             } else if (thresholdKey) {
                 decisionReason = `${decisionLabels[thresholdKey]} is held until the confidence model clears the entry gate.`;
             } else if (readyKey) {
@@ -3768,12 +4031,38 @@ http.createServer(async (req, res) => {
                     }
                 }
                 if (cfg.flatBetting !== undefined) session.config.flatBetting = Boolean(cfg.flatBetting);
-                if (cfg.sniperMode !== undefined) session.config.sniperMode = Boolean(cfg.sniperMode);
-                if (cfg.sniperStep !== undefined) session.config.sniperStep = validateNumber(cfg.sniperStep, 0, 10, 0);
-                if (cfg.sniperResetLosses !== undefined) session.config.sniperResetLosses = validateNumber(cfg.sniperResetLosses, 0, 50, 0);
+                if (cfg.sniperSettings && typeof cfg.sniperSettings === 'object') {
+                    for (const market of SNIPER_SETTING_MARKETS) {
+                        const incoming = cfg.sniperSettings[market] || {};
+                        const current = session.config.sniperSettings[market] || { enabled: false, step: 0, resetLosses: 0 };
+                        session.config.sniperSettings[market] = {
+                            enabled: incoming.enabled === undefined ? current.enabled : Boolean(incoming.enabled),
+                            step: incoming.step === undefined ? current.step : validateNumber(incoming.step, 0, 10, 0),
+                            resetLosses: incoming.resetLosses === undefined ? current.resetLosses : validateNumber(incoming.resetLosses, 0, 50, 0)
+                        };
+                    }
+                } else if (cfg.sniperMode !== undefined || cfg.sniperStep !== undefined || cfg.sniperResetLosses !== undefined) {
+                    // Older extension builds expose one shared sniper profile; apply it to every market.
+                    if (cfg.sniperMode !== undefined) session.config.sniperMode = Boolean(cfg.sniperMode);
+                    if (cfg.sniperStep !== undefined) session.config.sniperStep = validateNumber(cfg.sniperStep, 0, 10, 0);
+                    if (cfg.sniperResetLosses !== undefined) session.config.sniperResetLosses = validateNumber(cfg.sniperResetLosses, 0, 50, 0);
+                    const legacy = {
+                        enabled: session.config.sniperMode,
+                        step: session.config.sniperStep,
+                        resetLosses: session.config.sniperResetLosses
+                    };
+                    session.config.sniperSettings = Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, { ...legacy }]));
+                }
                 if (cfg.cbMaxLosses !== undefined) session.config.cbMaxLosses = validateNumber(cfg.cbMaxLosses, 0, 50, 0);
                 if (cfg.cbCooldown !== undefined) session.config.cbCooldown = validateNumber(cfg.cbCooldown, 0, 300, 0); 
                 if (cfg.mlOverrideMode !== undefined) session.config.mlOverrideMode = Boolean(cfg.mlOverrideMode);
+                if (cfg.summaryModelMarkets && typeof cfg.summaryModelMarkets === 'object' && !Array.isArray(cfg.summaryModelMarkets)) {
+                    for (const market of SUMMARY_MODEL_MARKETS) {
+                        if (typeof cfg.summaryModelMarkets[market] === 'boolean') {
+                            session.config.summaryModelMarkets[market] = cfg.summaryModelMarkets[market];
+                        }
+                    }
+                }
                 if (cfg.unifiedMode !== undefined) session.config.unifiedMode = Boolean(cfg.unifiedMode);
                 if (cfg.bzRbRollover !== undefined) session.config.bzRbRollover = Boolean(cfg.bzRbRollover);
                 if (cfg.hiloRollover !== undefined) session.config.hiloRollover = Boolean(cfg.hiloRollover);
@@ -4212,6 +4501,7 @@ function handleTelegramCommand(chatId, text) {
 if (SITE_PUBLIC_MODE) {
     console.log('[PredictionFeed] Public API ready; waiting for authenticated worker snapshots.');
 } else {
+    refreshRetrainingModelArtifactFromLog();
     pollTelegramCommands();
     ensureStreaksFile(); ensureWinStepsFile(); ensureMLStreaksFile();
     setInterval(() => tick().catch((err) => {

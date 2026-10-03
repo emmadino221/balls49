@@ -10,6 +10,7 @@ import SignupPage from './pages/SignupPage.jsx';
 import HistoryPage from './pages/HistoryPage.jsx';
 import GuidePage from './pages/GuidePage.jsx';
 import PredictionsPage from './pages/PredictionsPage.jsx';
+import CalculatorPage from './pages/CalculatorPage.jsx';
 
 export function getPageName() {
   const route = window.location.pathname.replace(/^\/|\/index.html$/g, '').replace(/^\/|\/$/, '');
@@ -19,6 +20,7 @@ export function getPageName() {
   if (route === 'testimonials.html') return 'testimonials';
   if (route === 'history.html') return 'history';
   if (route === 'guide.html') return 'guide';
+  if (route === 'calculator.html') return 'calculator';
   if (route === 'predictions.html') return 'predictions';
   if (route === 'free-trial.html') return 'free-trial';
   if (route === 'contact.html') return 'contact';
@@ -33,6 +35,7 @@ export function PageRenderer({ page }) {
   if (page === 'testimonials') return <TestimonialsPage />;
   if (page === 'history') return <HistoryPage />;
   if (page === 'guide') return <GuidePage />;
+  if (page === 'calculator') return <CalculatorPage />;
   if (page === 'predictions') return <PredictionsPage />;
   if (page === 'free-trial') return <FreeTrialPage />;
   if (page === 'contact') return <ContactPage />;
