@@ -1,78 +1,43 @@
-# Complete Balls49 Workflow: Current Implementation View
+# Complete Balls49 Runtime Workflow
 
-## System Components
+## Components
 
-The current workspace contains these runtime and UI components:
+- `collector.js` and the draw API provide current draw metadata and history.
+- `bot.js` computes and settles the seven public markets, serves local automation and website APIs, and sends Telegram channel messages.
+- `bot.py` is a separate Telegram martingale/sequence calculator bot; it does not publish the prediction feed or settle draw outcomes.
+- `balls49-extension/` receives local instructions, carries out the selected market's browser actions, acknowledges execution, and renders the overlay.
+- `web/` is a React/Vite site for predictions, history, Free Trial, market guide, calculator, pricing, and accounts.
+- `ml_retrainer.py` optionally derives a calibration artifact from settled prediction history.
+- Local JSON files persist worker state; SQLite stores website users/sessions and hosted prediction-feed state.
 
-1. `collector.js` fetches, normalizes, and writes draw history into `draws.json`.
-2. `bot.js` is the main Node orchestration runtime and prediction/confidence server.
-3. `ml_retrainer.py` reads `predictions.json` and writes `ml_retraining_model.json`.
-4. `balls49-extension/content.js` receives `/stream` instructions and performs the DOM automation.
-5. `balls49-extension/background.js` and `popup.js` expose extension UI and messaging.
-6. The `web/` folder contains static HTML pages for dashboard, pricing, strategy, history, backtesting, and market pages.
-7. The JSON files persist state, results, predictions, steps, streaks, and session state.
+## Prediction and result lifecycle
 
-## Startup Flow
+1. The worker reads the draw clock and historical data, then computes BetZero, Bet49, Rainbow, both Total Color markets, High/Low, and Unified.
+2. The prediction is recorded against a draw ID and checkpointed before delivery.
+3. Telegram picks and draw results are separate channel messages. Picks are stored in the local `telegram_prediction_outbox.json` before the first send and retried with backoff when Telegram rejects or cannot receive them. Correlate both messages by draw ID.
+4. The matching draw settles the stored prediction as `WIN`, `LOSS`, or `SKIP`. Active loss steps are advanced/reset according to the market tracker; skips do not represent losses.
+5. Public site history/clock/current-prediction data is served from local state or the sanitized public feed. Live picks remain subject to access and reveal timing; `lastUpdated` is the logged prediction timestamp.
 
-1. Set environment variables for `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` if needed.
-2. Run `python ml_retrainer.py predictions.json ml_retraining_model.json` when you want to refresh the artifact from `predictions.json`.
-3. Start the Node server with `node bot.js`.
-4. Load the `balls49-extension/` directory in Chrome for the DOM automation bridge.
-5. Open the static pages from `web/` for the UI/marketing/strategy surface.
+## Extension execution
 
-## Draw Collection and Normalization
+The extension connects to the private worker on `http://localhost:3001`, receives `/stream` instructions, validates the active market and stake, performs DOM actions, and posts `/ack`. Bet49 has its own single-number flow and is not a Unified automation target. Extension settings and progression are distinct from personal stake plans saved by website accounts.
 
-1. `collector.js` reads the current draw history and records it into `draws.json`.
-2. New records are deduplicated.
-3. The draw numbers, total, range, and color data are normalized and added into the local draw log.
-4. The server maintains prediction and result records based on this stored draw history.
+Do not assume DOM selectors are stable across changes to the third-party betting page. Verify the flow manually before enabling live automation.
 
-## Prediction and Result Cycle
+## Website accounts and personal stake plans
 
-1. `bot.js` reads the current draw and prediction context.
-2. It computes or selects the prediction for the active markets `u4`, `color`, `sum`, and `totalColor`.
-3. It writes the prediction record into `predictions.json`.
-4. `processUpdates()` compares the live draw result against the stored prediction and writes `WIN`, `LOSS`, or `SKIP` results into the same record.
-5. `predictionLog` is updated, and `scheduleRetrainingRefresh()` then checks whether the history has hit a 10/50/100 refill milestone.
-6. The retrainer is invoked and writes the refreshed `ml_retraining_model.json` file.
+Website accounts use the authenticated account/session API. Market access is checked on the server. A signed-in user may save a separate base amount for each accessible market; settled losses advance that plan's step, wins reset it, and skips leave it unchanged. The site-calculated amount is guidance only and does not create or execute extension bets.
 
-## Automation and Extension Execution
+## Deployment modes
 
-1. `content.js` opens the `/stream` event path and polls for instructions.
-2. The server provides a pending `EXECUTE_BET` payload only when a positive-stake active market exists.
-3. The extension reads the payload and performs the required DOM actions.
-4. `/ack` records whether the action is confirmed or failed.
-5. The browser overlay and UI can show local runtime and confidence state.
+- **Local mode:** bot, website API, and extension run on the user's machine; Vite proxies API requests to the bot.
+- **Public website mode:** host the React build and account/public API behind HTTPS, persistent SQLite storage, and an exact origin allowlist. A single private worker publishes sanitized snapshots using HMAC-signed HTTPS requests. Keep `/stream`, `/ack`, and all betting controls private.
 
-## Long-Run Improvement Layer
+## Operational checks
 
-The system currently records predictions and results, then computes a historical artifact for calibration:
-
-- `ml_retrainer.py` computes rates across windows 10, 50, and 100.
-- `ml_retraining_model.json` stores `bias`, `winRate10`, `winRate50`, `winRate100`, and `featureVector` fields.
-- `bot.js` reads `marketModels` and uses `getRetrainedModelBias()` for the confidence pass.
-
-This gives the project a working artifact refresh loop even without a full ML dependency stack.
-
-## Operational Workflow
-
-When the system is running:
-
-1. Confirm draw collection is producing new records.
-2. Confirm `bot.js` is processing the same draw correctly.
-3. Confirm `predictions.json` and `session_state.json` are updating.
-4. Confirm the retrainer file is refreshed at the milestone window size.
-5. Confirm the browser extension is receiving the `EXECUTE_BET` payload from `/stream`.
-6. Confirm the result cycle updates `predictions.json` with `WIN`/`LOSS`/`SKIP` values.
-
-## Recovery and Safety
-
-The local implementation should stop or pause automation when:
-
-- stop-loss or take-profit is reached,
-- a pending payload is stale,
-- a balance mismatch is detected,
-- the payload gate fails due to a missing market or non-positive stake,
-- or the extension is unable to execute the selected DOM route.
-
-Recovery should only proceed after verifying that draw IDs, market selection, and payload state remain consistent.
+- Verify that the current draw ID and prediction ID match.
+- Confirm the prediction record exists before relying on its later settlement/result.
+- Check bot logs and the Telegram outbox if a pick message is missing; the result can be delivered while the pick is awaiting retry.
+- Check extension acknowledgement and overlay state before trusting automated placement.
+- Keep runtime JSON, outbox messages, SQLite files, cookies, and credentials out of version control.
+- Validate changes with Node syntax checks, extension syntax checks, a Vite production build, and focused Python tests as applicable.

@@ -4,7 +4,7 @@
 
 The website can be built as a static Vite frontend (`cd web; npm ci; npm run build`). The API and prediction automation run from `bot.js` and use Node's built-in SQLite module. A production API needs Node 24.x, HTTPS at the host or trusted reverse proxy, and persistent storage for `SITE_DB_PATH`.
 
-The project now has a private worker-to-site feed. The extension remains connected to the local worker at `http://localhost:3001`; that worker sends a sanitized prediction, draw clock, and history snapshot to the hosted API over HTTPS. In `SITE_PUBLIC_MODE=true`, the hosted API rejects automation routes such as `/stream`, `/ack`, `/config`, and `/update-balance`. It accepts only the HMAC-authenticated `POST /internal/prediction-snapshot` feed plus website routes. The public API stores the latest feed in SQLite and hides live predictions when the draw clock goes stale.
+The project now has a private worker-to-site feed. The extension remains connected to the local worker at `http://localhost:3001`; that worker sends a sanitized prediction, draw clock, and history snapshot to the hosted API over HTTPS. In `SITE_PUBLIC_MODE=true`, the hosted API rejects automation routes such as `/stream`, `/ack`, `/config`, and `/update-balance`. It accepts only the HMAC-authenticated `POST /internal/prediction-snapshot` feed plus website routes, including authenticated per-account stake-plan routes. The public API stores the latest feed in SQLite and hides live predictions when the draw clock goes stale.
 
 Do not expose the local API port to the internet or put the Telegram token, admin key, cookies, or account database in frontend files or a public repository.
 
@@ -21,6 +21,7 @@ The deployment will also need:
 - `GOOGLE_SHEET_URL` only on the private worker if you use the optional Google Sheets export.
 - `PREDICTION_INGEST_URL` and `PREDICTION_INGEST_SECRET` on the private worker; only `PREDICTION_INGEST_SECRET` on the hosted API.
 - One running prediction worker, backups of the account database, and monitoring for restarts and failed prediction delivery. Keep the worker PC and game browser session online; without fresh worker updates, the website clock and live prediction stop updating.
+- Persistent private-worker storage for `telegram_prediction_outbox.json`, which queues and retries undelivered Telegram pick messages. This file contains runtime prediction text and must not be committed or served publicly.
 
 ## Frontend build settings
 

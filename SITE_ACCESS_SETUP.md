@@ -11,11 +11,11 @@ node .\bot.js
 
 Keep the admin key private. Do not paste it into `bot.js`, React files, screenshots, or public website settings. If you want it available in future PowerShell windows, use `setx SITE_ADMIN_KEY "your-long-random-secret"`, then open a new terminal before starting the bot.
 
-Open Predictions on the website, expand **Site owner tools**, enter the key, and choose **Preview Free Trial**, **Preview Premium**, or **Preview Elite**. The preview applies only to your owner browser session. Premium preview uses the checked markets; Elite previews all six.
+Open Predictions on the website, expand **Site owner tools**, enter the key, and choose **Preview Free Trial**, **Preview Premium**, or **Preview Elite**. The preview applies only to your owner browser session. Premium preview uses the checked markets; Elite previews all seven.
 
 ## Approve an account
 
-The person first creates an account using their email at **Sign up**. In **Site owner tools**, select that exact registered email, choose Free Trial, Premium, or Elite, set the duration, and save. Premium needs at least one checked market. Elite includes all six markets and is marked with Telegram access. User records and salted password hashes are stored in `site_users.sqlite`.
+The person first creates an account using their email at **Sign up**. In **Site owner tools**, select that exact registered email, choose Free Trial, Premium, or Elite, set the duration, and save. Premium needs at least one checked market. Elite includes all seven markets and is marked with Telegram access. User records and salted password hashes are stored in `site_users.sqlite`.
 
 ## Notes
 
@@ -26,8 +26,9 @@ The person first creates an account using their email at **Sign up**. In **Site 
 - This standalone bot server uses HTTP. Keep it on your own machine or behind HTTPS before accepting real users or sending the admin key over a network. The current site still offers the limited public Free Trial reveal; account approval unlocks paid-market access through the authenticated API.
 - Elite Telegram access is recorded as a plan entitlement here. Automatic Telegram channel membership/invite delivery is not connected yet and must be handled manually.
 - The separate Free Trial page lets a visitor choose one market, then reveals it during the final 10 seconds before the draw.
+- Signed-in users can lock a separate personal base stake for each accessible market on the Predictions page. Settled losses advance that personal plan, wins reset it to Step 1, and skipped picks leave the step unchanged. The displayed stake is guidance only; it does not place a bet or configure the extension.
 - In local mode, the API accepts browser requests from the Bet9ja game page and Chrome extension pages so the browser extension can receive live signals. Keep the API on loopback; the extension and bot need to run on the same computer.
-- Prediction broadcasts read `TELEGRAM_BOT_TOKEN` and send only to `TELEGRAM_CHANNEL_ID` when `bot.js` starts. Add the bot as an administrator with permission to post in the channel. If a prediction cannot be sent, the terminal reports the destination label, HTTP status, and Telegram's short error description; it never prints the channel ID or token.
+- Prediction broadcasts read `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` when `bot.js` starts. Add the bot as an administrator with permission to post in the channel. Pick messages are written to the worker's `telegram_prediction_outbox.json` before delivery; failures are logged and retried with backoff. Keep this local runtime file on persistent storage and out of source control. A result can arrive while its pick is waiting for a retry.
 
 ## Public hosting boundary
 

@@ -1,82 +1,38 @@
-# Balls49 Project Management and Current Structure
+# Project Structure and Release Workflow
 
-## Source of Truth for the Current Workspace
-
-The real workspace structure in this project is currently flat but organized by role:
+## Source layout
 
 ```text
 balls49/
-  bot.js                      # main runtime server and prediction engine
-  collector.js                # draw collection and normalization
-  ml_retrainer.py             # Python artifact retrainer
-  ml_retraining_model.json   # artifact model output
-  predictions.json            # prediction and result log
-  draws.json                  # normalized draw data
-  last_prediction.json        # latest prediction snapshot
-  session_state.json          # persistent session snapshots
-  streaks.json                # streak bookkeeping
-  win_steps.json              # step win-history bookkeeping
-  ml_streaks.json             # ML streak bookkeeping
-  balls49-extension/         # Chrome extension UI and automation bridge
-  web/                       # static HTML/CSS/JS UI assets
-  docs/                      # design and project documentation
+  bot.js                       # prediction engine, local API, settlement, Telegram, account/public API
+  collector.js                 # draw collection
+  bot.py                       # standalone Telegram martingale/sequence calculator bot
+  ml_retrainer.py              # historical calibration artifact generator
+  balls49-extension/           # Manifest V3 popup, background worker, and game-page content script
+  web/                         # React/Vite site and shared styles
+  docs/                        # architecture, access, prediction, safety, and workflow docs
+  test_ml_retrainer.py         # retrainer tests
 ```
 
-This is the current project shape and should be treated as the source-of-truth structure for maintenance and future changes.
+Runtime state includes local JSON files such as `draws.json`, `predictions.json`, `last_prediction.json`, `session_state.json`, streak/step files, and `telegram_prediction_outbox.json`. Website accounts, sessions, and public prediction-feed state use SQLite. These are environment/runtime data, not source artifacts; `.gitignore` keeps them out of commits.
 
-## Current Runtime Model
+## Runtime responsibilities
 
-The current runtime model is centered around:
+- The private worker (`bot.js` plus `collector.js`) computes predictions, settles outcomes, manages local extension automation, and sends separate Telegram picks/results.
+- `bot.py` is a separate Telegram sequence-calculator bot; it is not the prediction/settlement worker and reads `TELEGRAM_BOT_TOKEN`.
+- `telegram_prediction_outbox.json` durably queues unsent channel pick messages; the worker retries delivery. Do not delete a live outbox file unless intentionally discarding queued messages.
+- The React/Vite website reads account, clock, current-prediction, and history APIs. Local Vite configuration proxies API calls to the bot.
+- In public hosting mode, the hosted API serves the website and receives signed sanitized snapshots from one private worker. Do not run public automation routes.
+- The browser extension connects to the private worker and performs betting-page DOM interactions; it is not the website account system.
 
-1. `collector.js` fetching draw data.
-2. `bot.js` computing predictions and confidence signals.
-3. `ml_retrainer.py` refreshing the model artifact from `predictions.json`.
-4. `balls49-extension/content.js` delivering the `EXECUTE_BET` event to the betting page.
-5. `web/` static pages presenting dashboards and strategy details.
+## Development and release checks
 
-## Delivery and Release Workflow
+1. Inspect `git status` and keep runtime state/secrets out of the change set.
+2. Run `node --check bot.js` and `node --check` on changed extension scripts.
+3. Run `npm run build` from `web/`.
+4. Run the focused retrainer tests when Python retraining code or artifacts change.
+5. Validate changed DOM selectors manually on the supported game page; third-party site selectors cannot be validated by syntax checks.
+6. Review the final diff, update these docs for route/schema/behavior changes, and preserve existing runtime data.
+7. Back up persistent SQLite/state before migrations and confirm deployment runs exactly one prediction worker.
 
-For the current repo, the workflow should be:
-
-1. Read or generate draw data with `collector.js`.
-2. Run `bot.js` as the worker/server.
-3. Let `bot.js` persist session and runtime state in JSON files.
-4. Refresh `ml_retraining_model.json` through `ml_retrainer.py` whenever predictions history updates enough to reach 10, 50, or 100 draw milestones.
-5. Load the extension from `balls49-extension/` to carry automated DOM actions.
-6. Keep the static web UI in `web/` aligned to the server and extension messaging model.
-
-## Documentation and Code Ownership
-
-Documentation should describe the current implemented structure, not just a future architecture. The developer should update the docs when:
-
-- new runtime files are added,
-- the artifact schema changes,
-- the extension and web asset folder structure changes,
-- or the prediction/automation routes change.
-
-## Testing and Validation Expectations
-
-The current project should validate:
-
-- `node --check bot.js` parser integrity,
-- Python retrainer creation and artifact write integrity,
-- `predictions.json` and `draws.json` load successfully,
-- extension route integration with `/stream` and `/ack`,
-- and page-level UI loading in the static `web/` assets.
-
-## Refactoring Priorities
-
-The current priorities are more realistic than the earlier design target:
-
-1. Keep `bot.js` as the source of truth for prediction and execution orchestration.
-2. Continue to formalize the artifact retraining model and tie it into the confidence path.
-3. Add a proper dependency and environment manifest if the project is moved toward real packaging.
-4. Separate static page assets from automation runtime assets in a later cleanup.
-5. Centralize authentication, session, and authorization handling before treating the project as production-ready.
-
-- Tag each release.
-- Keep the previous extension package and server build available.
-- Back up state before migrations.
-- Record configuration schema changes.
-- Provide a kill switch that blocks new bets without deleting state.
-- Roll back code and configuration independently where possible.
+Keep the extension and website behavior aligned with the server's seven public market keys and access rules. Distinguish website-only personal stake plans from extension stake configuration and bot-global loss tracking.

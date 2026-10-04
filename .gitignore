@@ -25,6 +25,7 @@ streaks.json
 win_steps.json
 ml_streaks.json
 ml_retraining_model.json
+telegram_prediction_outbox.json
 
 # Local logs and OS files
 *.log

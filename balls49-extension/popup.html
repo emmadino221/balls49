@@ -121,6 +121,7 @@
             <div class="grid-2" style="margin-bottom: 8px;">
                 <select id="preset-game-select" title="Target Game">
                     <option value="betzero">🎯 BetZero</option>
+                    <option value="bet49">🟠 Bet49</option>
                     <option value="rainbow">🌈 Rainbow</option>
                     <option value="hilo">📈 High/Low</option>
                     <option value="totalColor">🎨 TC (3-Way)</option>
@@ -156,6 +157,7 @@
             <div class="grid-2">
                 <div id="btn-totalColor" class="game-btn">TC (3-Way)</div>
                 <div id="btn-totalColor2" class="game-btn">TC (2-Way)</div>
+                <div id="btn-bet49" class="game-btn">Bet49</div>
             </div>
         </div>
 
@@ -163,6 +165,7 @@
             <div class="section-label">💰 Base Stakes (₦)</div>
             <div class="grid-3" style="margin-bottom: 6px;">
                 <input type="number" id="stake-betzero" placeholder="BZ Stake">
+                <input type="number" id="stake-bet49" placeholder="Bet49 Stake">
                 <input type="number" id="stake-rainbow" placeholder="RB Stake">
                 <input type="number" id="stake-hilo" placeholder="H/L Stake">
             </div>
@@ -180,6 +183,7 @@
                 <input type="number" id="step-hilo" placeholder="HL" title="Hi/Lo Max Step">
                 <input type="number" id="step-totalColor" placeholder="TC3" title="Total Color (3W) Max Step">
                 <input type="number" id="step-totalColor2" placeholder="TC2" title="Total Color (2W) Max Step">
+                <input type="number" id="step-bet49" placeholder="B49" title="Bet49 Max Step">
             </div>
             
             <div class="grid-2">
@@ -270,6 +274,10 @@
                     <div class="tel-val" id="stats-hl-step">0</div>
                     <div id="ml-hl-rec" class="ml-rec hold">WAIT</div>
                     <div id="ml-hl-score" style="font-size: 8px; margin-top:2px;">Score: --</div>
+                </div>
+                <div class="tel-box">
+                    <div class="tel-label">Bet49 Step</div>
+                    <div class="tel-val" id="stats-bet49-step">0</div>
                 </div>
             </div>
         </div>

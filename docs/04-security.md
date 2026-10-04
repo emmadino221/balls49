@@ -1,75 +1,29 @@
-﻿# Balls49 Security and Runtime Safety Notes
+# Security and Runtime Data Handling
 
-## Current Scope
+## Application boundaries
 
-The project contains:
+The project has a private automation worker, a React website/API, and a Chrome extension. Local extension routes use a browser `clientId` for session routing; this is separate from website account authentication and must not be treated as a password or a strong public identity.
 
-- a Node runtime in `bot.js`,
-- a Python retrainer in `ml_retrainer.py`,
-- a browser automation extension in `balls49-extension/`,
-- static web assets in `web/`,
-- bet data and prediction artifacts in JSON files such as `predictions.json`, `draws.json`, `session_state.json`, `streaks.json`, and `ml_retraining_model.json`.
+Public website mode exposes an explicit allowlist of account, admin, read-only prediction routes, and the HMAC-authenticated worker snapshot endpoint. Betting and extension routes such as `/stream`, `/ack`, `/config`, `/reset`, and `/update-balance` must remain on the private worker. Public deployments require HTTPS, the exact `SITE_ALLOWED_ORIGINS`, persistent SQLite storage, and one worker process.
 
-That means secrets, browser automation, prediction history, state files, and betting operations all need to be protected at the same time.
+## Secrets
 
-## Current Secret and Credential Pattern
+- The Node worker reads `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` from its environment for channel broadcasts; personal Telegram destinations are configured separately for user sessions. The optional standalone `bot.py` sequence-calculator bot also reads `TELEGRAM_BOT_TOKEN`.
+- `SITE_ADMIN_KEY`, `PREDICTION_INGEST_SECRET`, and optional `GOOGLE_SHEET_URL` belong only in server/worker environment configuration.
+- Never put server secrets in source code, the extension, website code, or `VITE_*` build variables.
+- Rotate any credential that may have been committed or shared.
 
-The Node and Python bot code read `TELEGRAM_BOT_TOKEN` from the environment; the Node worker reads personal and channel destinations from `TELEGRAM_CHAT_ID` and `TELEGRAM_CHANNEL_ID`. The optional Google Sheets endpoint is read from `GOOGLE_SHEET_URL`. Do not add these values to source files or frontend build variables. `cookies.txt`, account files, prediction history, and runtime state are excluded by `.gitignore` and must stay private.
+## User and runtime data
 
-## Current Runtime Security Gaps to Address
+Website password hashes, accounts, sessions, and public-feed snapshots are stored in SQLite. Local automation, draw history, prediction history, model state, and unsent Telegram predictions use local runtime files, including `telegram_prediction_outbox.json`. Cookies and runtime files must remain private and ignored by Git. Back up account databases and worker state securely; do not upload them with source.
 
-The current implementation should be considered an automation prototype rather than a hardened production system. The key security gaps are:
+The Telegram prediction outbox stores unsent pick-message text and retries it with backoff. Keep that file on the private worker's persistent storage. After delivery, the queued message is removed. A worker restart can resend a message if Telegram accepted it but the worker did not record the acknowledgement; occasional duplicates are therefore possible.
 
-1. Telegram tokens must be rotated if they were previously committed or shared. The legacy Python source previously contained a token; it now requires the environment variable.
-2. Browser client IDs are used as session selectors.
-3. The extension contains browser automation selectors and browser storage flow.
-4. JSON files hold state, prediction data, and possibly user-sensitive runtime context.
-5. The browser automation path should not trust server strings or page DOM layout blindly.
+## Operational protections and remaining risks
 
-## Required Safety Rules
-
-### Secrets
-
-- Store all live credentials in environment variables or a secret manager.
-- Remove hard-coded fallback tokens from distributed files.
-- Do not store secrets in the extension codebase or in browser persistent storage.
-
-### Browser Automation
-
-- Use extension permissions minimally.
-- Avoid unsanitized DOM injection.
-- Treat selectors and page layout as unstable.
-- Validate payloads before handing them to the extension and then to the betting page.
-
-### API and Session Flow
-
-- Validate all route inputs and payloads before writing them to state.
-- Keep user session isolation server-side.
-- Do not allow one `clientId` or browser identity to bypass access control.
-- Require fresh authorization for `stream`, `ack`, `config`, `reset`, and backtest actions.
-
-### Data Persistence
-
-- Keep `cookies.txt`, `session_state.json`, and sensitive logs out of public source control.
-- Prefer atomic writes and safe file replacement.
-- Support a secure backup and restore process for state data.
-- Avoid exposing full prediction logs in public reports.
-
-## Current Retrieval and Artifact Model
-
-The retrainer writes `ml_retraining_model.json` with rolling windows and feature-vector summaries. This artifact should be treated as non-sensitive statistical output, but it should still be protected from accidental public access.
-
-## Monitoring and Recovery
-
-The project should monitor:
-
-- bot exceptions,
-- collector failures,
-- balance mismatch warnings,
-- failed acknowledgements,
-- stalled prediction updates,
-- and extension DOM failures.
-
-On restart, the bot should restore `session_state.json` and then continue safely from the persisted session and latest prediction stream.
-
-
+- Validate API input and market/step/stake values on the server.
+- Keep session authorization and prediction access checks server-side.
+- Do not trust unverified browser identity or forwarding headers.
+- Extension DOM selectors target a third-party game page and may change; test selectors and acknowledgement behavior before live use.
+- Martingale progressions can grow quickly. Max-step and stop-loss settings are independent safeguards; stake calculators are estimates, not guarantees.
+- Monitor bot tick failures, Telegram delivery logs/outbox growth, prediction settlement, extension acknowledgements, and persistent-storage availability.

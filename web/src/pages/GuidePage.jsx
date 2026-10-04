@@ -7,6 +7,11 @@ const markets = [
     result: 'A win means none of those numbers appeared in the actual draw.',
   },
   {
+    name: 'Bet49',
+    pick: 'One selected number.',
+    result: 'A win means the selected number appeared in the actual draw.',
+  },
+  {
     name: 'Rainbow Color',
     pick: 'One predicted ball color.',
     result: 'A win means at least two drawn balls match the predicted color.',
@@ -70,6 +75,7 @@ export default function GuidePage() {
           <span className="overline">HISTORY &amp; WIN RATE</span>
           <h2>How the numbers are calculated</h2>
           <p>For each market, win rate is <strong>wins ÷ (wins + losses)</strong>. Skipped picks are excluded. A market with no settled picks has no win rate yet.</p>
+          <p>Maximum losing streak is the greatest number of consecutive losses recorded since the tracking period was last reset.</p>
           <p>Use the draw-range selector to choose recent results or all time. All-time history loads in batches; its summaries reflect the draws currently loaded.</p>
           <a className="text-link guide-history-link" href="history.html">Explore prediction history <span aria-hidden="true">→</span></a>
         </article>

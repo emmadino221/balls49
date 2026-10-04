@@ -1,69 +1,51 @@
-# Balls49 Prediction Logic and Current Model Signals
+# Prediction, Settlement, and Stake Progression
 
-## Current Implementation Source
+## Sources of truth
 
-The current prediction engine lives in `bot.js`. It reads local draw history and prediction objects, then writes a prediction record to `predictions.json` and a result record back into the same structure when a draw is resolved.
+`bot.js` computes predictions, tracks market steps, settles outcomes, serves the local automation/API routes, and sends Telegram channel messages. `collector.js` gathers draw data. In local-worker mode, predictions/results are persisted in `predictions.json`, the active prediction is checkpointed in `last_prediction.json`, and tracker/session data is stored in files such as `session_state.json` and `streaks.json`. In public-site mode, sanitized prediction feed/history snapshots are persisted in SQLite. These runtime and account files are private and must not be committed.
 
-The new retraining artifact path is handled by `ml_retrainer.py`, which reads `predictions.json` and writes `ml_retraining_model.json` with rolling window rates and a feature-vector summary per market.
+The `ml_retrainer.py` script consumes prediction history and writes the optional `ml_retraining_model.json` artifact. The model/confidence layer is a heuristic and historical calibration aid; it does not guarantee future results.
 
-## Runtime Files
+## Markets and results
 
-The current live and persistent files include:
+The public prediction/history surfaces expose seven markets:
 
-- `draws.json` — normalized draw history.
-- `predictions.json` — prediction output and recorded results.
-- `last_prediction.json` — last prediction snapshot.
-- `streaks.json` — streak bookkeeping.
-- `win_steps.json` — step-wise win tables.
-- `ml_streaks.json` — machine learning/streak bookkeeping.
-- `ml_retraining_model.json` — retraining artifact with bias, rolling rates, and feature vectors.
+| Public market | Prediction/result keys | Rule summary |
+|---|---|---|
+| BetZero | `betzero` | Select four numbers; win if none appear in the draw. |
+| Bet49 | `bet49` | Select one number; win if it appears in the draw. |
+| Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
+| Total Color (3-way) | `totalColor` | Select two colors and an excluded color; settlement follows the documented top-color/tie rule. |
+| Total Color (2-way) | `totalColor2` | Select two colors; a tie outcome is represented as black. |
+| High/Low | `hilo` | Win when the predicted draw-total range matches the actual range. |
+| Unified | `unified` | A wrapper around the chosen supported market; its result follows that market. |
 
-## Prediction Flow
+Skipped/inactive picks settle as `SKIP` and are not wins or losses. Bet49 is an independent market and is not a target in the extension's Unified automation strategy.
 
-1. The collector fetches historical draw data and saves normalized draw records into `draws.json`.
-2. The bot reads `draws.json` and current draw metadata.
-3. `computePredictions()` or the equivalent prediction generation path in `bot.js` creates `u4`, `color`, `sum`, and `totalColor` predictions.
-4. The predictions are stored in `predictions.json` with `predicted`, `steps`, `mlScores`, and `brainData` payloads.
-5. On the matching draw result, `processUpdates()` writes `result` data such as `WIN`, `LOSS`, and `SKIP` across each market.
-6. `scheduleRetrainingRefresh()` triggers the Python retrainer at sample milestones 10, 50, and 100.
+## Draw lifecycle
 
-## Market Logic
+1. The worker reads current draw metadata and draw history, then computes the next-draw predictions.
+2. It creates or updates one prediction record per draw ID and checkpoints the current prediction.
+3. The Telegram pick is placed in a persistent `telegram_prediction_outbox.json` queue before delivery. Failed delivery is logged and retried with backoff; the outbox is local runtime state and is ignored by Git.
+4. When the matching draw is available, the bot settles each active market, updates tracker steps and historical records, and publishes the draw result separately to Telegram.
+5. The website's public API exposes settled history and a plan-filtered live pick. The current-prediction payload includes `lastUpdated`, sourced from the logged prediction timestamp.
 
-### BetZero (`u4`)
+Because the pick and result are separate Telegram messages, the draw ID in each heading is the correlation key. If a prediction message is temporarily undeliverable, the bot retries it; a result may still be delivered while retry is pending.
 
-The live bot still uses a number-selection strategy that reads draw and frequency structuring. The market output is represented in `predicted.betzero` and the outcome is stored as `result.betzero`.
+## Martingale calculations
 
-### Rainbow (`color`)
+The website calculator and personal prediction stake planner use their market-specific recovery formulas. Odds-based markets use their configured odds (Bet49 uses 7.80); High/Low has a multiplier progression; Total Color markets account for their two-/three-way stake exposure. Bet49's website calculator increases its profit target by one base stake per additional step, by design. The extension/bot Bet49 automation uses its separate 7.80-odds recovery progression, so the website Bet49 calculator/planner and automated Bet49 stake may differ after Step 1.
 
-The market output is represented in `predicted.rainbow`, and the result field is `result.rainbow`.
+The website personal stake planner is distinct from extension automation and global bot tracking. Each signed-in account can lock a separate base stake per accessible market. For each locked plan, a settled loss advances the step, a win resets it to Step 1/base stake, and a skip leaves the step unchanged. The backend reconciles new settled history when plans are loaded; changing/unlocking and locking a base stake starts a new Step 1 sequence. The recommendation is informational only and never submits a bet.
 
-### Hi/Lo (`sum`)
+Configured max-step and stop-loss safeguards remain relevant to automation. Removing the former hard-coded 30-step ceiling does not disable a configured risk limit.
 
-The market output is represented in `predicted.hilo`, and the result field is `result.hilo`.
+The calculator accepts step counts beyond the former 30-step ceiling. For large requests it keeps the summary calculation but shows only the first 100 and final 20 calculated rows, with an omission marker between them. If values exceed JavaScript's finite numeric range, it reports the first unrepresentable step instead of iterating or rendering indefinitely.
 
-### Total Color (`totalColor`)
+## Max-loss reset periods
 
-The market output is represented in `predicted.totalColor`, and the result field is `result.totalColor`.
+The shared website/Telegram maximum-loss tracker starts from the configured reset timestamp and evaluates a result's `settledAt` time. New settlements record that time so a prediction created before a reset but settled afterward belongs to the new period. Older historical records without a settlement timestamp fall back to their prediction timestamp and cannot be classified exactly around an earlier reset.
 
-## ML and Calibration Layer
+## Confidence and backtests
 
-The confidence path in `bot.js` currently blends:
-
-- adaptive long-run calibration based on the prediction log,
-- `getRetrainedModelBias()` from `ml_retraining_model.json`, and
-- market-specific confidence heuristics from `brainData`.
-
-The retrainer writes `bias`, `winRate10`, `winRate50`, `winRate100`, and `featureVector` fields into `marketModels` keyed by `u4`, `color`, `sum`, and `totalColor`.
-
-## Historical Calibration Model
-
-The current long-run improvement design is artifact-driven rather than a dependency-heavy ML package. It performs rolling-window observation and writes a bias and feature summary into `ml_retraining_model.json`.
-
-This means the architecture is currently:
-
-- `bot.js` reads the artifact bias and uses it in the confidence score path.
-- `ml_retrainer.py` computes the rolling-rate and feature-vector summaries.
-- `scheduleRetrainingRefresh()` refreshes the artifact automatically at draw-length checkpoints.
-
-The future direction is to replace the heuristic JSON artifact with a learned model stack if Python dependencies such as `numpy` and `scikit-learn` are available in the workspace interpreter.
-- The backtest reproduces the current simulator rules, not the randomness or execution conditions of the betting platform.
+`ml_retrainer.py` writes rolling historical summaries used by the bot's confidence/calibration path. Backtests reproduce the simulator's market/stake rules against historical records; they do not reproduce the betting platform's randomness, delays, DOM changes, or payout conditions. Historical performance is not a promise of future results.

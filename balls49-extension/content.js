@@ -1,7 +1,8 @@
 console.log("[Balls49] Direct-Access Engine Initialized - SaaS Edition");
 
 let SELECTED_GAME = 'hilo'; 
-let CURRENT_STAKES = { betzero: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
+let IS_UNIFIED_MODE = false;
+let CURRENT_STAKES = { betzero: 500, bet49: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
 let isBettingActive = false;
 let lastExecutedDrawId = null;          
 let SOUND_ENABLED = true;
@@ -225,6 +226,67 @@ async function runBetZero(numbers, stake) {
     } catch (e) { return false; } 
 }
 
+async function runBet49(number, stake) {
+    const selectedNumber = Number(number);
+    const bet49Tab = getTabByText('bet49') || getTabByText('bet 49');
+    if (!bet49Tab) {
+        setOverlayDecisionReason('Bet49 bet not placed: the Bet49 tab was not found.');
+        return false;
+    }
+    if (!Number.isInteger(selectedNumber) || selectedNumber < 1 || selectedNumber > 49 || !Number.isFinite(Number(stake)) || Number(stake) <= 0) {
+        setOverlayDecisionReason('Bet49 bet not placed: the selected number or stake is invalid.');
+        return false;
+    }
+
+    safeClick(bet49Tab);
+    await sleep(300);
+    const clearSelection = () => {
+        const clearButton = getEl(XPATHS.CLEAR_BTN);
+        if (clearButton) safeClick(clearButton);
+        return Boolean(clearButton);
+    };
+
+    if (!clearSelection()) {
+        setOverlayDecisionReason('Bet49 bet not placed: the clear-selection control was not found.');
+        return false;
+    }
+    await sleep(150);
+
+    let betPlaced = false;
+    try {
+        const numberButton = getEl(getBallXPath(selectedNumber));
+        if (!numberButton) {
+            setOverlayDecisionReason(`Bet49 bet not placed: number ${selectedNumber} was not found.`);
+            return false;
+        }
+        safeClick(numberButton);
+        await sleep(150);
+
+        const stakeInput = document.querySelector('input[type="number"]') || getEl(XPATHS.STAKE_INPUT);
+        if (!stakeInput) {
+            setOverlayDecisionReason('Bet49 bet not placed: the stake input was not found.');
+            return false;
+        }
+        stakeInput.value = String(Math.round(Number(stake)));
+        stakeInput.dispatchEvent(new Event('input', { bubbles: true }));
+        stakeInput.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(200);
+        betPlaced = await placeBet();
+        if (!betPlaced) setOverlayDecisionReason('Bet49 bet not placed: Bet9ja did not confirm the bet.');
+        return betPlaced;
+    } catch (error) {
+        console.error('[Balls49] runBet49 error:', error);
+        setOverlayDecisionReason(`Bet49 bet not placed: ${error.message || 'execution error'}.`);
+        return false;
+    } finally {
+        const cleared = clearSelection();
+        if (!cleared) {
+            console.warn('[Balls49] Bet49 selection could not be cleared: the clear control was not found.');
+            if (betPlaced) setOverlayDecisionReason('Bet49 bet placed, but the clear-selection control was not found.');
+        }
+    }
+}
+
 function setOverlayDecisionReason(message) {
     const reason = document.getElementById('overlayDecisionReason');
     if (reason) reason.innerText = message;
@@ -379,9 +441,9 @@ function injectLiveOverlay() {
 
         .b49-panel {
             width: 310px;
-            background: rgba(15, 15, 18, 0.88);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            background: rgba(15, 15, 18, 0.62);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 14px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -551,7 +613,7 @@ function injectLiveOverlay() {
 
             <div class="b49-body">
                 <div class="b49-directive-card">
-                    <div class="b49-dir-label">👑 Unified Directive</div>
+                    <div class="b49-dir-label" id="overlayDirectiveLabel">Current Market</div>
                     <div class="b49-dir-val">
                         <span id="overlayTarget">WAITING FOR DATA...</span>
                         <span class="b49-badge-action" id="overlayActionBadge">HOLD</span>
@@ -787,9 +849,12 @@ function updateLiveOverlay(data) {
     const betsPlaced = data.betsPlaced || total;
 
     const targetEl = document.getElementById('overlayTarget');
+    const directiveLabel = document.getElementById('overlayDirectiveLabel');
+    if (directiveLabel) directiveLabel.innerText = IS_UNIFIED_MODE ? '👑 Unified Directive' : 'Current Market';
     if (targetEl) {
         let targetText = 'WAITING...';
         if (SELECTED_GAME === 'betzero') targetText = '🎯 BetZero';
+        else if (SELECTED_GAME === 'bet49') targetText = '🟠 Bet49';
         else if (SELECTED_GAME === 'rainbow') targetText = '🌈 Rainbow';
         else if (SELECTED_GAME === 'totalcolor') targetText = '🎨 Total Color 3W';
         else if (SELECTED_GAME === 'totalcolor2') targetText = '🎭 Total Color 2W';
@@ -835,6 +900,7 @@ function updateLiveOverlay(data) {
     if (stepEl && data.currentStep) {
         let currentStep = 1;
         if (SELECTED_GAME === 'betzero') currentStep = data.currentStep.u4 || 1;
+        else if (SELECTED_GAME === 'bet49') currentStep = data.currentStep.bet49 || 1;
         else if (SELECTED_GAME === 'rainbow') currentStep = data.currentStep.color || 1;
         else if (SELECTED_GAME === 'totalcolor') currentStep = data.currentStep.totalColor || 1;
         else if (SELECTED_GAME === 'totalcolor2') currentStep = data.currentStep.totalColor2 || 1;
@@ -880,21 +946,27 @@ async function pollOverlayData() {
     syncLiveBalanceWithServer();
 
     try {
-        chrome.storage.sync.get(['enabledGames', 'unifiedMode'], (res) => {
-            if (res && !res.unifiedMode && res.enabledGames) {
-                if (res.enabledGames.totalColor2) SELECTED_GAME = 'totalcolor2';
-                else if (res.enabledGames.totalColor) SELECTED_GAME = 'totalcolor';
-                else if (res.enabledGames.rainbow || res.enabledGames.color) SELECTED_GAME = 'rainbow';
-                else if (res.enabledGames.hilo || res.enabledGames.sum) SELECTED_GAME = 'hilo';
-                else if (res.enabledGames.betzero || res.enabledGames.u4) SELECTED_GAME = 'betzero';
-            }
-        });
+        const settings = await getStorage(['enabledGames', 'unifiedMode']);
+        setSelectedGameFromSettings(settings);
 
         const statsRes = await fetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`);
         const stats = statsRes.ok ? await statsRes.json() : null;
         updateLiveOverlay(stats);
     } catch(e) {}
     setTimeout(pollOverlayData, 1500);
+}
+
+function setSelectedGameFromSettings(settings) {
+    IS_UNIFIED_MODE = Boolean(settings?.unifiedMode);
+    if (IS_UNIFIED_MODE || !settings?.enabledGames) return;
+
+    const enabledGames = settings.enabledGames;
+    if (enabledGames.bet49) SELECTED_GAME = 'bet49';
+    else if (enabledGames.totalColor2) SELECTED_GAME = 'totalcolor2';
+    else if (enabledGames.totalColor) SELECTED_GAME = 'totalcolor';
+    else if (enabledGames.rainbow || enabledGames.color) SELECTED_GAME = 'rainbow';
+    else if (enabledGames.hilo || enabledGames.sum) SELECTED_GAME = 'hilo';
+    else if (enabledGames.betzero || enabledGames.u4) SELECTED_GAME = 'betzero';
 }
 
 function getStorage(keys) {
@@ -908,9 +980,11 @@ function calcLocalStake(key, currentStep, userStakes, gameStepsLimits, hiloMulti
     if (key === 'totalColor') gameKey = 'totalColor';
     if (key === 'totalColor2') gameKey = 'totalColor2';
 
+    if (key === 'bet49') gameKey = 'bet49';
     const base  = userStakes[gameKey] || 500;
-    const maxLimit = gameStepsLimits[gameKey] || 8;
-    const step  = Math.min(currentStep || 1, maxLimit);
+    const maxLimit = Number(gameStepsLimits[gameKey]) || 0;
+    const requestedStep = currentStep || 1;
+    const step = maxLimit > 0 ? Math.min(requestedStep, maxLimit) : requestedStep;
 
     if (key === 'totalColor') {
         let totalLost = 0;
@@ -946,7 +1020,7 @@ function calcLocalStake(key, currentStep, userStakes, gameStepsLimits, hiloMulti
         return Math.round(currentStake);
     }
 
-    const ODDS = { u4: 1.65, color: 1.50 };
+    const ODDS = { u4: 1.65, bet49: 7.80, color: 1.50 };
     const odds  = ODDS[key];
     const tgt   = base * (odds - 1);
     let lost = 0, stake = base;
@@ -1011,12 +1085,13 @@ async function listen() {
 
                 isBettingActive = true;
 
-                const userStakes = storage.stakes || { betzero: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
-                const gameStepsLimits = storage.gameSteps || { betzero: 8, rainbow: 8, hilo: 8, totalColor: 8, totalColor2: 8 };
+                const userStakes = storage.stakes || { betzero: 500, bet49: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
+                const gameStepsLimits = storage.gameSteps || { betzero: 8, bet49: 8, rainbow: 8, hilo: 8, totalColor: 8, totalColor2: 8 };
                 const hiloMult   = parseFloat(storage.hiloMultiplier) || 2.0;
-                const serverSteps = m.steps || { betzero: 1, rainbow: 1, hilo: 1, totalColor: 1, totalColor2: 1 };
+                const serverSteps = m.steps || { betzero: 1, bet49: 1, rainbow: 1, hilo: 1, totalColor: 1, totalColor2: 1 };
 
                 const bzStake  = m.stake || calcLocalStake('u4', serverSteps.betzero, userStakes, gameStepsLimits, hiloMult);
+                const bet49Stake = m.bet49Stake || calcLocalStake('bet49', serverSteps.bet49, userStakes, gameStepsLimits, hiloMult);
                 const rbStake  = m.colorStake || calcLocalStake('color', serverSteps.rainbow, userStakes, gameStepsLimits, hiloMult);
                 let hlStake = m.sumStake || calcLocalStake('sum', serverSteps.hilo, userStakes, gameStepsLimits, hiloMult);
                 const tcStake  = m.tcStake || calcLocalStake('totalColor', serverSteps.totalColor, userStakes, gameStepsLimits, hiloMult);
@@ -1034,6 +1109,12 @@ async function listen() {
                     if (m.numbers && m.stake > 0) {
                         SELECTED_GAME = 'betzero';
                         let res = await runBetZero(m.numbers, bzStake);
+                        if (!res) betSuccess = false;
+                        playedAny = true;
+                    }
+                    if (Number.isInteger(Number(m.bet49)) && Number(m.bet49) >= 1 && Number(m.bet49) <= 49 && bet49Stake > 0) {
+                        SELECTED_GAME = 'bet49';
+                        const res = await runBet49(m.bet49, bet49Stake);
                         if (!res) betSuccess = false;
                         playedAny = true;
                     }
@@ -1198,13 +1279,7 @@ async function startApp() {
             'mlOverrideMode', 'unifiedMode', 'hiloMultiplier' 
         ], (data) => {
             if (data) {
-                if (data.enabledGames) {
-                    if (data.enabledGames.totalColor2) SELECTED_GAME = 'totalcolor2';
-                    else if (data.enabledGames.totalColor) SELECTED_GAME = 'totalcolor';
-                    else if (data.enabledGames.rainbow || data.enabledGames.color) SELECTED_GAME = 'rainbow';
-                    else if (data.enabledGames.hilo || data.enabledGames.sum) SELECTED_GAME = 'hilo';
-                    else if (data.enabledGames.betzero || data.enabledGames.u4) SELECTED_GAME = 'betzero';
-                }
+                setSelectedGameFromSettings(data);
                 
                 fetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
                     method: 'POST',

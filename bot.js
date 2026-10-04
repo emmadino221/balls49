@@ -138,7 +138,7 @@ const siteSessions = {
 };
 siteDb.prepare('DELETE FROM site_sessions WHERE expires_at <= ?').run(Date.now());
 const siteAuthRateLimits = new Map();
-const siteMarkets = ['betzero', 'rainbow', 'totalColor', 'totalColor2', 'hilo', 'unified'];
+const siteMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'hilo', 'unified'];
 // Public hosting should expose only the account and read-only website API routes.
 const SITE_PUBLIC_MODE = process.env.SITE_PUBLIC_MODE === 'true';
 const PORT = Number.parseInt(process.env.PORT || '3001', 10) || 3001;
@@ -165,6 +165,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
+    'GET /account/stake-plans', 'POST /account/stake-plan',
     'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
     'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout'
 ]);
@@ -296,9 +297,46 @@ function publicAccount(session) {
     const plan = user && user.expiresAt > Date.now() ? user.plan : { tier: 'trial', games: [], expiresAt: null, telegram: false };
     return { email: session.email, plan };
 }
-
+function latestSettledPredictionDrawId() {
+    return predictionLog.reduce((latestId, record) => {
+        const drawId = Number(record?.drawId);
+        return record?.result && typeof record.result === 'object' && Number.isSafeInteger(drawId)
+            ? Math.max(latestId, drawId)
+            : latestId;
+    }, 0);
+}
+function reconcilePredictionStakePlans(user) {
+    const plans = user.predictionStakePlans && typeof user.predictionStakePlans === 'object'
+        ? user.predictionStakePlans
+        : {};
+    let changed = false;
+    for (const market of siteMarkets) {
+        const plan = plans[market];
+        if (!plan || plan.locked !== true || !Number.isSafeInteger(plan.step) || !Number.isFinite(Number(plan.baseAmount))) continue;
+        const lastProcessedDrawId = Number(plan.lastProcessedDrawId) || 0;
+        const settledPredictions = predictionLog
+            .filter(record => record?.result && typeof record.result === 'object'
+                && Number.isSafeInteger(Number(record.drawId))
+                && Number(record.drawId) > lastProcessedDrawId
+                && ['WIN', 'LOSS', 'SKIP'].includes(record.result[market]))
+            .sort((left, right) => Number(left.drawId) - Number(right.drawId));
+        for (const record of settledPredictions) {
+            const outcome = record.result[market];
+            if (outcome === 'WIN') plan.step = 1;
+            else if (outcome === 'LOSS') plan.step = Math.min(Number.MAX_SAFE_INTEGER, plan.step + 1);
+            plan.lastProcessedDrawId = String(record.drawId);
+            changed = true;
+        }
+    }
+    if (changed || !user.predictionStakePlans) {
+        user.predictionStakePlans = plans;
+        saveSiteUser(user);
+    }
+    return plans;
+}
 let globalTracker = { 
     u4: { step: 1 },
+    bet49: { step: 1 },
     color: { step: 1 },
     sum: { step: 1 },
     totalColor: { step: 1 },
@@ -335,7 +373,7 @@ function sniperAllowsEntry(session, trackerKey) {
 let lastDrawId = null, predSentForId = null, lastPrediction = null;
 let lastGlobalDrawId = null; 
 let publicClock = { drawId: null, timeLeftSeconds: null, drawDate: null, observedAt: null };
-let globalDefaultStakes = { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 };
+let globalDefaultStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 };
 
 const processedDrawIds = new Set();
 const userSessions = {};
@@ -345,6 +383,7 @@ function getSession(clientId) {
         userSessions[clientId] = {
             userTracker: { 
                 u4: { step: 1 }, 
+                bet49: { step: 1 },
                 color: { step: 1 }, 
                 sum: { step: 1 },
                 totalColor: { step: 1 },
@@ -354,6 +393,7 @@ function getSession(clientId) {
             },
             wallets: {
                 u4: { name: 'BetZero Wallet', bankroll: 0, odds: 1.65 },
+                bet49: { name: 'Bet49 Wallet', bankroll: 0, odds: 7.80 },
                 color: { name: 'Rainbow Wallet', bankroll: 0, odds: 1.50 },
                 sum: { name: 'High/Low Wallet', bankroll: 0, odds: 2.00, multiplier: 1.40 },
                 totalColor: { name: 'TC (3-Way) Wallet', bankroll: 0, odds: 3.8 },
@@ -361,6 +401,7 @@ function getSession(clientId) {
             },
             martingaleState: {
                 u4: { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false },
+                bet49: { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false },
                 color: { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false },
                 sum: { active: false, localStep: 1, isRollover: false, rolloverStake: 0, lastStandardStake: 0, inShadowMode: false },
                 totalColor: { active: false, localStep: 1, isRollover: false, rolloverStake: 0, rolloverStage: 0, inShadowMode: false },
@@ -374,12 +415,12 @@ function getSession(clientId) {
                 lastStake: 0,
                 inShadowMode: false
             },
-            cooldowns: { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, unified: 0 },
+            cooldowns: { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, unified: 0 },
             sniperState: makeDefaultSniperState(),
             config: {
-                initialStakes: { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 },
-                maxSteps: { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 },
-                enabledGames: { u4: false, color: false, sum: false, totalColor: false, totalColor2: false },
+                initialStakes: { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 },
+                maxSteps: { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 },
+                enabledGames: { u4: false, bet49: false, color: false, sum: false, totalColor: false, totalColor2: false },
                 takeProfit: 0, stopLoss: 0,
                 schedule: { stopTime: '', active: false },
                 step1Only: false, flatBetting: false,
@@ -448,6 +489,7 @@ function isTimeUp(schedule) {
 
 const PREDICTIONS_FILE = path.join(__dirname, 'predictions.json');
 const LAST_PRED_FILE = path.join(__dirname, 'last_prediction.json');
+const TELEGRAM_PREDICTION_OUTBOX_FILE = path.join(__dirname, 'telegram_prediction_outbox.json');
 const STREAKS_FILE = path.join(__dirname, 'streaks.json');
 const WIN_STEPS_FILE = path.join(__dirname, 'win_steps.json');
 const ML_STREAKS_FILE = path.join(__dirname, 'ml_streaks.json');
@@ -463,6 +505,10 @@ function loadJSON(file, fallback) {
 function saveJSON(file, data) {
     try { fs.writeFileSync(file, JSON.stringify(data, null, 2)); } catch (e) {}
 }
+
+let telegramPredictionOutbox = loadJSON(TELEGRAM_PREDICTION_OUTBOX_FILE, []);
+if (!Array.isArray(telegramPredictionOutbox)) telegramPredictionOutbox = [];
+let telegramPredictionDeliveryInFlight = false;
 
 const persistedState = SITE_PUBLIC_MODE ? {} : loadJSON(SESSION_STATE_FILE, {});
 const persistedSessions = persistedState.sessions || (persistedState.globalTracker ? {} : persistedState);
@@ -580,6 +626,28 @@ if (SITE_PUBLIC_MODE) {
     }
 }
 
+function getBet49HistoricalLossStreaks() {
+    const settledRecords = predictionLog
+        .filter(record => record.result?.bet49 === 'WIN' || record.result?.bet49 === 'LOSS')
+        .slice()
+        .sort((left, right) => Number(left.drawId) - Number(right.drawId));
+    let current = 0;
+    let maximum = 0;
+    for (const record of settledRecords) {
+        if (record.result.bet49 === 'WIN') {
+            current = 0;
+        } else {
+            current++;
+            maximum = Math.max(maximum, current);
+        }
+    }
+    return { current, maximum };
+}
+
+if (!SITE_PUBLIC_MODE && !(persistedState.globalTracker && persistedState.globalTracker.bet49)) {
+    globalTracker.bet49.step = getBet49HistoricalLossStreaks().current + 1;
+}
+
 const lastPublishedHistoryHashes = new Map();
 let predictionPublishInFlight = false;
 
@@ -588,9 +656,14 @@ function buildPublicFeedHistory() {
         drawId: String(record.drawId ?? ''),
         drawDate: record.drawDate || null,
         timestamp: record.timestamp || null,
+        settledAt: record.settledAt || null,
         summaryModel: buildPublicSummaryModel(record.mlShadow || record.summaryModel, record.predicted?.unified?.key),
+        steps: record.steps && typeof record.steps === 'object' ? {
+            bet49: safePublicCount(record.steps.bet49)
+        } : null,
         predicted: {
             betzero: Array.isArray(record.predicted?.betzero) ? record.predicted.betzero : [],
+            bet49: Number.isInteger(Number(record.predicted?.bet49)) ? Number(record.predicted.bet49) : null,
             rainbow: record.predicted?.rainbow || 'SKIP',
             totalColor: record.predicted?.totalColor ? {
                 status: record.predicted.totalColor.status || 'SKIP',
@@ -610,6 +683,7 @@ function buildPublicFeedHistory() {
                 ? Number(record.result.total) : null,
             range: record.result.range || null,
             betzero: record.result.betzero || 'SKIP',
+            bet49: record.result.bet49 || 'SKIP',
             rainbow: record.result.rainbow || 'SKIP',
             totalColor: record.result.totalColor || 'SKIP',
             totalColor2: record.result.totalColor2 || 'SKIP',
@@ -651,6 +725,7 @@ function getPublicSummaryLabelForMarket(summaryModel, market, unifiedKey = null)
 
 const PUBLIC_MARKET_RESULT_KEYS = {
     betzero: 'betzero',
+    bet49: 'bet49',
     rainbow: 'rainbow',
     totalColor: 'totalColor',
     totalColor2: 'totalColor2',
@@ -669,13 +744,19 @@ function getMarketStatsResetAt() {
     return Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
-function buildPublicMarketStats(currentRecord, records = predictionLog) {
+function resetMarketStatsTracking() {
+    const resetAt = Date.now();
+    setSiteSettingStatement.run('market_stats_reset_at', String(resetAt));
+    return resetAt;
+}
+
+function getPublicMarketMaxLosses(records = predictionLog) {
     const runningLosses = Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, 0]));
     const maximumLosses = Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, 0]));
     const resetAt = getMarketStatsResetAt();
 
     for (const record of records.slice().reverse()) {
-        const recordTime = Date.parse(record?.timestamp || '');
+        const recordTime = Date.parse(record?.settledAt || record?.timestamp || '');
         if (resetAt && (!Number.isFinite(recordTime) || recordTime <= resetAt)) continue;
         if (!record?.result || typeof record.result !== 'object') continue;
         for (const [market, resultKey] of Object.entries(PUBLIC_MARKET_RESULT_KEYS)) {
@@ -688,6 +769,12 @@ function buildPublicMarketStats(currentRecord, records = predictionLog) {
             }
         }
     }
+
+    return maximumLosses;
+}
+
+function buildPublicMarketStats(currentRecord, records = predictionLog) {
+    const maximumLosses = getPublicMarketMaxLosses(records);
 
     return Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, {
         step: safePublicCount(currentRecord?.steps?.[market]),
@@ -706,6 +793,7 @@ function buildPublicFeedCurrent() {
         pred: {
             betzeroStatus: pred.betzeroStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             unlikely4: Array.isArray(pred.unlikely4) ? pred.unlikely4.map(item => ({ number: Number(item.number) })) : [],
+            bet49Pick: Number.isInteger(Number(pred.bet49Pick)) ? Number(pred.bet49Pick) : null,
             rainbowStatus: pred.rainbowStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             topColor: pred.topColor?.name ? { name: String(pred.topColor.name) } : null,
             totalColorPred: {
@@ -1167,6 +1255,7 @@ function getBetPayloadExposure(payload) {
     if (!payload || payload.action !== 'EXECUTE_BET') return 0;
 
     return Math.max(0, Number(payload.stake) || 0) +
+        Math.max(0, Number(payload.bet49Stake) || 0) +
         Math.max(0, Number(payload.colorStake) || 0) +
         Math.max(0, Number(payload.sumStake) || 0) +
         (Math.max(0, Number(payload.tcStake) || 0) * 3) +
@@ -1211,7 +1300,6 @@ function runBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) 
     const multiplier = gameKey === 'hilo' ? (profile === 'conservative' ? 1.40 : 2.00) : 1;
     const rolloverEnabled = gameKey === 'hilo' && (profile === 'conservative' || profile === 'highroller_scale');
     const baseStake = Math.max(50, Math.round((capital * basePercent / 100) / 50) * 50);
-    const maxSteps = 30;
     const historyWindow = predictionLog
         .slice(0, drawWindow)
         .reverse();
@@ -1258,6 +1346,7 @@ function runBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) 
     let peakProfit = 0;
     let maxDrawdown = 0;
     let largestStake = 0;
+    let highestStepReached = 1;
     let rolloverWins = 0;
     let rolloverFailures = 0;
     const resultsByStep = {};
@@ -1285,15 +1374,8 @@ function runBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) 
         const result = entry.result && entry.result[meta.resultKey];
         if (result !== 'WIN' && result !== 'LOSS') continue;
 
-        if (step > maxSteps) {
-            halted = true;
-            stopReason = 'Maximum step limit reached';
-            stoppedAtStep = step;
-            stoppedAtDraw = entry.drawId;
-            break;
-        }
-
         const stake = getStake();
+        highestStepReached = Math.max(highestStepReached, step);
         const exposure = stake * meta.costFactor;
         const wasRollover = rolloverStake > 0;
         // Stop Loss is based on net P/L, not the total amount wagered over time.
@@ -1341,7 +1423,7 @@ function runBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) 
         profile,
         baseStake,
         basePercent,
-        maxSteps,
+        maxSteps: highestStepReached,
         bets,
         wins,
         losses,
@@ -1371,6 +1453,7 @@ function runBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) 
 function runLiveStyleBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) {
     const meta = {
         u4: { resultKey: 'betzero', scoreKey: 'betzero', odds: 1.65, costFactor: 1 },
+        bet49: { resultKey: 'bet49', scoreKey: 'bet49', odds: 7.80, costFactor: 1 },
         color: { resultKey: 'rainbow', scoreKey: 'rainbow', odds: 1.50, costFactor: 1 },
         sum: { resultKey: 'hilo', scoreKey: 'hilo', odds: 2.00, costFactor: 1 },
         totalColor: { resultKey: 'totalColor', scoreKey: 'totalColor', odds: 3.80, costFactor: 3 },
@@ -1384,7 +1467,7 @@ function runLiveStyleBacktest(gameKey, capital, basePercent, profile, drawWindow
         antivol_ghost: { unified: true, shadow: true, weighted: false, cbLosses: 2, cooldown: 5, rollover: [] },
         highroller_scale: { unified: true, shadow: true, weighted: true, cbLosses: 4, cooldown: 5, rollover: ['u4', 'color', 'sum', 'totalColor'] }
     }[profile] || { unified: false, shadow: false, weighted: false, cbLosses: 0, cooldown: 0, rollover: [] };
-    const thresholds = { u4: 0.50, color: 0.65, sum: 0.55, totalColor: 0.45, totalColor2: 0 };
+    const thresholds = { u4: 0.50, bet49: 0, color: 0.65, sum: 0.55, totalColor: 0.45, totalColor2: 0 };
     const baseStake = Math.max(50, Math.round((capital * basePercent / 100) / 50) * 50);
     const historyWindow = predictionLog.slice(0, drawWindow).reverse();
     const states = {};
@@ -1405,6 +1488,7 @@ function runLiveStyleBacktest(gameKey, capital, basePercent, profile, drawWindow
     let losses = 0;
     let rolloverWins = 0;
     let rolloverFailures = 0;
+    let highestStepReached = 1;
     let halted = false;
     let stopReason = '';
     let stoppedAtStep = null;
@@ -1460,15 +1544,8 @@ function runLiveStyleBacktest(gameKey, capital, basePercent, profile, drawWindow
             }
             continue;
         }
-        if (state.step > 30) {
-            halted = true;
-            stopReason = 'Maximum step limit reached';
-            stoppedAtStep = state.step;
-            stoppedAtDraw = entry.drawId;
-            break;
-        }
-
         const stake = getStake(key, state, score);
+        highestStepReached = Math.max(highestStepReached, state.step);
         const exposure = stake * game.costFactor;
         if (profit - exposure <= -capital) {
             halted = true;
@@ -1549,7 +1626,7 @@ function runLiveStyleBacktest(gameKey, capital, basePercent, profile, drawWindow
     };
 
     return {
-        mode: 'live-style', game: gameKey, profile, baseStake, basePercent, maxSteps: 30,
+        mode: 'live-style', game: gameKey, profile, baseStake, basePercent, maxSteps: highestStepReached,
         requestedDraws: drawWindow, availableDraws: historyWindow.length, records: validRecords.length,
         bets, wins, losses, winRate: bets ? Number((wins / bets * 100).toFixed(2)) : 0,
         profit: Math.round(profit), totalExposure: Math.round(totalExposure), peakExposure: Math.round(peakExposure),
@@ -1588,6 +1665,11 @@ function getMartingaleStake(clientId, key, localStep, mlScore = 0) {
     }
 
     if (session.config.flatBetting || localStep <= 1) return { stake: initialBaseUnit, odds: walletConfig.odds };
+
+    if (key === 'bet49') {
+        const recoveryRatio = walletConfig.odds / (walletConfig.odds - 1);
+        return { stake: Math.round(initialBaseUnit * Math.pow(recoveryRatio, localStep - 1)), odds: walletConfig.odds };
+    }
 
     if (key === 'sum') {
         const mult = session.config.hiloMultiplier || 2.0;
@@ -1689,8 +1771,7 @@ function pushToGoogleSheet(data) {
 }
 
 function sendTelegram(text) {
-    if (!TOKEN) return Promise.resolve();
-    if (!CHANNEL_CHAT_ID) return Promise.resolve();
+    if (!TOKEN || !CHANNEL_CHAT_ID) return Promise.resolve(false);
     return sendTelegramToChat(CHANNEL_CHAT_ID, 'channel', text);
 }
 
@@ -1711,18 +1792,57 @@ function sendTelegramToChat(chatId, label, text) {
                     const detail = typeof result?.description === 'string'
                         ? `: ${result.description.replace(/[\r\n]+/g, ' ').slice(0, 240)}`
                         : '';
-                    console.error(`[Telegram] Prediction send to ${label} failed (HTTP ${res.statusCode || 'unknown'}${detail}).`);
+                    console.error(`[Telegram] Send to ${label} failed (HTTP ${res.statusCode || 'unknown'}${detail}).`);
+                    resolve(false);
+                    return;
                 }
-                resolve();
+                resolve(result?.ok === true);
             });
         });
         req.setTimeout(10000, () => req.destroy(new Error('Telegram request timed out')));
         req.on('error', (error) => {
-            console.error(`[Telegram] Prediction send to ${label} failed (${error.code || 'network error'}).`);
-            resolve();
+            console.error(`[Telegram] Send to ${label} failed (${error.code || 'network error'}).`);
+            resolve(false);
         });
         req.write(body); req.end();
     });
+}
+
+function persistTelegramPredictionOutbox() {
+    try {
+        fs.writeFileSync(TELEGRAM_PREDICTION_OUTBOX_FILE, JSON.stringify(telegramPredictionOutbox, null, 2));
+        return true;
+    } catch (error) {
+        console.error(`[Telegram] Could not persist prediction outbox (${error.code || 'file error'}).`);
+        return false;
+    }
+}
+
+function queueTelegramPrediction(drawId, text) {
+    const drawKey = String(drawId);
+    const existing = telegramPredictionOutbox.find(item => String(item.drawId) === drawKey);
+    if (!existing) telegramPredictionOutbox.push({ drawId: drawKey, text, attempts: 0, nextAttemptAt: 0 });
+    return persistTelegramPredictionOutbox();
+}
+
+async function flushTelegramPredictionOutbox() {
+    if (telegramPredictionDeliveryInFlight || !TOKEN || !CHANNEL_CHAT_ID) return;
+    const message = telegramPredictionOutbox.find(item => Number(item.nextAttemptAt) <= Date.now());
+    if (!message) return;
+    if (!persistTelegramPredictionOutbox()) return;
+    telegramPredictionDeliveryInFlight = true;
+    try {
+        const sent = await sendTelegramToChat(CHANNEL_CHAT_ID, `prediction for draw ${message.drawId}`, message.text);
+        if (sent) {
+            telegramPredictionOutbox = telegramPredictionOutbox.filter(item => String(item.drawId) !== String(message.drawId));
+        } else {
+            message.attempts = Math.min(10, (Number(message.attempts) || 0) + 1);
+            message.nextAttemptAt = Date.now() + Math.min(300000, 5000 * (2 ** Math.min(message.attempts, 6)));
+        }
+        persistTelegramPredictionOutbox();
+    } finally {
+        telegramPredictionDeliveryInFlight = false;
+    }
 }
 
 function sendPersonalDM(chatId, text) {
@@ -1738,6 +1858,10 @@ function sendPersonalDM(chatId, text) {
 }
 
 async function sendPrediction(drawId, drawDate, pred) {
+    if (lastPrediction && String(lastPrediction.drawId) === String(drawId)) {
+        lastPrediction.telegramPredictionQueued = false;
+        saveJSON(LAST_PRED_FILE, lastPrediction);
+    }
     var cEm = { green: '🟢', red: '🔴', blue: '🔵', yellow: '🟡', SKIP: '⚪', black: '⚫' };
     
     var liveStreaks = loadJSON(STREAKS_FILE, {});
@@ -1751,30 +1875,38 @@ async function sendPrediction(drawId, drawDate, pred) {
         sum: getShadowModelDecision('sum', pred, mlHl.score, globalTracker.sum.step),
         totalColor: getShadowModelDecision('totalColor', pred, mlTc.score, globalTracker.totalColor.step)
     };
-    const summaryLine = key => {
+    const summaryLabelFor = key => {
         const label = getPublicSummaryLabel(mlShadow[key]);
-        return label ? `\n🧠 <b>SUMMARY · ${label}</b>` : '';
+        const summaryStyles = {
+            ENTER: '🟢 🚀',
+            HOLD: '🟠 ⏸️',
+            LEARNING: '🔵 🧠'
+        };
+        return label ? `\n🧠 <b>SUMMARY</b> ${summaryStyles[label] || '⚪'} <b>${label}</b>` : '';
     };
-
     var u4Format = pred.betzeroStatus === 'ACTIVE'
-        ? `👉 ${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')}\n⚡ <code>[GLOBAL STEP ${globalTracker.u4.step} | ML: ${mlBz.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlBz.score * 100).toFixed(0)}%)]</code>${summaryLine('u4')}`
-        : `👉 ⏳ <b>WAITING</b> (${pred.bzSkipReason})\n⚡ <code>[GLOBAL STEP ${globalTracker.u4.step} | ML: ${mlBz.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlBz.score * 100).toFixed(0)}%)]</code>`;
+        ? `${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')} · Step ${globalTracker.u4.step}${summaryLabelFor('u4')}`
+        : `⏳ No pick this draw · Step ${globalTracker.u4.step}`;
+
+    var bet49Format = Number.isInteger(pred.bet49Pick)
+        ? `${getBallEmoji(pred.bet49Pick)} <b>${pred.bet49Pick}</b> · Step ${globalTracker.bet49.step}`
+        : '⏳ Waiting for enough draw history';
 
     var rainbowFormat = pred.rainbowStatus === 'ACTIVE'
-        ? `👉 ${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b> (${pred.topColor.freq}%)\n⚡ <code>[GLOBAL STEP ${globalTracker.color.step} | ML: ${mlRb.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlRb.score * 100).toFixed(0)}%)]</code>${summaryLine('color')}`
-        : `👉 ⏳ <b>WAITING</b> (${pred.rbSkipReason})\n⚡ <code>[GLOBAL STEP ${globalTracker.color.step} | ML: ${mlRb.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlRb.score * 100).toFixed(0)}%)]</code>`;
+        ? `${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b> · Step ${globalTracker.color.step}${summaryLabelFor('color')}`
+        : `⏳ No pick this draw · Step ${globalTracker.color.step}`;
 
     var tcFormat = pred.totalColorPred.status === 'ACTIVE'
-        ? `👉 ${cEm[pred.totalColorPred.topColors[0]]} <b>${pred.totalColorPred.topColors[0].toUpperCase()}</b> & ${cEm[pred.totalColorPred.topColors[1]]} <b>${pred.totalColorPred.topColors[1].toUpperCase()}</b> & ⚫ <b>NO WINNING COLOR</b>\n🚫 ELIMINATED: ${cEm[pred.totalColorPred.noWinColor]} <b>${pred.totalColorPred.noWinColor.toUpperCase()}</b>\n⚡ <code>[GLOBAL STEP ${globalTracker.totalColor.step} | ML: ${mlTc.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlTc.score * 100).toFixed(0)}%)]</code>${summaryLine('totalColor')}`
-        : `👉 ⏳ <b>WAITING</b> (Zero Data)\n⚡ <code>[GLOBAL STEP ${globalTracker.totalColor.step} | ML: ${mlTc.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlTc.score * 100).toFixed(0)}%)]</code>`;
+        ? `${cEm[pred.totalColorPred.topColors[0]]} <b>${pred.totalColorPred.topColors[0].toUpperCase()}</b> + ${cEm[pred.totalColorPred.topColors[1]]} <b>${pred.totalColorPred.topColors[1].toUpperCase()}</b> · Avoid ${cEm[pred.totalColorPred.noWinColor]} <b>${pred.totalColorPred.noWinColor.toUpperCase()}</b> · Step ${globalTracker.totalColor.step}${summaryLabelFor('totalColor')}`
+        : `⏳ No pick this draw · Step ${globalTracker.totalColor.step}`;
 
     var tc2Format = pred.totalColor2Pred.status === 'ACTIVE'
-        ? `👉 1️⃣ ${cEm[pred.totalColor2Pred.top2[0]] || '⚫'} <b>${pred.totalColor2Pred.top2[0].toUpperCase()}</b> & 2️⃣ ${cEm[pred.totalColor2Pred.top2[1]] || '⚫'} <b>${pred.totalColor2Pred.top2[1].toUpperCase()}</b>`
-        : `👉 ⏳ <b>WAITING</b>`;
+        ? `${cEm[pred.totalColor2Pred.top2[0]] || '⚫'} <b>${pred.totalColor2Pred.top2[0].toUpperCase()}</b> + ${cEm[pred.totalColor2Pred.top2[1]] || '⚫'} <b>${pred.totalColor2Pred.top2[1].toUpperCase()}</b> · Step ${globalTracker.totalColor2.step}`
+        : '⏳ No pick this draw';
 
     var hlFormat = pred.hiloStatus === 'ACTIVE'
-        ? `👉 ${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> (🛡️ Max Loss Limit: <b>${pred.oppositeStreakLimit}</b>)\n⚡ <code>[GLOBAL STEP ${globalTracker.sum.step} | ML: ${mlHl.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlHl.score * 100).toFixed(0)}%)]</code>${summaryLine('sum')}`
-        : `👉 ⏳ <b>WAITING</b> (${pred.hlSkipReason})\n⚡ <code>[GLOBAL STEP ${globalTracker.sum.step} | ML: ${mlHl.recommendation === 'ENTER' ? '🟢 ENTER' : '🔴 HOLD'} (${(mlHl.score * 100).toFixed(0)}%)]</code>`;
+        ? `${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> · Step ${globalTracker.sum.step}${summaryLabelFor('sum')}`
+        : `⏳ No pick this draw · Step ${globalTracker.sum.step}`;
 
     let candidateGames = [];
     if (pred.betzeroStatus === 'ACTIVE' && mlBz.recommendation === 'ENTER') {
@@ -1801,19 +1933,17 @@ async function sendPrediction(drawId, drawDate, pred) {
         
         let best = candidateGames[0];
         pred.unifiedPick = best;
-        
-        if (best.key === 'u4') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 🔵 <b>BetZero</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')}${summaryLine(best.key)}`;
-        } else if (best.key === 'color') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 🌈 <b>Rainbow Color</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b>${summaryLine(best.key)}`;
-        } else if (best.key === 'sum') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 📊 <b>High / Low</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> (🛡️ Max Loss Limit: <b>${pred.oppositeStreakLimit}</b>)${summaryLine(best.key)}`;
-        } else if (best.key === 'totalColor') {
-            unifiedFormat = `🎯 <b>Target Market:</b> 🎨 <b>Total Color 3W</b> <code>[ML: 🟢 ENTER (${(best.score * 100).toFixed(0)}%)]</code>\n👉 <b>Selected Pick:</b> ${cEm[pred.totalColorPred.topColors[0]]} <b>${pred.totalColorPred.topColors[0].toUpperCase()}</b> & ${cEm[pred.totalColorPred.topColors[1]]} <b>${pred.totalColorPred.topColors[1].toUpperCase()}</b>${summaryLine(best.key)}`;
-        }
+        const unifiedNames = { u4: 'BetZero', color: 'Rainbow', sum: 'High / Low', totalColor: 'Total Color 3-way' };
+        const unifiedPicks = {
+            u4: pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' '),
+            color: `${cEm[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`,
+            sum: pred.sumRange,
+            totalColor: `${pred.totalColorPred.topColors.map(color => `${cEm[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')} (avoid ${cEm[pred.totalColorPred.noWinColor] || '⚪'} ${pred.totalColorPred.noWinColor.toUpperCase()})`
+        };
+        unifiedFormat = `Selected market: <b>${unifiedNames[best.key]}</b>\nPick: <b>${unifiedPicks[best.key]}</b>${summaryLabelFor(best.key)}`;
     } else {
         pred.unifiedPick = null;
-        unifiedFormat = `👉 ⏳ <b>WAITING FOR HIGH CONFIDENCE ENTRY</b>`;
+        unifiedFormat = '⏳ No pick this draw';
     }
 
     const publicSummaryModel = buildPublicSummaryModel(mlShadow, pred.unifiedPick?.key);
@@ -1823,22 +1953,29 @@ async function sendPrediction(drawId, drawDate, pred) {
     }
 
     var lines = [
-        `🚀 <b>NEW PREDICTION</b>\n<code>------------------------------------</code>`,
-        `<b>🔢 DRAW ID:</b> #${drawId} | <b>⏰ TIME:</b> ${drawDate}\n<code>------------------------------------</code>\n`,
-        `🔵 <b>BETZERO</b>\n${u4Format}\n`,
-        `🌈 <b>RAINBOW COLOR</b>\n${rainbowFormat}\n`,
-        `🎨 <b>TOTAL COLOR (3-WAY)</b>\n${tcFormat}\n`,
-        `🎭 <b>TOTAL COLOR (2-WAY)</b>\n${tc2Format}\n`,
-        `📊 <b>HIGH / LOW</b>\n${hlFormat}\n`,
-        `👑 <b>UNIFIED MASTER DIRECTIVE</b>\n${unifiedFormat}\n`,
-        `<code>------------------------------------</code>`
+        `🎯 <b>PICKS · DRAW #${drawId}</b>`,
+        `<i>${String(drawDate).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</i>`,
+        '',
+        `<b>BetZero</b>\n${u4Format}`,
+        '',
+        `<b>Bet49</b>\n${bet49Format}`,
+        '',
+        `<b>Rainbow</b>\n${rainbowFormat}`,
+        '',
+        `<b>Total Color · 3-way</b>\n${tcFormat}`,
+        '',
+        `<b>Total Color · 2-way</b>\n${tc2Format}`,
+        '',
+        `<b>High / Low</b>\n${hlFormat}`,
+        '',
+        `<b>Unified pick</b>\n${unifiedFormat}`
     ];
-    await sendTelegram(lines.join('\n'));
 
-    predictionLog.unshift({
+    const predictionRecord = {
         drawId, drawDate,
         predicted: {
             betzero: pred.betzeroStatus === 'ACTIVE' ? pred.unlikely4.map(x => x.number) : [],
+            bet49: Number.isInteger(pred.bet49Pick) ? pred.bet49Pick : null,
             rainbow: pred.rainbowStatus === 'ACTIVE' ? pred.topColor.name : 'SKIP',
             totalColor: pred.totalColorPred,
             totalColor2: pred.totalColor2Pred,
@@ -1847,6 +1984,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         },
         steps: {
             betzero: globalTracker.u4.step,
+            bet49: globalTracker.bet49.step,
             rainbow: globalTracker.color.step,
             totalColor: globalTracker.totalColor.step, 
             totalColor2: globalTracker.totalColor2.step,
@@ -1858,8 +1996,24 @@ async function sendPrediction(drawId, drawDate, pred) {
         summaryModel: publicSummaryModel,
         brainData: pred.brainData,
         result: null, timestamp: new Date().toISOString()
-    });
+    };
+    const existingRecord = predictionLog.find(record => String(record.drawId) === String(drawId));
+    if (existingRecord) {
+        const existingResult = existingRecord.result;
+        Object.assign(existingRecord, predictionRecord);
+        if (existingResult) existingRecord.result = existingResult;
+    } else {
+        predictionLog.unshift(predictionRecord);
+    }
     saveJSON(PREDICTIONS_FILE, predictionLog);
+    const predictionQueued = !TOKEN || !CHANNEL_CHAT_ID
+        ? true
+        : queueTelegramPrediction(drawId, lines.join('\n'));
+    if (lastPrediction && String(lastPrediction.drawId) === String(drawId)) {
+        lastPrediction.telegramPredictionQueued = predictionQueued;
+        saveJSON(LAST_PRED_FILE, lastPrediction);
+    }
+    if (predictionQueued) await flushTelegramPredictionOutbox();
 }
 
 function apiPost(path, body) {
@@ -1887,6 +2041,7 @@ function apiGet(path) {
 
 function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId) {
     var validBzNumbers = [];
+    var bet49Pick = null;
     var betzeroStatus = 'SKIP';
     var unlikely4 = [];
     var bzSkipReason = '';
@@ -1947,6 +2102,10 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         const allSorted = Object.keys(localStats)
             .map(n => ({ number: parseInt(n, 10), riskScore: localStats[n].riskScore, strk: localStats[n].strk }))
             .sort((a, b) => a.riskScore - b.riskScore || b.strk - a.strk);
+
+        // Bet49 is the opposite pick: select the number with the highest weighted
+        // appearance rate in the same 20/50/100 draw windows used by BetZero.
+        bet49Pick = allSorted.slice().sort((a, b) => b.riskScore - a.riskScore || a.strk - b.strk)[0]?.number ?? null;
 
         if (validBzNumbers.length >= 4) {
             betzeroStatus = 'ACTIVE';
@@ -2112,7 +2271,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     };
 
     return { 
-        unlikely4, betzeroStatus, bzSkipReason,
+        unlikely4, betzeroStatus, bzSkipReason, bet49Pick,
         topColor, rainbowStatus, rbSkipReason,
         totalColorPred, 
         totalColor2Pred,
@@ -2143,7 +2302,6 @@ function processUpdates(pred, actualDraw) {
     });
     var maxActualCount = Math.max(actualColorCounts.red, actualColorCounts.blue, actualColorCounts.green);
     var actualTopColors = Object.keys(actualColorCounts).filter(c => actualColorCounts[c] === maxActualCount);
-    var drawActualColorResult = actualTopColors.length === 1 ? actualTopColors[0].toUpperCase() : "BLACK";
     
     var tcWin = false;
     if (pred.totalColorPred && pred.totalColorPred.status === 'ACTIVE') {
@@ -2157,6 +2315,8 @@ function processUpdates(pred, actualDraw) {
     }
 
     var u4Win = pred.unlikely4.filter(x => new Set(actualNums).has(x.number)).length === 0;
+    var bet49Active = Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49;
+    var bet49Win = bet49Active && actualNums.includes(pred.bet49Pick);
     var colorWin = actualNums.filter(n => getBallColor(n) === pred.topColor.name).length >= 2;
     var sumWin = pred.sumRange === actualRange;
 
@@ -2177,12 +2337,14 @@ function processUpdates(pred, actualDraw) {
         targetItem.result = {
             balls: actualNums, total: actualSum, range: actualRange,
             betzero: pred.betzeroStatus === 'SKIP' ? 'SKIP' : (u4Win ? 'WIN' : 'LOSS'),
+            bet49: Number.isInteger(pred.bet49Pick) ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
             rainbow: pred.rainbowStatus === 'SKIP' ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
             totalColor: pred.totalColorPred.status === 'SKIP' ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
             totalColor2: pred.totalColor2Pred.status === 'SKIP' ? 'SKIP' : (tc2Win ? 'WIN' : 'LOSS'),
             hilo: pred.hiloStatus === 'SKIP' ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
             unified: unifiedStatus === 'SKIP' ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
         };
+        targetItem.settledAt = new Date().toISOString();
         const shadowResultKeys = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' };
         for (const [key, resultKey] of Object.entries(shadowResultKeys)) {
             if (targetItem.mlShadow?.[key]) targetItem.mlShadow[key].outcome = targetItem.result[resultKey];
@@ -2216,10 +2378,15 @@ function processUpdates(pred, actualDraw) {
 
     var s = loadJSON(STREAKS_FILE, {});
     if (!s.u4) s.u4 = { worst: 0, current: 0, consecutiveLosses: 0, cooldown: 0 };
+    if (!s.bet49 || !Number.isSafeInteger(s.bet49.worst)) s.bet49 = { ...(s.bet49 || {}), worst: getBet49HistoricalLossStreaks().maximum };
     if (!s.unified) s.unified = { worst: 0, current: 0, consecutiveLosses: 0, cooldown: 0 };
     if (!s.totalColor) s.totalColor = { worst: 0, current: 0, consecutiveLosses: 0, cooldown: 0 };
     if (!s.totalColor2) s.totalColor2 = { worst: 0, current: 0, consecutiveLosses: 0, cooldown: 0 };
     
+    if (bet49Active) {
+        if (bet49Win) globalTracker.bet49.step = 1;
+        else globalTracker.bet49.step++;
+    }
     if (pred.betzeroStatus === 'ACTIVE') { 
         updateOneStreakByMode(s, 'u4', 'SAFE', u4Win);
         if (u4Win) globalTracker.u4.step = 1; else globalTracker.u4.step++; 
@@ -2286,6 +2453,7 @@ function processUpdates(pred, actualDraw) {
     applySniperReset('unified', unifiedStatus, unifiedWin);
 
     if (!s.u4) s.u4 = {}; if ((globalTracker.u4.step - 1) > (s.u4.worst || 0)) s.u4.worst = globalTracker.u4.step - 1;
+    if (!s.bet49) s.bet49 = {}; if ((globalTracker.bet49.step - 1) > (s.bet49.worst || 0)) s.bet49.worst = globalTracker.bet49.step - 1;
     if (!s.color) s.color = {}; if ((globalTracker.color.step - 1) > (s.color.worst || 0)) s.color.worst = globalTracker.color.step - 1;
     if (!s.totalColor) s.totalColor = {}; if ((globalTracker.totalColor.step - 1) > (s.totalColor.worst || 0)) s.totalColor.worst = globalTracker.totalColor.step - 1;
     if (!s.totalColor2) s.totalColor2 = {}; if ((globalTracker.totalColor2.step - 1) > (s.totalColor2.worst || 0)) s.totalColor2.worst = globalTracker.totalColor2.step - 1;
@@ -2313,6 +2481,7 @@ function processUpdates(pred, actualDraw) {
         actualBalls: actualNums.join(','),
         
         bzPred: pred.betzeroStatus === 'SKIP' ? 'SKIP' : pred.unlikely4.map(x => x.number).join(' '),
+        bet49Pred: bet49Active ? pred.bet49Pick : 'SKIP',
         rbPred: pred.rainbowStatus === 'SKIP' ? 'SKIP' : pred.topColor.name, 
         tcPred: pred.totalColorPred.status === 'SKIP' ? 'SKIP' : `${pred.totalColorPred.topColors.join(' & ').toUpperCase()} + NONE`,
         tc2Pred: pred.totalColor2Pred.status === 'SKIP' ? 'SKIP' : pred.totalColor2Pred.top2.join(' & ').toUpperCase(),
@@ -2320,6 +2489,7 @@ function processUpdates(pred, actualDraw) {
         umPred: umPredStr,
         
         bzStep: globalTracker.u4.step, 
+        bet49Step: globalTracker.bet49.step,
         rbStep: globalTracker.color.step, 
         tcStep: globalTracker.totalColor.step, 
         tc2Step: globalTracker.totalColor2.step,
@@ -2327,6 +2497,7 @@ function processUpdates(pred, actualDraw) {
         umStep: globalTracker.unified.step,
         
         bzResult: pred.betzeroStatus === 'SKIP' ? 'SKIP' : (u4Win ? 'WIN' : 'LOSS'),
+        bet49Result: bet49Active ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
         rbResult: pred.rainbowStatus === 'SKIP' ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
         tcResult: pred.totalColorPred.status === 'SKIP' ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
         tc2Result: pred.totalColor2Pred.status === 'SKIP' ? 'SKIP' : (tc2Win ? 'WIN' : 'LOSS'),
@@ -2349,45 +2520,74 @@ function processUpdates(pred, actualDraw) {
         hlMLWorst: mlStreaks.sum.worst,
         
         umCurrentStreak: s.unified?.current || 0,
-        umMaxLoss: s.unified?.worst || 0
+        umMaxLoss: getPublicMarketMaxLosses().unified || 0
     });
 
-    let u4OutcomeStr = pred.betzeroStatus === 'ACTIVE'
-        ? `Outcome: ${u4Win ? '✅ WIN' : '❌ LOSS'}\n⚡ Next Global Step: <b>Step ${globalTracker.u4.step}</b>\n💀 Max Losing Streak: <b>${s.u4?.worst || 0} Games</b>\n🧠 <b>ML Telemetry:</b> ${savedMl.betzero >= 0.50 ? '🟢 ENTER' : '🔴 HOLD'} (${(savedMl.betzero * 100).toFixed(0)}%) | Aggregate Max Streak: <b>${mlStreaks.u4.worst}</b>`
-        : `Outcome: ⚪ SKIPPED\n⚡ Global Step: <b>Frozen at Step ${globalTracker.u4.step}</b>\n💀 Max Losing Streak: <b>${s.u4?.worst || 0} Games</b>`;
+    const periodMaxLosses = getPublicMarketMaxLosses();
+    const trackerToPublicMarket = {
+        u4: 'betzero',
+        bet49: 'bet49',
+        color: 'rainbow',
+        sum: 'hilo',
+        totalColor: 'totalColor',
+        totalColor2: 'totalColor2',
+        unified: 'unified'
+    };
+    const resultLine = (name, active, won, pick, trackerKey) => {
+        const outcome = !active ? '⚪ SKIPPED' : won ? '✅ WIN' : '❌ LOSS';
+        const details = active && pick ? ` · ${pick}` : '';
+        const stepLabel = active ? 'Next step' : 'Step';
+        const marketKey = trackerToPublicMarket[trackerKey];
+        return `${outcome} <b>${name}</b>${details} · ${stepLabel} ${globalTracker[trackerKey].step} · Max losses ${periodMaxLosses[marketKey] || 0}`;
+    };
 
-    let rainbowOutcomeStr = pred.rainbowStatus === 'ACTIVE'
-        ? `Outcome: ${colorWin ? '✅ WIN' : '❌ LOSS'}\n⚡ Next Global Step: <b>Step ${globalTracker.color.step}</b>\n💀 Max Losing Streak: <b>${s.color?.worst || 0} Games</b>\n🧠 <b>ML Telemetry:</b> ${pred.rainbowStatus === 'ACTIVE' ? '🟢 ENTER' : '🔴 HOLD'} (${(savedMl.rainbow * 100).toFixed(0)}%) | Aggregate Max Streak: <b>${mlStreaks.color.worst}</b>`
-        : `Outcome: ⚪ SKIPPED\n⚡ Global Step: <b>Frozen at Step ${globalTracker.color.step}</b>\n💀 Max Losing Streak: <b>${s.color?.worst || 0} Games</b>`;
-
-    let tcOutcomeStr = pred.totalColorPred.status === 'ACTIVE'
-        ? `Predicted: <b>${pred.totalColorPred.topColors.join(' & ').toUpperCase()} + NONE</b>\nActual Draw Color: <b>${drawActualColorResult}</b>\nOutcome: ${tcWin ? '✅ WIN' : '❌ LOSS'}\n⚡ Next Global Step: <b>Step ${globalTracker.totalColor.step}</b>\n💀 Max Losing Streak: <b>${s.totalColor?.worst || 0} Games</b>\n🧠 <b>ML Telemetry:</b> ${savedMl.totalColor >= 0.45 ? '🟢 ENTER' : '🔴 HOLD'} (${(savedMl.totalColor * 100).toFixed(0)}%)`
-        : `Outcome: ⚪ SKIPPED\n⚡ Global Step: <b>Frozen at Step ${globalTracker.totalColor.step}</b>\n💀 Max Losing Streak: <b>${s.totalColor?.worst || 0} Games</b>`;
-
-    let tc2OutcomeStr = pred.totalColor2Pred.status === 'ACTIVE'
-        ? `Predicted: <b>${pred.totalColor2Pred.top2.join(' & ').toUpperCase()}</b>\nActual Draw Color: <b>${drawActualColorResult}</b>\nOutcome: ${tc2Win ? '✅ WIN' : '❌ LOSS'}\n⚡ Next Global Step: <b>Step ${globalTracker.totalColor2.step}</b>\n💀 Max Losing Streak: <b>${s.totalColor2?.worst || 0} Games</b>`
-        : `Outcome: ⚪ SKIPPED\n⚡ Global Step: <b>Frozen at Step ${globalTracker.totalColor2.step}</b>\n💀 Max Losing Streak: <b>${s.totalColor2?.worst || 0} Games</b>`;
-
-    let hlOutcomeStr = pred.hiloStatus === 'ACTIVE'
-        ? `Outcome: ${sumWin ? '✅ WIN' : '❌ LOSS'}\n⚡ Next Global Step: <b>Step ${globalTracker.sum.step}</b>\n💀 Max Losing Streak: <b>${s.sum?.worst || 0} Games</b>\n🧠 <b>ML Telemetry:</b> ${savedMl.hilo >= 0.55 ? '🟢 ENTER' : '🔴 HOLD'} (${(savedMl.hilo * 100).toFixed(0)}%) | Aggregate Max Streak: <b>${mlStreaks.sum.worst}</b>`
-        : `Outcome: ⚪ SKIPPED (Logic Filtered)\n⚡ Global Step: <b>Frozen at Step ${globalTracker.sum.step}</b>\n💀 Max Losing Streak: <b>${s.sum?.worst || 0} Games</b>`;
-
-    let unifiedOutcomeStr = unifiedStatus === 'ACTIVE'
-        ? `Target Picked: <b>${pred.unifiedPick.key === 'u4' ? '🔵 BetZero' : pred.unifiedPick.key === 'color' ? '🌈 Rainbow' : pred.unifiedPick.key === 'totalColor' ? '🎨 TC (3W)' : '📊 Hi/Lo'}</b>\nOutcome: ${unifiedWin ? '✅ WIN' : '❌ LOSS'}\n⚡ Next Global Unified Step: <b>Step ${globalTracker.unified.step}</b>\n💀 Max Losing Streak: <b>${s.unified?.worst || 0} Games</b>`
-        : `Outcome: ⚪ SKIPPED (No Valid Target)\n⚡ Global Unified Step: <b>Frozen at Step ${globalTracker.unified.step}</b>\n💀 Max Losing Streak: <b>${s.unified?.worst || 0} Games</b>`;
+    const betzeroPick = pred.betzeroStatus === 'ACTIVE'
+        ? pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' ')
+        : '';
+    const bet49PickText = bet49Active ? `${getBallEmoji(pred.bet49Pick)} ${pred.bet49Pick}` : '';
+    const colorEmojis = { red: '🔴', blue: '🔵', green: '🟢', yellow: '🟡', black: '⚫' };
+    const rainbowPick = pred.rainbowStatus === 'ACTIVE'
+        ? `${colorEmojis[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`
+        : '';
+    const tcPick = pred.totalColorPred.status === 'ACTIVE'
+        ? `${pred.totalColorPred.topColors.map(color => `${colorEmojis[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')} (avoid ${colorEmojis[pred.totalColorPred.noWinColor] || '⚪'} ${pred.totalColorPred.noWinColor.toUpperCase()})`
+        : '';
+    const tc2Pick = pred.totalColor2Pred.status === 'ACTIVE'
+        ? pred.totalColor2Pred.top2.map(color => `${colorEmojis[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')
+        : '';
+    const hiloPick = pred.hiloStatus === 'ACTIVE' ? pred.sumRange : '';
+    const unifiedName = pred.unifiedPick
+        ? ({ u4: 'BetZero', color: 'Rainbow', sum: 'High / Low', totalColor: 'Total Color 3-way' })[pred.unifiedPick.key] || pred.unifiedPick.key
+        : '';
+    const unifiedPickText = pred.unifiedPick
+        ? ({
+            u4: betzeroPick,
+            color: rainbowPick,
+            sum: hiloPick,
+            totalColor: tcPick
+        })[pred.unifiedPick.key] || ''
+        : '';
 
     var groupReportLines = [
-        `🏁 <b>DRAW RESULT: #${actualDraw.id}</b>`,
-        `<code>------------------------------------</code>`,
-        `🔮 <b>Balls Dropped:</b> ${actualNums.map(n => getBallEmoji(n) + ' ' + n).join(' ')}`,
-        `📊 <b>Total Score:</b> ${actualSum} | <b>Range:</b> ${actualRange}\n`,
-        `🔵 <b>BETZERO TRACKER</b>\n${u4OutcomeStr}\n`,
-        `🌈 <b>RAINBOW COLOR TRACKER</b>\n${rainbowOutcomeStr}\n`,
-        `🎨 <b>TOTAL COLOR (3W)</b>\n${tcOutcomeStr}\n`,
-        `🎭 <b>TOTAL COLOR (2W)</b>\n${tc2OutcomeStr}\n`,
-        `📊 <b>HIGH / LOW TRACKER</b>\n${hlOutcomeStr}\n`,
-        `👑 <b>UNIFIED MASTER TRACKER</b>\n${unifiedOutcomeStr}\n`,
-        `<code>------------------------------------</code>`
+        `🏁 <b>RESULT · DRAW #${actualDraw.id}</b>`,
+        `🎱 <b>Numbers:</b> ${actualNums.map(n => getBallEmoji(n) + ' ' + n).join('  ')}`,
+        `📊 <b>Total:</b> ${actualSum} · <b>Range:</b> ${actualRange}`,
+        '',
+        '<b>MARKET RESULTS</b>',
+        '',
+        resultLine('BetZero', pred.betzeroStatus === 'ACTIVE', u4Win, betzeroPick, 'u4'),
+        '',
+        resultLine('Bet49', bet49Active, bet49Win, bet49PickText, 'bet49'),
+        '',
+        resultLine('Rainbow', pred.rainbowStatus === 'ACTIVE', colorWin, rainbowPick, 'color'),
+        '',
+        resultLine('Total Color · 3-way', pred.totalColorPred.status === 'ACTIVE', tcWin, tcPick, 'totalColor'),
+        '',
+        resultLine('Total Color · 2-way', pred.totalColor2Pred.status === 'ACTIVE', tc2Win, tc2Pick, 'totalColor2'),
+        '',
+        resultLine('High / Low', pred.hiloStatus === 'ACTIVE', sumWin, hiloPick, 'sum'),
+        '',
+        resultLine(`Unified${unifiedName ? ` · ${unifiedName}` : ''}`, unifiedStatus === 'ACTIVE', unifiedWin, unifiedPickText, 'unified')
     ];
     sendTelegram(groupReportLines.join('\n')).catch(() => {});
 }
@@ -2409,6 +2609,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     const sumWin = r.hilo === 'WIN';
     const tcWin = r.totalColor === 'WIN';
     const tc2Win = r.totalColor2 === 'WIN';
+    const bet49Win = r.bet49 === 'WIN';
 
     const creditVirtual = (key, stake, odds) => {
         if (!stake || stake <= 0) return;
@@ -2418,6 +2619,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
     if (details.games && details.games.length > 0) {
         if (details.games.includes('u4') && u4Win) { creditVirtual('u4', details.stakes.u4, details.odds.u4 || 1.65); userHadWin = true; }
+        if (details.games.includes('bet49') && bet49Win) { creditVirtual('bet49', details.stakes.bet49, details.odds.bet49 || 7.8); userHadWin = true; }
         if (details.games.includes('color') && colorWin) { creditVirtual('color', details.stakes.color, details.odds.color || 1.50); userHadWin = true; }
         if (details.games.includes('sum') && sumWin) { creditVirtual('sum', details.stakes.sum, details.odds.sum || 2.00); userHadWin = true; }
         if (details.games.includes('totalColor') && tcWin) { creditVirtual('totalColor', details.stakes.totalColor, details.odds.totalColor || 3.8); userHadWin = true; }
@@ -2562,13 +2764,14 @@ function evaluateSessionBets(clientId, session, pLogItem) {
             session.stats.betsPlaced++; session.stats.lastStake = displayStake; session.stats.lastOdds = playedOdds;
         }
     } else {
-        ['u4', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
+        ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
             const state = session.martingaleState[key];
             if (state.active && session.config.enabledGames[key]) {
                 if (!details.games?.includes(key)) return;
-                const activeWin = key === 'u4' ? u4Win : key === 'color' ? colorWin : key === 'sum' ? sumWin : key === 'totalColor' ? tcWin : tc2Win;
+                const activeWin = key === 'u4' ? u4Win : key === 'bet49' ? r.bet49 === 'WIN' : key === 'color' ? colorWin : key === 'sum' ? sumWin : key === 'totalColor' ? tcWin : tc2Win;
                 
                 if (key === 'u4' && pLogItem.predicted.betzero === 'SKIP') return;
+                if (key === 'bet49' && (!Number.isInteger(Number(pLogItem.predicted.bet49)) || Number(pLogItem.predicted.bet49) < 1 || Number(pLogItem.predicted.bet49) > 49)) return;
                 if (key === 'color' && pLogItem.predicted.rainbow === 'SKIP') return;
                 if (key === 'sum' && pLogItem.predicted.hilo === 'SKIP') return;
                 if (key === 'totalColor' && pLogItem.predicted.totalColor.status === 'SKIP') return;
@@ -2576,7 +2779,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
                 let calc = getMartingaleStake(clientId, key, state.localStep);
                 const displayStake = (key === 'totalColor') ? (calc.stake * 3) : (key === 'totalColor2') ? (calc.stake * 2) : calc.stake;
-                const gLabel = key === 'u4' ? '🎯 BetZero' : key === 'color' ? '🌈 Rainbow' : key === 'sum' ? '📊 Hi/Lo' : key === 'totalColor' ? '🎨 TC (3W)' : '🎭 TC (2W)';
+                const gLabel = key === 'u4' ? '🎯 BetZero' : key === 'bet49' ? '🟠 Bet49' : key === 'color' ? '🌈 Rainbow' : key === 'sum' ? '📊 Hi/Lo' : key === 'totalColor' ? '🎨 TC (3W)' : '🎭 TC (2W)';
 
                 if (activeWin) {
                     if (((key === 'u4' || key === 'color' || key === 'sum') && session.config.bzRbRollover || key === 'sum' && session.config.hiloRollover) && !state.isRollover) {
@@ -2666,6 +2869,9 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
 async function tick() {
     try {
+        flushTelegramPredictionOutbox().catch(error => {
+            console.error('[Telegram] Prediction outbox could not be flushed:', error.message || error);
+        });
         var tlRaw = await apiPost('/Games/Balls49/TimeLeft', { gameId: GAME_ID }).catch(() => null);
         var nextId = String((tlRaw && tlRaw.data) ? tlRaw.data.id : '');
         var drawDate = ((tlRaw && tlRaw.data) ? tlRaw.data.drawDate : '').replace('T', ' ').slice(0, 16);
@@ -2692,7 +2898,7 @@ async function tick() {
             const session = userSessions[clientId];
             // 🛡️ SHADOW MODE LOGIC (Updated for Deficit Recovery)
             if (session.config.shadowMode) {
-                ['u4', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(k => {
+                ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(k => {
                     if (session.martingaleState[k].inShadowMode && globalTracker[k].step === 1) {
                         session.martingaleState[k].inShadowMode = false;
                         
@@ -2747,6 +2953,17 @@ async function tick() {
         var drawsData = await apiGet('/draws');
         var draws = drawsData.draws || [];
 
+        if (lastPrediction && lastPrediction.telegramPredictionQueued !== true) {
+            const hasLegacyPredictionRecord = lastPrediction.telegramPredictionQueued === undefined
+                && predictionLog.some(record => String(record.drawId) === String(lastPrediction.drawId));
+            if (hasLegacyPredictionRecord) {
+                lastPrediction.telegramPredictionQueued = true;
+                saveJSON(LAST_PRED_FILE, lastPrediction);
+            } else {
+                await sendPrediction(lastPrediction.drawId, lastPrediction.drawDate || drawDate, lastPrediction.pred);
+            }
+        }
+
         if (draws.length > 0 && predictionLog.length > 0) {
             let updatedLog = false;
             predictionLog.forEach(p => {
@@ -2768,6 +2985,7 @@ async function tick() {
                         var actualTopColors = Object.keys(actualColorCounts).filter(c => actualColorCounts[c] === maxActualCount);
 
                         var u4Win = (p.predicted.betzero && p.predicted.betzero.length > 0) ? (p.predicted.betzero.filter(x => new Set(actualNums).has(x)).length === 0) : false;
+                        var bet49Win = Number.isInteger(Number(p.predicted.bet49)) && actualNums.includes(Number(p.predicted.bet49));
                         var colorWin = (p.predicted.rainbow && p.predicted.rainbow !== 'SKIP') ? (actualNums.filter(n => getBallColor(n) === p.predicted.rainbow).length >= 2) : false;
                         var tcWin = false;
                         if (p.predicted.totalColor && p.predicted.totalColor.status === 'ACTIVE') {
@@ -2791,12 +3009,14 @@ async function tick() {
                         p.result = {
                             balls: actualNums, total: actualSum, range: actualRange,
                             betzero: (!p.predicted.betzero || p.predicted.betzero.length === 0) ? 'SKIP' : (u4Win ? 'WIN' : 'LOSS'),
+                            bet49: Number.isInteger(Number(p.predicted.bet49)) && Number(p.predicted.bet49) >= 1 && Number(p.predicted.bet49) <= 49 ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
                             rainbow: (!p.predicted.rainbow || p.predicted.rainbow === 'SKIP') ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
                             totalColor: (!p.predicted.totalColor || p.predicted.totalColor.status === 'SKIP') ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
                             totalColor2: (!p.predicted.totalColor2 || p.predicted.totalColor2.status === 'SKIP') ? 'SKIP' : (tc2Win ? 'WIN' : 'LOSS'),
                             hilo: (!p.predicted.hilo || p.predicted.hilo === 'SKIP') ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
                             unified: !p.predicted.unified ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
                         };
+                        p.settledAt = new Date().toISOString();
                         updatedLog = true;
                     }
                 }
@@ -2849,7 +3069,7 @@ async function tick() {
             };
 
             const clearStrandedStates = (sess) => {
-                ['u4', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(k => {
+                ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(k => {
                     sess.martingaleState[k].isRollover = false;
                     sess.martingaleState[k].rolloverStake = 0;
                     sess.martingaleState[k].localStep = 1;
@@ -2972,10 +3192,10 @@ async function tick() {
                         }
                     }
                 } else {
-                    let payloadStakes = { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 };
+                    let payloadStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 };
                     let payloadGenerated = false;
 
-                    ['u4', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
+                    ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
                         if (session.config.enabledGames[key]) {
                             const state = session.martingaleState[key];
                             if (state.inShadowMode) return;
@@ -3009,6 +3229,7 @@ async function tick() {
                             let isActivePrediction = false;
                             let activeMlScore = 0;
                             if (key === 'u4' && pred.betzeroStatus === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.u4 >= 0.50)) { isActivePrediction = true; activeMlScore = localMlScores.u4; }
+                            if (key === 'bet49' && Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49) { isActivePrediction = true; }
                             if (key === 'color' && pred.rainbowStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.color; }
                             if (key === 'sum' && pred.hiloStatus === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.sum >= 0.55)) { isActivePrediction = true; activeMlScore = localMlScores.sum; }
                             if (key === 'totalColor' && pred.totalColorPred.status === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.totalColor >= 0.45)) { isActivePrediction = true; activeMlScore = localMlScores.totalColor; }
@@ -3035,12 +3256,14 @@ async function tick() {
 
                     if (payloadGenerated && String(session.lastBetDrawId) !== String(nextId)) {
                         const bzStake = Math.max(0, Number(payloadStakes.u4) || 0);
+                        const bet49Stake = Math.max(0, Number(payloadStakes.bet49) || 0);
                         const rbStake = Math.max(0, Number(payloadStakes.color) || 0);
                         const hlStake = Math.max(0, Number(payloadStakes.sum) || 0);
                         const tcStake = Math.max(0, Number(payloadStakes.totalColor) || 0);
                         const tc2Stake = Math.max(0, Number(payloadStakes.totalColor2) || 0);
 
                         const hasBetZero = session.config.enabledGames.u4 && pred.betzeroStatus === 'ACTIVE' && bzStake > 0;
+                        const hasBet49 = session.config.enabledGames.bet49 && Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49 && bet49Stake > 0;
                         const hasRainbow = session.config.enabledGames.color && pred.rainbowStatus === 'ACTIVE' && rbStake > 0;
                         const hasHiLo = session.config.enabledGames.sum && pred.hiloStatus === 'ACTIVE' && hlStake > 0;
                         const hasTotalColor = session.config.enabledGames.totalColor && pred.totalColorPred.status === 'ACTIVE' && tcStake > 0;
@@ -3052,6 +3275,9 @@ async function tick() {
                             
                             numbers: hasBetZero ? pred.unlikely4.map(x => x.number) : null,
                             stake: hasBetZero ? bzStake : 0,
+
+                            bet49: hasBet49 ? pred.bet49Pick : null,
+                            bet49Stake: hasBet49 ? bet49Stake : 0,
                             
                             color: hasRainbow ? pred.topColor.name : null,
                             colorStake: hasRainbow ? rbStake : 0,
@@ -3069,6 +3295,7 @@ async function tick() {
                             
                             steps: {
                                 betzero: session.martingaleState.u4.isRollover ? 'ROLLOVER' : session.martingaleState.u4.localStep,
+                                bet49: session.martingaleState.bet49.localStep,
                                 rainbow: session.martingaleState.color.isRollover ? 'ROLLOVER' : session.martingaleState.color.localStep,
                                 hilo: session.martingaleState.sum.isRollover ? 'ROLLOVER' : session.martingaleState.sum.localStep,
                                 totalColor: session.martingaleState.totalColor.isRollover ? 'ROLLOVER' : session.martingaleState.totalColor.localStep,
@@ -3163,6 +3390,7 @@ http.createServer(async (req, res) => {
                 total: Number.isFinite(Number(record.result.total)) && record.result.total !== null ? Number(record.result.total) : null,
                 range: safeText(record.result.range),
                 betzero: safeText(record.result.betzero), rainbow: safeText(record.result.rainbow),
+                bet49: safeText(record.result.bet49),
                 totalColor: safeText(record.result.totalColor), totalColor2: safeText(record.result.totalColor2),
                 hilo: safeText(record.result.hilo), unified: safeText(record.result.unified)
             } : null;
@@ -3173,9 +3401,14 @@ http.createServer(async (req, res) => {
                     drawId,
                     drawDate: safeText(record.drawDate, 64),
                     timestamp: safeText(record.timestamp, 64),
+                    settledAt: safeText(record.settledAt, 64),
                     summaryModel: buildPublicSummaryModel(record.summaryModel, record.predicted.unified?.key),
+                    steps: {
+                        bet49: safePublicCount(record.steps?.bet49)
+                    },
                     predicted: {
                         betzero: safeArray(record.predicted.betzero, 4).map(Number).filter(value => Number.isInteger(value) && value >= 1 && value <= 49),
+                        bet49: Number.isInteger(Number(record.predicted.bet49)) && Number(record.predicted.bet49) >= 1 && Number(record.predicted.bet49) <= 49 ? Number(record.predicted.bet49) : null,
                         rainbow: safeText(record.predicted.rainbow),
                         totalColor: record.predicted.totalColor && typeof record.predicted.totalColor === 'object' ? {
                             status: safeText(record.predicted.totalColor.status),
@@ -3280,6 +3513,52 @@ http.createServer(async (req, res) => {
         return sendJson(res, 200, { account: publicAccount(session) });
     }
 
+    if (parsedUrl.pathname === '/account/stake-plans' && req.method === 'GET') {
+        const session = siteSession(req);
+        if (!session || session.admin) return sendJson(res, 401, { error: 'Sign in to manage your personal stake plans.' });
+        const user = getSiteUser(session.email);
+        if (!user) return sendJson(res, 401, { error: 'Your account could not be found. Sign in again.' });
+        return sendJson(res, 200, { plans: reconcilePredictionStakePlans(user) });
+    }
+
+    if (parsedUrl.pathname === '/account/stake-plan' && req.method === 'POST') {
+        const session = siteSession(req);
+        if (!session || session.admin) return sendJson(res, 401, { error: 'Sign in to manage your personal stake plans.' });
+        const user = getSiteUser(session.email);
+        if (!user) return sendJson(res, 401, { error: 'Your account could not be found. Sign in again.' });
+        try {
+            const data = await readRequestJson(req);
+            const market = String(data.market || '');
+            const baseAmount = Number(data.baseAmount);
+            if (!siteMarkets.includes(market)) return sendJson(res, 400, { error: 'Choose a valid prediction market.' });
+            if (!Number.isFinite(baseAmount) || baseAmount < 0.01 || baseAmount > 1_000_000_000) {
+                return sendJson(res, 400, { error: 'Enter a base stake of at least ₦0.01 and no more than ₦1,000,000,000.' });
+            }
+            if (typeof data.locked !== 'boolean') return sendJson(res, 400, { error: 'Choose whether to lock this base stake.' });
+            const plans = reconcilePredictionStakePlans(user);
+            const existingPlan = plans[market];
+            const plan = data.locked
+                ? {
+                    baseAmount: Math.round(baseAmount * 100) / 100,
+                    locked: true,
+                    step: 1,
+                    lastProcessedDrawId: String(latestSettledPredictionDrawId())
+                }
+                : {
+                    baseAmount: Math.round(baseAmount * 100) / 100,
+                    locked: false,
+                    step: Number.isSafeInteger(existingPlan?.step) ? existingPlan.step : 1,
+                    lastProcessedDrawId: existingPlan?.lastProcessedDrawId || String(latestSettledPredictionDrawId())
+                };
+            plans[market] = plan;
+            user.predictionStakePlans = plans;
+            saveSiteUser(user);
+            return sendJson(res, 200, { market, plan });
+        } catch {
+            return sendJson(res, 400, { error: 'The stake plan could not be saved. Please try again.' });
+        }
+    }
+
     if (parsedUrl.pathname === '/auth/logout' && req.method === 'POST') {
         const token = sessionToken(req);
         if (token) siteSessions.delete(token);
@@ -3309,8 +3588,7 @@ http.createServer(async (req, res) => {
 
     if (parsedUrl.pathname === '/admin/reset-market-stats' && req.method === 'POST') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
-        const resetAt = Date.now();
-        setSiteSettingStatement.run('market_stats_reset_at', String(resetAt));
+        const resetAt = resetMarketStatsTracking();
         return sendJson(res, 200, { ok: true, resetAt: new Date(resetAt).toISOString() });
     }
 
@@ -3385,7 +3663,7 @@ http.createServer(async (req, res) => {
                         session.stats.totalReturned = Math.round(data.balance - session.stats.initialBalance);
                     }
 
-                    ['u4', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
+                    ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
                         session.wallets[key].bankroll = data.balance;
                     });
                 }
@@ -3408,12 +3686,14 @@ http.createServer(async (req, res) => {
                         return num;
                     };
                     if (cfg.stakes.betzero !== undefined) globalDefaultStakes.u4 = validateStake(cfg.stakes.betzero);
+                    if (cfg.stakes.bet49 !== undefined) globalDefaultStakes.bet49 = validateStake(cfg.stakes.bet49);
                     if (cfg.stakes.rainbow !== undefined) globalDefaultStakes.color = validateStake(cfg.stakes.rainbow);
                     if (cfg.stakes.hilo !== undefined) globalDefaultStakes.sum = validateStake(cfg.stakes.hilo);
                     if (cfg.stakes.totalColor !== undefined) globalDefaultStakes.totalColor = validateStake(cfg.stakes.totalColor);
                     if (cfg.stakes.totalColor2 !== undefined) globalDefaultStakes.totalColor2 = validateStake(cfg.stakes.totalColor2);
                     for (let id in userSessions) {
                         userSessions[id].config.initialStakes.u4 = globalDefaultStakes.u4;
+                        userSessions[id].config.initialStakes.bet49 = globalDefaultStakes.bet49;
                         userSessions[id].config.initialStakes.color = globalDefaultStakes.color;
                         userSessions[id].config.initialStakes.sum = globalDefaultStakes.sum;
                         userSessions[id].config.initialStakes.totalColor = globalDefaultStakes.totalColor;
@@ -3437,8 +3717,12 @@ http.createServer(async (req, res) => {
             drawDate: p.drawDate || p.timestamp || null,
             status: p.result && typeof p.result === 'object' ? 'SETTLED' : 'PENDING',
             summaryModel: buildPublicSummaryModel(p.mlShadow || p.summaryModel, p.predicted?.unified?.key),
+            steps: p.steps && typeof p.steps === 'object' ? {
+                bet49: safePublicCount(p.steps.bet49)
+            } : null,
             predicted: {
                 betzero: Array.isArray(p.predicted?.betzero) ? p.predicted.betzero : [],
+                bet49: Number.isInteger(Number(p.predicted?.bet49)) ? Number(p.predicted.bet49) : null,
                 rainbow: p.result?.rainbow === 'SKIP' ? 'SKIP' : (p.predicted?.rainbow || 'SKIP'),
                 totalColor: p.predicted?.totalColor ? {
                     status: p.predicted.totalColor.status || 'SKIP',
@@ -3458,6 +3742,7 @@ http.createServer(async (req, res) => {
                     ? Number(p.result.total) : null,
                 range: p.result?.range || null,
                 betzero: p.result?.betzero || (p.result ? 'SKIP' : 'PENDING'),
+                bet49: p.result?.bet49 || (p.result ? 'SKIP' : 'PENDING'),
                 rainbow: p.result?.rainbow || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor: p.result?.totalColor || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor2: p.result?.totalColor2 || (p.result ? 'SKIP' : 'PENDING'),
@@ -3485,6 +3770,7 @@ http.createServer(async (req, res) => {
             return res.end(JSON.stringify({ error: 'No current prediction is available yet.' }));
         }
         const logged = predictionLog.find(p => String(p.drawId) === String(lastPrediction.drawId));
+        const lastUpdated = logged?.timestamp || logged?.drawDate || null;
         const previousRecord = predictionLog.find(p => p
             && String(p.drawId) !== String(lastPrediction.drawId)
             && p.result && typeof p.result === 'object');
@@ -3496,6 +3782,7 @@ http.createServer(async (req, res) => {
                 betzero: live.betzeroStatus === 'ACTIVE' && Array.isArray(live.unlikely4)
                     ? live.unlikely4.map(item => Number(item.number)).filter(number => Number.isInteger(number) && number >= 1 && number <= 49)
                     : [],
+                bet49: Number.isInteger(Number(live.bet49Pick)) && Number(live.bet49Pick) >= 1 && Number(live.bet49Pick) <= 49 ? Number(live.bet49Pick) : null,
                 rainbow: live.rainbowStatus === 'ACTIVE' ? live.topColor?.name || 'SKIP' : 'SKIP',
                 totalColor: {
                     status: live.totalColorPred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
@@ -3515,6 +3802,7 @@ http.createServer(async (req, res) => {
             drawDate: previousRecord.drawDate || previousRecord.timestamp || null,
             predicted: {
                 betzero: previousRecord.result?.betzero === 'SKIP' ? [] : (Array.isArray(previousRecord.predicted?.betzero) ? previousRecord.predicted.betzero : []),
+                bet49: Number.isInteger(Number(previousRecord.predicted?.bet49)) ? Number(previousRecord.predicted.bet49) : null,
                 rainbow: previousRecord.result?.rainbow === 'SKIP' ? 'SKIP' : (previousRecord.predicted?.rainbow || 'SKIP'),
                 totalColor: previousRecord.predicted?.totalColor ? {
                     status: previousRecord.predicted.totalColor.status || 'SKIP',
@@ -3534,6 +3822,7 @@ http.createServer(async (req, res) => {
                     && Number.isFinite(Number(previousRecord.result.total)) ? Number(previousRecord.result.total) : null,
                 range: previousRecord.result.range || null,
                 betzero: previousRecord.result.betzero || 'SKIP',
+                bet49: previousRecord.result.bet49 || 'SKIP',
                 rainbow: previousRecord.result.rainbow || 'SKIP',
                 totalColor: previousRecord.result.totalColor || 'SKIP',
                 totalColor2: previousRecord.result.totalColor2 || 'SKIP',
@@ -3542,7 +3831,7 @@ http.createServer(async (req, res) => {
             }
         } : null;
         const selectedMarket = parsedUrl.searchParams.get('market');
-        const allowedMarkets = ['betzero', 'rainbow', 'totalColor', 'totalColor2', 'hilo', 'unified'];
+        const allowedMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'hilo', 'unified'];
         const market = allowedMarkets.includes(selectedMarket) ? selectedMarket : 'betzero';
         const currentSummaryModel = buildPublicSummaryModel(
             logged?.mlShadow || logged?.summaryModel || lastPrediction.summaryModel,
@@ -3563,7 +3852,7 @@ http.createServer(async (req, res) => {
             && (session?.admin || (activePlan?.expiresAt && activePlan.expiresAt > Date.now()));
         if (!clockFresh || !predictionMatchesClock || (!fullAccess && (secondsRemaining === null || secondsRemaining > 10 || secondsRemaining === 0))) {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-            return res.end(JSON.stringify({ prediction: null, previous: publicPrevious, secondsUntilReveal: secondsRemaining === null ? null : Math.max(0, secondsRemaining - 10), access: { tier: planTier || 'trial', games: planGames || [] } }));
+            return res.end(JSON.stringify({ prediction: null, previous: publicPrevious, lastUpdated, secondsUntilReveal: secondsRemaining === null ? null : Math.max(0, secondsRemaining - 10), access: { tier: planTier || 'trial', games: planGames || [] } }));
         }
         const suppliedMarketStats = lastPrediction.marketStats?.[market] || {};
         const calculatedMarketStats = buildPublicMarketStats(logged);
@@ -3572,13 +3861,14 @@ http.createServer(async (req, res) => {
             maxLosingStreak: calculatedMarketStats[market].maxLosingStreak
         };
         const selectedPicks = {
-            betzero: [], rainbow: 'SKIP',
+            betzero: [], bet49: null, rainbow: 'SKIP',
             totalColor: { status: 'SKIP', topColors: [], noWinColor: null },
             totalColor2: { status: 'SKIP', top2: [] },
             hilo: 'SKIP', unified: null
         };
         const marketAliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
         if (market === 'betzero') selectedPicks.betzero = publicPrediction.predicted.betzero;
+        if (market === 'bet49') selectedPicks.bet49 = publicPrediction.predicted.bet49;
         if (market === 'rainbow') selectedPicks.rainbow = publicPrediction.predicted.rainbow;
         if (market === 'totalColor') selectedPicks.totalColor = publicPrediction.predicted.totalColor;
         if (market === 'totalColor2') selectedPicks.totalColor2 = publicPrediction.predicted.totalColor2;
@@ -3592,7 +3882,7 @@ http.createServer(async (req, res) => {
         }
         publicPrediction.predicted = selectedPicks;
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        return res.end(JSON.stringify({ prediction: publicPrediction, previous: publicPrevious, secondsUntilReveal: 0, access: { tier: planTier || 'trial', games: planGames || [] } }));
+        return res.end(JSON.stringify({ prediction: publicPrediction, previous: publicPrevious, lastUpdated, secondsUntilReveal: 0, access: { tier: planTier || 'trial', games: planGames || [] } }));
     }
 
     if (parsedUrl.pathname === '/public-clock' && req.method === 'GET') {
@@ -3708,6 +3998,7 @@ http.createServer(async (req, res) => {
         return res.end(JSON.stringify({
             maxHistoricalSteps: {
                 u4: s.u4?.worst || 11,
+                bet49: getBet49HistoricalLossStreaks().maximum,
                 color: s.color?.worst || 9,
                 totalColor: s.totalColor?.worst || 6,
                 totalColor2: s.totalColor2?.worst || 12,
@@ -3746,7 +4037,7 @@ http.createServer(async (req, res) => {
                 activeCb = { active: true, game: 'Unified Master', drawsLeft };
             }
         } else {
-            for (let k of ['u4', 'color', 'sum', 'totalColor', 'totalColor2']) {
+            for (let k of ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2']) {
                 if (session.martingaleState[k].inShadowMode) {
                     activeCb = { active: true, game: k, mode: 'SHADOW' };
                     break;
@@ -3764,8 +4055,8 @@ http.createServer(async (req, res) => {
         const retryStatus = session.pendingBetPayload && session.pendingBetPayload.action === "EXECUTE_BET" 
             ? { active: true, retries: session.failedBetRecovery?.retries || 0 } : null;
 
-        const decisionLabels = { u4: 'BetZero', color: 'Rainbow', sum: 'Hi/Lo', totalColor: 'Total Color 3-Way', totalColor2: 'Total Color 2-Way' };
-        const decisionThresholds = { u4: 0.50, color: 0, sum: 0.55, totalColor: 0.45, totalColor2: 0 };
+        const decisionLabels = { u4: 'BetZero', bet49: 'Bet49', color: 'Rainbow', sum: 'Hi/Lo', totalColor: 'Total Color 3-Way', totalColor2: 'Total Color 2-Way' };
+        const decisionThresholds = { u4: 0.50, bet49: 0, color: 0, sum: 0.55, totalColor: 0.45, totalColor2: 0 };
         let decisionReason = 'Waiting for the next draw decision.';
         if (session.stats.isHalted) {
             decisionReason = session.stats.haltReason || 'Automation is halted.';
@@ -3779,16 +4070,17 @@ http.createServer(async (req, res) => {
         } else if (session.pendingBetPayload) {
             decisionReason = `Bet queued for draw #${session.pendingBetPayload.drawId}.`;
         } else if (livePred) {
-            const enabledKeys = ['u4', 'color', 'sum', 'totalColor', 'totalColor2'].filter(key => session.config.enabledGames[key]);
+            const enabledKeys = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].filter(key => session.config.enabledGames[key]);
             const predictionByKey = {
                 u4: livePred.betzeroStatus,
+                bet49: Number.isInteger(livePred.bet49Pick) && livePred.bet49Pick >= 1 && livePred.bet49Pick <= 49 ? 'ACTIVE' : 'SKIP',
                 color: livePred.rainbowStatus,
                 sum: livePred.hiloStatus,
                 totalColor: livePred.totalColorPred?.status,
                 totalColor2: livePred.totalColor2Pred?.status
             };
             const skipReasons = { u4: livePred.bzSkipReason, color: livePred.rbSkipReason, sum: livePred.hlSkipReason };
-            const mlScores = { u4: mlBz.score, color: mlRb.score, sum: mlHl.score, totalColor: mlTc.score, totalColor2: 1 };
+            const mlScores = { u4: mlBz.score, bet49: 1, color: mlRb.score, sum: mlHl.score, totalColor: mlTc.score, totalColor2: 1 };
             const blockedKey = enabledKeys.find(key => predictionByKey[key] === 'SKIP');
             const summaryHoldKey = enabledKeys.find(key => SUMMARY_MODEL_MARKETS.includes(key)
                 && session.config.summaryModelMarkets?.[key]
@@ -3818,6 +4110,7 @@ http.createServer(async (req, res) => {
             currentStep: session.config.unifiedMode 
                 ? { 
                     u4: session.martingaleState.u4.isRollover ? 'ROLLOVER' : session.masterState.step, 
+                    bet49: session.martingaleState.bet49.localStep,
                     color: session.martingaleState.color.isRollover ? 'ROLLOVER' : session.masterState.step, 
                     sum: session.martingaleState.sum.isRollover ? 'ROLLOVER' : session.masterState.step, 
                     totalColor: session.martingaleState.totalColor.isRollover ? 'ROLLOVER' : session.masterState.step, 
@@ -3825,6 +4118,7 @@ http.createServer(async (req, res) => {
                   }
                 : { 
                     u4: session.martingaleState.u4.isRollover ? 'ROLLOVER' : session.martingaleState.u4.localStep, 
+                    bet49: session.martingaleState.bet49.localStep,
                     color: session.martingaleState.color.isRollover ? 'ROLLOVER' : session.martingaleState.color.localStep, 
                     sum: session.martingaleState.sum.isRollover ? 'ROLLOVER' : session.martingaleState.sum.localStep, 
                     totalColor: session.martingaleState.totalColor.isRollover ? 'ROLLOVER' : session.martingaleState.totalColor.localStep, 
@@ -3867,6 +4161,12 @@ http.createServer(async (req, res) => {
                                 details.odds.u4 = session.wallets.u4.odds;
                                 details.games.push('u4');
                                 totalStake += payload.stake;
+                            }
+                            if (Number.isInteger(payload.bet49) && payload.bet49 >= 1 && payload.bet49 <= 49 && payload.bet49Stake > 0) {
+                                details.stakes.bet49 = payload.bet49Stake;
+                                details.odds.bet49 = session.wallets.bet49.odds;
+                                details.games.push('bet49');
+                                totalStake += payload.bet49Stake;
                             }
                             if (payload.color && payload.colorStake > 0) {
                                 details.stakes.color = payload.colorStake;
@@ -3915,12 +4215,13 @@ http.createServer(async (req, res) => {
     }
     else if (parsedUrl.pathname === '/reset' && req.method === 'POST') {
         session.martingaleState.u4 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
+        session.martingaleState.bet49 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         session.martingaleState.color = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         session.martingaleState.sum = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, lastStandardStake: 0, inShadowMode: false };
         session.martingaleState.totalColor = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, rolloverStage: 0, inShadowMode: false };
         session.martingaleState.totalColor2 = { active: false, localStep: 1, inShadowMode: false };
         session.masterState = { active: false, step: 1, deficit: 0, lastGamePlayed: null, lastStake: 0, inShadowMode: false };
-        session.cooldowns = { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, unified: 0 };
+        session.cooldowns = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, unified: 0 };
         
         session.stats.isHalted = true; 
         session.stats.haltReason = "🛑 Wiped & Stopped by User";
@@ -3929,13 +4230,13 @@ http.createServer(async (req, res) => {
         session.failedBetRecovery = null;
 
         session.userTracker = {
-            u4: { step: 1 }, color: { step: 1 }, sum: { step: 1 },
+            u4: { step: 1 }, bet49: { step: 1 }, color: { step: 1 }, sum: { step: 1 },
             totalColor: { step: 1 }, totalColor2: { step: 1 }, unified: { step: 1 },
             lastPredDrawId: null
         };
 
-        session.config.initialStakes = { u4: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 };
-        session.config.enabledGames = { u4: false, color: false, sum: false, totalColor: false, totalColor2: false };
+        session.config.initialStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0 };
+        session.config.enabledGames = { u4: false, bet49: false, color: false, sum: false, totalColor: false, totalColor2: false };
         session.config.takeProfit = 0;
         session.config.stopLoss = 0;
         
@@ -3961,7 +4262,7 @@ http.createServer(async (req, res) => {
                 const cfg = JSON.parse(body);
                 const validateNumber = (val, min = 0, max = null, defaultVal = 0) => {
                     const num = parseInt(val, 10);
-                    if (isNaN(num)) return defaultVal;
+                    if (!Number.isSafeInteger(num)) return defaultVal;
                     if (num < min) return min;
                     if (max !== null && num > max) return max;
                     return num;
@@ -3977,6 +4278,7 @@ http.createServer(async (req, res) => {
 
                 if (cfg.stakes) {
                     if (cfg.stakes.betzero !== undefined) session.config.initialStakes.u4 = validateNumber(cfg.stakes.betzero, 0, 50000, 0);
+                    if (cfg.stakes.bet49 !== undefined) session.config.initialStakes.bet49 = validateNumber(cfg.stakes.bet49, 0, 50000, 0);
                     if (cfg.stakes.rainbow !== undefined) session.config.initialStakes.color = validateNumber(cfg.stakes.rainbow, 0, 50000, 0);
                     if (cfg.stakes.hilo !== undefined) session.config.initialStakes.sum = validateNumber(cfg.stakes.hilo, 0, 50000, 0);
                     if (cfg.stakes.totalColor !== undefined) session.config.initialStakes.totalColor = validateNumber(cfg.stakes.totalColor, 0, 50000, 0);
@@ -3984,16 +4286,20 @@ http.createServer(async (req, res) => {
                 }
                 
                 if (cfg.gameSteps) {
-                    if (cfg.gameSteps.betzero !== undefined) session.config.maxSteps.u4 = validateNumber(cfg.gameSteps.betzero, 0, 30, 0);
-                    if (cfg.gameSteps.rainbow !== undefined) session.config.maxSteps.color = validateNumber(cfg.gameSteps.rainbow, 0, 30, 0);
-                    if (cfg.gameSteps.hilo !== undefined) session.config.maxSteps.sum = validateNumber(cfg.gameSteps.hilo, 0, 30, 0);
-                    if (cfg.gameSteps.totalColor !== undefined) session.config.maxSteps.totalColor = validateNumber(cfg.gameSteps.totalColor, 0, 30, 0);
-                    if (cfg.gameSteps.totalColor2 !== undefined) session.config.maxSteps.totalColor2 = validateNumber(cfg.gameSteps.totalColor2, 0, 30, 0);
+                    if (cfg.gameSteps.betzero !== undefined) session.config.maxSteps.u4 = validateNumber(cfg.gameSteps.betzero);
+                    if (cfg.gameSteps.bet49 !== undefined) session.config.maxSteps.bet49 = validateNumber(cfg.gameSteps.bet49);
+                    if (cfg.gameSteps.rainbow !== undefined) session.config.maxSteps.color = validateNumber(cfg.gameSteps.rainbow);
+                    if (cfg.gameSteps.hilo !== undefined) session.config.maxSteps.sum = validateNumber(cfg.gameSteps.hilo);
+                    if (cfg.gameSteps.totalColor !== undefined) session.config.maxSteps.totalColor = validateNumber(cfg.gameSteps.totalColor);
+                    if (cfg.gameSteps.totalColor2 !== undefined) session.config.maxSteps.totalColor2 = validateNumber(cfg.gameSteps.totalColor2);
                 }
 
                 if (cfg.enabledGames) {
                     if (cfg.enabledGames.betzero !== undefined || cfg.enabledGames.u4 !== undefined) {
                         session.config.enabledGames.u4 = Boolean(cfg.enabledGames.betzero || cfg.enabledGames.u4);
+                    }
+                    if (cfg.enabledGames.bet49 !== undefined) {
+                        session.config.enabledGames.bet49 = Boolean(cfg.enabledGames.bet49);
                     }
                     if (cfg.enabledGames.rainbow !== undefined || cfg.enabledGames.color !== undefined) {
                         session.config.enabledGames.color = Boolean(cfg.enabledGames.rainbow || cfg.enabledGames.color);
@@ -4239,10 +4545,10 @@ function handleTelegramPlanMessage(chatId, text) {
     if (plan.state === 'stake') {
         if (!Number.isFinite(value) || value <= 0) return sendTelegramPlanPrompt(chatId, '❌ Please enter a valid positive stake.').then(() => true);
         plan.stake = value; plan.state = 'steps';
-        return sendTelegramPlanPrompt(chatId, `✅ Base Stake: ₦${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\nHow many Martingale steps? (1-30)`).then(() => true);
+        return sendTelegramPlanPrompt(chatId, `✅ Base Stake: ₦${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\nHow many Martingale steps? Enter a positive whole number.`).then(() => true);
     }
     if (plan.state === 'steps') {
-        if (!Number.isInteger(value) || value < 1 || value > 30) return sendTelegramPlanPrompt(chatId, '❌ Enter a whole-number step limit between 1 and 30.').then(() => true);
+        if (!Number.isSafeInteger(value) || value < 1) return sendTelegramPlanPrompt(chatId, '❌ Enter a positive whole-number step count.').then(() => true);
         plan.steps = value; plan.state = 'capital';
         return sendTelegramPlanPrompt(chatId, '✅ Steps set\n\nEnter total available capital (₦):').then(() => true);
     }
@@ -4327,6 +4633,7 @@ function handleTelegramCommand(chatId, text) {
             `• <code>/pause</code> or <code>/stop</code> — Pause automation execution`,
             `• <code>/resume</code> — Resume automation execution`,
             `• <code>/reset</code> — Reset Martingale steps & session trackers`,
+            `• <code>/resetmaxloss</code> — Start a fresh max-loss tracking period across all markets`,
             `• <code>/plan</code> — Build a standalone martingale sequence and risk plan`,
             ``,
             `<b>Configuration Commands:</b>`,
@@ -4386,6 +4693,15 @@ function handleTelegramCommand(chatId, text) {
         stats.haltReason = "";
         sendPersonalDM(chatId, `▶️ <b>Automation Resumed.</b>${balString}`);
     } 
+    else if (cmd === '/resetmaxloss') {
+        const resetAt = resetMarketStatsTracking();
+        sendPersonalDM(
+            chatId,
+            `📊 <b>Max-loss tracking restarted for all markets.</b>\n` +
+            `Previous prediction history and current betting steps are unchanged.\n` +
+            `New tracking period: ${new Date(resetAt).toLocaleString()}`
+        ).catch(() => {});
+    }
     else if (cmd === '/reset') {
         targetSession.martingaleState.u4 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         targetSession.martingaleState.color = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };

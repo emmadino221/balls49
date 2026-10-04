@@ -1,4 +1,4 @@
-const GAMES = ['betzero', 'rainbow', 'totalColor', 'totalColor2', 'hilo'];
+const GAMES = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'hilo'];
 const SNIPER_MARKETS = ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'unified'];
 const SUMMARY_MODEL_MARKETS = [
     { id: 'betzero', key: 'u4' },
@@ -149,14 +149,14 @@ function calculateOptimalBaseUnit(gameKey, capital, targetSteps, odds, hiloMulti
     return optimal;
 }
 
-function calculateAffordableSteps(gameKey, baseStake, maxSteps, odds, hiloMultiplier, stopLossTolerance) {
+function calculateAffordableSteps(gameKey, baseStake, odds, hiloMultiplier, stopLossTolerance) {
     let totalExposure = 0;
     let affordableSteps = 0;
 
-    for (let step = 1; step <= maxSteps; step++) {
+    for (let step = 1; ; step++) {
         const stake = calculateStakeForStep(gameKey, baseStake, step, odds, hiloMultiplier);
         const cost = gameKey === 'totalColor' ? stake * 3 : gameKey === 'totalColor2' ? stake * 2 : stake;
-        if (totalExposure + cost > stopLossTolerance) break;
+        if (!Number.isFinite(cost) || totalExposure + cost > stopLossTolerance) break;
         totalExposure += cost;
         affordableSteps = step;
     }
@@ -280,6 +280,7 @@ async function applyHistoricalPreset() {
 
     const gameMeta = {
         betzero:     { histKey: 'u4',          odds: 1.65, defaultSteps: 7 },
+        bet49:       { histKey: 'bet49',       odds: 7.80, defaultSteps: 8 },
         rainbow:     { histKey: 'color',       odds: 1.50, defaultSteps: 9 },
         hilo:        { histKey: 'sum',         odds: 2.00, defaultSteps: 8 },
         totalColor:  { histKey: 'totalColor',  odds: 3.80, defaultSteps: 6 },
@@ -295,7 +296,7 @@ async function applyHistoricalPreset() {
     }
 
     const clearMarkets = () => {
-        ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2'].forEach(k => {
+        ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2'].forEach(k => {
             document.getElementById(`stake-${k}`).value = '';
             document.getElementById(`step-${k}`).value = '';
             document.getElementById(`btn-${k}`).classList.remove('active');
@@ -309,16 +310,10 @@ async function applyHistoricalPreset() {
 
     clearMarkets();
 
-    // Stop-loss tolerance, rather than historical loss records, controls the
-    // usable step count. The upper bound prevents an unbounded calculation.
-    const MAX_PRESET_STEPS = 30;
-    let calculatedSteps = MAX_PRESET_STEPS;
-
     const requestedBaseStake = Math.max(50, Math.round((capitalInput * baseStakePercent / 100) / 50) * 50);
     const stopLossTolerance = capitalInput;
+    const calculatedSteps = calculateAffordableSteps(targetMeta.histKey, requestedBaseStake, targetMeta.odds, hiloMultiplier, stopLossTolerance);
     const originalSteps = calculatedSteps;
-    const affordableSteps = calculateAffordableSteps(targetMeta.histKey, requestedBaseStake, calculatedSteps, targetMeta.odds, hiloMultiplier, stopLossTolerance);
-    calculatedSteps = Math.min(calculatedSteps, affordableSteps);
     const maximumSafeBaseStake = calculateOptimalBaseUnit(targetMeta.histKey, capitalInput, calculatedSteps, targetMeta.odds, hiloMultiplier);
     const baseStake = Math.min(requestedBaseStake, maximumSafeBaseStake);
 
@@ -413,6 +408,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
 
     const stakes = {
         betzero: parseInt(document.getElementById('stake-betzero').value) || 0,
+        bet49: parseInt(document.getElementById('stake-bet49').value) || 0,
         rainbow: parseInt(document.getElementById('stake-rainbow').value) || 0,
         totalColor: parseInt(document.getElementById('stake-totalColor').value) || 0,
         totalColor2: parseInt(document.getElementById('stake-totalColor2').value) || 0,
@@ -421,6 +417,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     
     const gameSteps = {
         betzero: parseInt(document.getElementById('step-betzero').value) || 0,
+        bet49: parseInt(document.getElementById('step-bet49').value) || 0,
         rainbow: parseInt(document.getElementById('step-rainbow').value) || 0,
         totalColor: parseInt(document.getElementById('step-totalColor').value) || 0,
         totalColor2: parseInt(document.getElementById('step-totalColor2').value) || 0,
@@ -433,6 +430,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     
     const currentGames = {
         betzero: document.getElementById('btn-betzero').classList.contains('active'),
+        bet49: document.getElementById('btn-bet49').classList.contains('active'),
         rainbow: document.getElementById('btn-rainbow').classList.contains('active'),
         totalColor: document.getElementById('btn-totalColor').classList.contains('active'),
         totalColor2: document.getElementById('btn-totalColor2').classList.contains('active'),
@@ -576,9 +574,9 @@ function loadParameters() {
         'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'baseStakePercent', 'backtestDraws',
         'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'shadowMode', 'weightedStaking'
     ], (data) => {
-        let enabledGames = data.enabledGames || { betzero: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
-        const stakes = data.stakes || { betzero: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
-        const gameSteps = data.gameSteps || { betzero: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
+        let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
+        const stakes = data.stakes || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
+        const gameSteps = data.gameSteps || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
         
         GAMES.forEach(g => {
             const btn = document.getElementById(`btn-${g}`);
@@ -586,12 +584,14 @@ function loadParameters() {
         });
         
         if (document.getElementById('stake-betzero')) document.getElementById('stake-betzero').value = stakes.betzero || '';
+        if (document.getElementById('stake-bet49')) document.getElementById('stake-bet49').value = stakes.bet49 || '';
         if (document.getElementById('stake-rainbow')) document.getElementById('stake-rainbow').value = stakes.rainbow || '';
         if (document.getElementById('stake-totalColor')) document.getElementById('stake-totalColor').value = stakes.totalColor || '';
         if (document.getElementById('stake-totalColor2')) document.getElementById('stake-totalColor2').value = stakes.totalColor2 || '';
         if (document.getElementById('stake-hilo')) document.getElementById('stake-hilo').value    = stakes.hilo    || '';
         
         if (document.getElementById('step-betzero')) document.getElementById('step-betzero').value = gameSteps.betzero || '';
+        if (document.getElementById('step-bet49')) document.getElementById('step-bet49').value = gameSteps.bet49 || '';
         if (document.getElementById('step-rainbow')) document.getElementById('step-rainbow').value = gameSteps.rainbow || '';
         if (document.getElementById('step-totalColor')) document.getElementById('step-totalColor').value = gameSteps.totalColor || '';
         if (document.getElementById('step-totalColor2')) document.getElementById('step-totalColor2').value = gameSteps.totalColor2 || '';
@@ -675,10 +675,12 @@ async function loadStats() {
             const bzStepEl = document.getElementById('stats-bz-step');
             const rbStepEl = document.getElementById('stats-rb-step');
             const hlStepEl = document.getElementById('stats-hl-step');
+            const bet49StepEl = document.getElementById('stats-bet49-step');
             
             if (bzStepEl) bzStepEl.textContent = s.currentStep.u4 || 0;
             if (rbStepEl) rbStepEl.textContent = s.currentStep.color || 0;
             if (hlStepEl) hlStepEl.textContent = s.currentStep.sum || 0;
+            if (bet49StepEl) bet49StepEl.textContent = s.currentStep.bet49 || 0;
         }
 
         if (s.mlData) {

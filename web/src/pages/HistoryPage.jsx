@@ -5,6 +5,7 @@ const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history
 
 const markets = [
   { id: 'betzero', label: 'BetZero', resultKey: 'betzero' },
+  { id: 'bet49', label: 'Bet49', resultKey: 'bet49' },
   { id: 'rainbow', label: 'Rainbow', resultKey: 'rainbow' },
   { id: 'totalColor', label: 'Total Color 3-way', resultKey: 'totalColor' },
   { id: 'totalColor2', label: 'Total Color 2-way', resultKey: 'totalColor2' },
@@ -38,6 +39,12 @@ function MarketPick({ record, market }) {
   if (market.id === 'betzero') {
     return predicted.betzero?.length
       ? <span className="pick-balls">{predicted.betzero.map((number, index) => <BallChip key={`${number}-${index}`} number={number} />)}</span>
+      : <NoPick />;
+  }
+  if (market.id === 'bet49') {
+    const number = predicted.bet49;
+    return Number.isInteger(Number(number)) && Number(number) >= 1 && Number(number) <= 49
+      ? <BallChip number={Number(number)} />
       : <NoPick />;
   }
   if (market.id === 'rainbow') {

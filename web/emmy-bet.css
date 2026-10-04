@@ -213,6 +213,7 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .calculator-table th:first-child, .calculator-table td:first-child { text-align: left; }
 .calculator-table thead th { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .04em; }
 .calculator-table tbody th { color: var(--green); font-weight: 800; }
+.calculator-table .calculator-omitted-steps { color: var(--muted); text-align: center; font-size: 10px; font-style: italic; }
 .calculator-profit { color: var(--green); font-weight: 700; }.calculator-loss { color: #b65353; font-weight: 700; }
 .calculator-disclaimer { margin-top: 16px; padding: 17px 19px; border: 1px solid color-mix(in srgb, var(--green-bright) 25%, var(--line)); border-radius: 13px; background: var(--surface-soft); }
 .calculator-disclaimer strong { font-size: 12px; }
@@ -224,6 +225,7 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .countdown-copy .overline { font-size: 8px; }
 .countdown-copy strong { font-family: Manrope, sans-serif; font-size: 14px; letter-spacing: -.025em; }
 .countdown-copy > span:last-child { color: var(--muted); font-size: 10px; }
+.countdown-copy .prediction-last-updated { color: var(--muted); font-size: 10px; }
 .countdown-display { color: var(--green); font-family: Manrope, sans-serif; font-size: clamp(28px, 4vw, 40px); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.06em; }
 .countdown-live { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .1em; }
 .countdown-live i { width: 7px; height: 7px; border-radius: 50%; background: #9aa79f; }
@@ -275,6 +277,26 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .game-last-pick { min-height: 23px; }
 .game-last-pick .ball-number { width: 23px; height: 23px; font-size: 8px; }
 .game-last-result > .outcome-badge { grid-column: 2; grid-row: 1 / span 2; padding: 4px 6px; font-size: 7px; opacity: .88; }
+.prediction-stake-plan { display: grid; gap: 11px; margin-top: 12px; padding: 14px; border: 1px solid color-mix(in srgb, var(--green-bright) 28%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--green-soft) 42%, var(--surface)); }
+.prediction-stake-plan-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.prediction-stake-plan-heading > div { display: grid; gap: 4px; }
+.prediction-stake-plan-heading .overline { color: var(--muted); font-size: 8px; }
+.prediction-stake-plan-heading strong { color: var(--ink); font-size: 12px; }
+.stake-plan-lock-state { padding: 4px 7px; border-radius: 999px; color: #08744f; background: rgba(19, 132, 91, .12); font-size: 8px; font-weight: 900; letter-spacing: .08em; }
+.stake-plan-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; align-items: end; }
+.stake-plan-form label { grid-column: 1 / -1; color: var(--muted); font-size: 10px; font-weight: 700; }
+.stake-plan-form input { min-width: 0; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
+.stake-plan-locked { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.stake-plan-locked > div { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.stake-plan-locked > div > span { color: var(--muted); font-size: 9px; font-weight: 700; }
+.stake-plan-locked > div > strong { color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+.stake-plan-locked .stake-plan-recommendation { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--green-bright) 35%, var(--line)); }
+.stake-plan-locked .stake-plan-recommendation > strong { color: var(--green); font-size: 17px; }
+.stake-plan-locked .btn { grid-column: 1 / -1; justify-self: start; }
+.stake-plan-message, .stake-plan-disclaimer, .stake-plan-error, .stake-plan-notice { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.stake-plan-disclaimer { padding-top: 8px; border-top: 1px solid var(--line); font-size: 9px; }
+.stake-plan-error { color: #a43232; }
+.stake-plan-notice { color: #08744f; }
 .game-price-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 11px; border-top: 1px solid var(--line); }
 .game-price-line > span { color: var(--muted); font-size: 10px; }
 .game-price-line strong { color: var(--ink); font-size: 12px; }

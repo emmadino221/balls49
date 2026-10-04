@@ -1,73 +1,35 @@
-# User Management and Prediction Access in the Current Codebase
+# Website Accounts, Market Access, and Personal Stake Plans
 
-## Current Runtime Identity and Session Model
+## Two separate identity/session systems
 
-The codebase currently has a local session model driven by a browser-generated `clientId` and a configuration map persisted in `session_state.json`.
+The website account system and extension automation sessions are separate:
 
-In the current Node server in `bot.js`:
+- Website accounts use email/password authentication, salted password hashes, SQLite-backed users/sessions, and an HttpOnly session cookie. `publicAccount()` derives the current plan from the server-side user record.
+- The local browser extension uses a `clientId` to route automation configuration, statistics, acknowledgements, and betting instructions in `bot.js`; it is not the website login identity.
 
-- A `userSessions` object is created for each `clientId`.
-- Each session contains `userTracker`, `wallets`, `martingaleState`, `masterState`, `cooldowns`, `config`, `stats`, `lastBetDrawId`, and `lastBetDetails`.
-- State is periodically persisted through `persistSessions()` into `session_state.json`.
+The extension automation routes include `/stream`, `/ack`, `/config`, `/stats`, `/reset`, and `/backtest`. Keep the local worker private and on loopback. Public hosting mode allowlists website/account APIs and the signed prediction-ingest route, not extension execution routes.
 
-The `balls49-extension` content script and popup send browser-originated configuration and user/session identifiers to the server endpoints.
+## Website access and plans
 
-## Current Resource Access Pattern
+Accounts can be approved for Trial, Premium, or Elite. Trial users choose one market on the Free Trial page; the pick is revealed during the final ten seconds. Premium access is limited to the markets selected for that account, while Elite includes all seven public markets. Owner preview is bound to the owner's authenticated browser session and does not change user accounts.
 
-The current endpoint pattern is locally implemented with route-like handling and browser session identification, rather than a full production authentication model. The live structure is:
+The public API checks the session and plan server-side before revealing paid-market live picks. `/public-history` serves settled public history and `/public-clock` serves the current clock; `/public-current-prediction` applies market access and reveal rules.
 
-- `/stream` — returns pending instructions and automation payloads.
-- `/ack` — accepts execution acknowledgements from the browser extension.
-- `/config` — accepts configuration changes.
-- `/backtest` — accepts backtest requests.
-- `/balance` and balance verification update endpoints — used by the extension and server.
+## Personal stake plans
 
-## Security Note
+Authenticated users can save stake plans at:
 
-The files currently reflect a hybrid proof-of-concept implementation. A browser `clientId` is accepted for session routing and local session restoration, but the project should not be treated as a production-grade identity and access system.
+- `GET /account/stake-plans` — returns the signed-in user's plans and reconciles settled prediction results.
+- `POST /account/stake-plan` — saves/locks or unlocks one market's base amount.
 
-## Recommended Production Model
+Each plan is stored in that user's SQLite-backed user record and is independent per market. A win resets its step to 1, a loss advances it, and a skip does not change it. Locking a changed base amount starts a new Step 1 sequence. The Predictions page displays the calculated next stake as guidance only; it does not place a bet and does not alter the extension's configured stakes or automation state.
 
-The recommended direction is to add a full user record model with:
+## Operational security
 
-- Internal user ID.
-- Email or username.
-- Password hash and local credential storage separated from browser storage.
-- Account status and license/subscription status.
-- Last login, last activity, and audit timestamps.
+- Never treat the extension `clientId` as a website account credential.
+- Keep authorization decisions in the server; do not rely on hidden UI controls.
+- Do not expose local automation routes to the public internet.
+- Use HTTPS, persistent SQLite storage, an exact `SITE_ALLOWED_ORIGINS` allowlist, and the signed worker-to-site feed for public hosting.
+- Keep the admin key, Telegram token, database, cookies, and runtime state out of source control.
 
-The current architecture should remain session-based at the local server level, but the user account model should be upgraded toward a more secure access model before live production use.
-
-## Roles and Access
-
-The existing project may keep the following roles conceptually:
-
-- Owner — owns deployment/configuration/license.
-- Operator — can run automation and strategies.
-- Viewer — can read reports and predictions.
-- Administrator — may manage configuration and accounts.
-
-These roles should be enforced server-side, not by the extension.
-
-## Prediction Access Rules
-
-1. The server should not trust a browser-supplied `clientId` alone for authorization.
-2. The session should be tied to a verified authenticated user or a properly scoped token.
-3. Prediction and result access should be filtered to only that user’s session or a safe shared view.
-4. `/ack`, `/config`, `/reset`, and `/stream` execution should carry fresh authorization checks.
-5. License status and feature access should be respected before allowing writes or execution.
-
-## Current Improvement Target
-
-The structure should evolve toward:
-
-- a server-owned session store,
-- authenticated sessions or tokens,
-- authorization checks before `/stream` and `/ack`,
-- permit/deny checks around market access and automation.
-
-This will let the existing local JSON and browser-side model become closer to a production security model without changing the rest of the project structure.
-
-## Current Gap
-
-The current client ID and license-key flow is suitable for local development but should not be treated as production access control until server-side authentication and authorization are implemented.
+For environment setup, approval steps, and deployment details, see `SITE_ACCESS_SETUP.md` and `DEPLOYMENT_GUIDE.md`.

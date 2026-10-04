@@ -6,6 +6,7 @@ const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/p
 const LIVE_PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const games = [
   { id: 'betzero', name: 'BetZero', detail: 'Four-number set. A win means none of the selected numbers appear.' },
+  { id: 'bet49', name: 'Bet49', detail: 'One number pick. A win means the number appears in the next draw.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Two target colors and one eliminated color.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },
@@ -57,16 +58,16 @@ function OwnerTools({ onSession }) {
     finally { window.location.reload(); }
   }
   async function resetMarketStats() {
-    if (!window.confirm('Start a fresh max-loss tracking period now? Existing prediction history will be kept.')) return;
+    if (!window.confirm('Start a fresh max-loss tracking period for all markets on the website and Telegram? Existing prediction history will be kept.')) return;
     setResettingStats(true);
     try {
       const result = await apiRequest('/admin/reset-market-stats', { method: 'POST' });
-      setNotice(`Max-loss tracking restarted ${new Date(result.resetAt).toLocaleString()}. Previous history is preserved.`);
+      setNotice(`Website and Telegram max-loss tracking restarted ${new Date(result.resetAt).toLocaleString()}. Previous history is preserved.`);
     } catch (error) { setNotice(error.message); }
     finally { setResettingStats(false); }
   }
   if (!unlocked) return <section className="content-card owner-tools"><h2>Owner tools</h2><p>Sign in with the server-side admin key to approve accounts or preview each plan. This key must never be placed in website code.</p><form className="auth-form" onSubmit={login}><label htmlFor="owner-key">Site admin key</label><input id="owner-key" type="password" value={key} onChange={(event) => setKey(event.target.value)} autoComplete="off" required /><button className="btn btn-secondary">Unlock owner tools</button>{notice && <p role="status">{notice}</p>}</form></section>;
-  return <section className="content-card owner-tools"><div className="prediction-section-heading"><div><span className="overline">OWNER CONTROLS</span><h2>Approvals &amp; plan preview</h2></div><button className="btn btn-secondary" type="button" onClick={logout}>End owner session</button></div><p>Preview mode changes only this owner session. Approvals change the selected user account.</p><div className="owner-preview-actions"><button className="btn btn-secondary" onClick={() => preview('trial')}>Preview Free Trial</button><button className="btn btn-secondary" onClick={() => preview('premium')}>Preview Premium</button><button className="btn btn-primary" onClick={() => preview('elite')}>Preview Elite</button></div><div className="owner-stats-reset"><div><h3>Prediction statistics</h3><p>Start max-loss tracking from zero while keeping all existing prediction history.</p></div><button className="btn btn-secondary" type="button" onClick={resetMarketStats} disabled={resettingStats}>{resettingStats ? 'Restarting…' : 'Reset max-loss tracking'}</button></div><form className="auth-form" onSubmit={approve}><h3>Manually approve an account</h3><label htmlFor="approval-email">Registered account email</label><input id="approval-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /><label htmlFor="approval-tier">Plan</label><select id="approval-tier" value={tier} onChange={(event) => setTier(event.target.value)}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select><label htmlFor="approval-months">Duration (months)</label><input id="approval-months" type="number" min="1" max="12" value={months} onChange={(event) => setMonths(event.target.value)} /><fieldset className="premium-game-picker"><legend>Premium games / preview selection</legend>{games.map(game => <label key={game.id}><input type="checkbox" checked={gamesSelected.includes(game.id)} onChange={() => setGamesSelected(current => current.includes(game.id) ? current.filter(id => id !== game.id) : [...current, game.id])} /><span>{game.name}</span></label>)}</fieldset><button className="btn btn-primary">Save manual approval</button><button className="btn btn-secondary" type="button" onClick={loadUsers}>Refresh account list</button>{notice && <p role="status">{notice}</p>}</form>{users.length > 0 && <div className="owner-user-list"><h3>Accounts</h3>{users.map(user => <p key={user.email}><strong>{user.email}</strong> · {user.plan?.tier || 'trial'} · {user.expiresAt > Date.now() ? new Date(user.expiresAt).toLocaleDateString() : 'expired / trial'}</p>)}</div>}</section>;
+  return <section className="content-card owner-tools"><div className="prediction-section-heading"><div><span className="overline">OWNER CONTROLS</span><h2>Approvals &amp; plan preview</h2></div><button className="btn btn-secondary" type="button" onClick={logout}>End owner session</button></div><p>Preview mode changes only this owner session. Approvals change the selected user account.</p><div className="owner-preview-actions"><button className="btn btn-secondary" onClick={() => preview('trial')}>Preview Free Trial</button><button className="btn btn-secondary" onClick={() => preview('premium')}>Preview Premium</button><button className="btn btn-primary" onClick={() => preview('elite')}>Preview Elite</button></div><div className="owner-stats-reset"><div><h3>Prediction statistics</h3><p>Start a shared max-loss tracking period for the website and Telegram while preserving all existing prediction history.</p></div><button className="btn btn-secondary" type="button" onClick={resetMarketStats} disabled={resettingStats}>{resettingStats ? 'Restarting…' : 'Reset max-loss tracking'}</button></div><form className="auth-form" onSubmit={approve}><h3>Manually approve an account</h3><label htmlFor="approval-email">Registered account email</label><input id="approval-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /><label htmlFor="approval-tier">Plan</label><select id="approval-tier" value={tier} onChange={(event) => setTier(event.target.value)}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select><label htmlFor="approval-months">Duration (months)</label><input id="approval-months" type="number" min="1" max="12" value={months} onChange={(event) => setMonths(event.target.value)} /><fieldset className="premium-game-picker"><legend>Premium games / preview selection</legend>{games.map(game => <label key={game.id}><input type="checkbox" checked={gamesSelected.includes(game.id)} onChange={() => setGamesSelected(current => current.includes(game.id) ? current.filter(id => id !== game.id) : [...current, id])} /><span>{game.name}</span></label>)}</fieldset><button className="btn btn-primary">Save manual approval</button><button className="btn btn-secondary" type="button" onClick={loadUsers}>Refresh account list</button>{notice && <p role="status">{notice}</p>}</form>{users.length > 0 && <div className="owner-user-list"><h3>Accounts</h3>{users.map(user => <p key={user.email}><strong>{user.email}</strong> · {user.plan?.tier || 'trial'} · {user.expiresAt > Date.now() ? new Date(user.expiresAt).toLocaleDateString() : 'expired / trial'}</p>)}</div>}</section>;
 }
 
 function formatCountdown(seconds) {
@@ -78,6 +79,64 @@ function formatCountdown(seconds) {
   return hours > 0
     ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
     : `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function formatPredictionUpdate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function formatStake(value) {
+  return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function getRecommendedStake(marketId, baseAmount, step, prediction) {
+  const aliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
+  const market = marketId === 'unified'
+    ? aliases[prediction?.predicted?.unified?.key] || prediction?.predicted?.unified?.key
+    : marketId;
+  if (!market) return null;
+
+  const marketStrategies = {
+    betzero: { odds: 1.65 },
+    bet49: { odds: 7.8, bet49: true },
+    rainbow: { odds: 1.5 },
+    hilo: { odds: 2, multiplier: 2 },
+    totalColor: { odds: 3.8, costFactor: 3 },
+    totalColor2: { odds: 3.8, costFactor: 2 },
+  };
+  const strategy = marketStrategies[market];
+  if (!strategy) return null;
+
+  const base = Number(baseAmount);
+  const safeStep = Number.isSafeInteger(Number(step)) ? Math.max(1, Number(step)) : 1;
+  if (!Number.isFinite(base) || base < 0.01) return null;
+  const roundMoney = value => Math.round((value + Number.EPSILON) * 100) / 100;
+  const targetProfit = base * (strategy.odds - 1);
+  let totalCost = 0;
+  let nextStake = base;
+
+  for (let currentStep = 1; currentStep <= safeStep; currentStep += 1) {
+    if (strategy.multiplier) {
+      nextStake = roundMoney(currentStep === 1 ? base : nextStake * strategy.multiplier);
+    } else if (strategy.costFactor) {
+      nextStake = roundMoney(currentStep === 1
+        ? base
+        : strategy.costFactor === 2
+          ? (totalCost + base) / 1.8
+          : totalCost / 0.8);
+    } else {
+      const stepProfitTarget = strategy.bet49
+        ? targetProfit + ((currentStep - 1) * base)
+        : targetProfit;
+      nextStake = roundMoney(currentStep === 1 ? base : (totalCost + stepProfitTarget) / (strategy.odds - 1));
+    }
+    if (!Number.isFinite(nextStake)) return null;
+    totalCost += nextStake * (strategy.costFactor || 1);
+  }
+  return nextStake;
 }
 
 function SummaryModelBadge({ label }) {
@@ -97,6 +156,12 @@ function LiveMarketPick({ record, marketId }) {
   if (marketId === 'betzero') {
     return predicted.betzero?.length
       ? <span className="pick-balls">{predicted.betzero.map((number, index) => <span className={`ball-number ball-${getBallColor(number)}`} key={`${number}-${index}`}>{number}</span>)}</span>
+      : <span className="no-pick">Waiting</span>;
+  }
+  if (marketId === 'bet49') {
+    const number = predicted.bet49;
+    return Number.isInteger(Number(number)) && Number(number) >= 1 && Number(number) <= 49
+      ? <span className={`ball-number ball-${getBallColor(number)}`}>{number}</span>
       : <span className="no-pick">Waiting</span>;
   }
   if (marketId === 'rainbow') {
@@ -140,6 +205,13 @@ export default function PredictionsPage() {
   const [clock, setClock] = useState(null);
   const [marketPredictions, setMarketPredictions] = useState({});
   const [previousPrediction, setPreviousPrediction] = useState(null);
+  const [predictionLastUpdated, setPredictionLastUpdated] = useState(null);
+  const [stakePlans, setStakePlans] = useState({});
+  const [stakeDrafts, setStakeDrafts] = useState({});
+  const [stakePlanNotice, setStakePlanNotice] = useState('');
+  const [stakePlanError, setStakePlanError] = useState('');
+  const [stakePlansLoading, setStakePlansLoading] = useState(false);
+  const [savingStakePlan, setSavingStakePlan] = useState(false);
   const [now, setNow] = useState(Date.now());
   const secondsLeft = clock
     ? Math.max(0, Number(clock.timeLeftSeconds) - Math.floor((now - clock.receivedAt) / 1000))
@@ -180,6 +252,35 @@ export default function PredictionsPage() {
   }, []);
 
   useEffect(() => {
+    if (sessionKind !== 'account') {
+        setStakePlans({});
+        setStakePlansLoading(false);
+        return undefined;
+    }
+    let active = true;
+    async function refreshStakePlans() {
+        try {
+          const payload = await apiRequest('/account/stake-plans');
+          if (active) {
+            setStakePlans(payload.plans || {});
+            setStakePlanError('');
+          }
+        } catch (error) {
+          if (active) setStakePlanError(error.message);
+        } finally {
+          if (active) setStakePlansLoading(false);
+        }
+    }
+    setStakePlansLoading(true);
+    refreshStakePlans();
+    const refreshInterval = window.setInterval(refreshStakePlans, 10000);
+    return () => {
+        active = false;
+        window.clearInterval(refreshInterval);
+    };
+  }, [sessionKind]);
+
+  useEffect(() => {
     let active = true;
     async function refreshPrediction() {
       const plan = previewPlan || accountPlan;
@@ -195,6 +296,8 @@ export default function PredictionsPage() {
         if (active) {
           setMarketPredictions(Object.fromEntries(results.map(([market, payload]) => [market, payload.prediction || null])));
           setPreviousPrediction(results[0]?.[1]?.previous || null);
+          const updatedPayload = results.find(([, payload]) => payload.lastUpdated);
+          setPredictionLastUpdated(updatedPayload ? updatedPayload[1].lastUpdated : null);
         }
       } catch {
         if (active) { setMarketPredictions({}); setPreviousPrediction(null); }
@@ -207,6 +310,33 @@ export default function PredictionsPage() {
       window.clearInterval(predictionPoll);
     };
   }, [sessionKind, accountPlan, previewPlan, activeMarketId]);
+
+  async function saveStakePlan(locked) {
+    const plan = stakePlans[activeGame.id];
+    const baseAmount = Number(stakeDrafts[activeGame.id] ?? plan?.baseAmount);
+    if (!Number.isFinite(baseAmount) || baseAmount < 0.01 || baseAmount > 1_000_000_000) {
+      setStakePlanError('Enter a base stake of at least ₦0.01 and no more than ₦1,000,000,000.');
+      return;
+    }
+    setSavingStakePlan(true);
+    setStakePlanError('');
+    setStakePlanNotice('');
+    try {
+      const result = await apiRequest('/account/stake-plan', {
+        method: 'POST',
+        body: JSON.stringify({ market: activeGame.id, baseAmount, locked }),
+      });
+      setStakePlans(current => ({ ...current, [activeGame.id]: result.plan }));
+      setStakeDrafts(current => ({ ...current, [activeGame.id]: String(result.plan.baseAmount) }));
+      setStakePlanNotice(locked
+        ? `${activeGame.name} base stake saved and locked.`
+        : `${activeGame.name} base stake unlocked for editing.`);
+    } catch (error) {
+      setStakePlanError(error.message);
+    } finally {
+      setSavingStakePlan(false);
+    }
+  }
 
   const currentPrediction = Object.values(marketPredictions).find(record => record && clock?.drawId === record.drawId) || null;
   const activeGame = games.find(game => game.id === activeMarketId) || games[0];
@@ -222,14 +352,14 @@ export default function PredictionsPage() {
       </section>
 
       <section className="prediction-countdown" aria-label="Time remaining until the next prediction">
-        <div className="countdown-copy"><span className="overline">LIVE DRAW CLOCK</span><strong>Time left for the next prediction</strong><span>{clock ? `Draw #${clock.drawId}` : 'Waiting for the live clock from the bot…'}</span></div>
+        <div className="countdown-copy"><span className="overline">LIVE DRAW CLOCK</span><strong>Time left for the next prediction</strong><span>{clock ? `Draw #${clock.drawId}` : 'Waiting for the live clock from the bot…'}</span>{formatPredictionUpdate(predictionLastUpdated) && <time className="prediction-last-updated" dateTime={predictionLastUpdated}>Prediction last updated: {formatPredictionUpdate(predictionLastUpdated)}</time>}</div>
         <div className="countdown-display" aria-live="off">{formatCountdown(secondsLeft)}</div>
         <span className={`countdown-live${clock && now - clock.receivedAt < 15000 ? ' is-live' : ''}`}><i />{clock && now - clock.receivedAt < 15000 ? 'LIVE' : 'CONNECTING'}</span>
       </section>
 
       <section className="prediction-access-state" aria-label="Current access status">
         <span className="access-state-icon" aria-hidden="true">◉</span>
-        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'All six markets are available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
+        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'All seven markets are available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
         <a className="btn btn-secondary" href="pricing.html">Compare plans</a>
       </section>
 
@@ -239,7 +369,7 @@ export default function PredictionsPage() {
 
       <section className="prediction-games-section" aria-labelledby="available-games-title">
         <div className="prediction-section-heading">
-          <div><span className="overline">SIX MARKETS</span><h2 id="available-games-title">Current prediction{currentPrediction ? ` · Draw #${currentPrediction.drawId}` : ''}</h2></div>
+          <div><span className="overline">SEVEN MARKETS</span><h2 id="available-games-title">Current prediction{currentPrediction ? ` · Draw #${currentPrediction.drawId}` : ''}</h2></div>
           <a className="text-link" href="guide.html">Read the market guide <span aria-hidden="true">→</span></a>
         </div>
         <div className="prediction-market-browser">
@@ -278,6 +408,32 @@ export default function PredictionsPage() {
               <div className="game-last-pick"><LiveMarketPick record={previousPrediction} marketId={activeGame.id} /></div>
               <span className={`outcome-badge ${String(previousPrediction?.result?.[activeGame.id] || 'pending').toLowerCase()}`}>{previousPrediction?.result?.[activeGame.id] || 'WAITING'}</span>
             </div>
+            <section className="prediction-stake-plan" aria-label={`${activeGame.name} personal stake plan`}>
+              <div className="prediction-stake-plan-heading"><div><span className="overline">YOUR MARTINGALE PLAN</span><strong>{activeGame.name}</strong></div>{stakePlans[activeGame.id]?.locked && <span className="stake-plan-lock-state">LOCKED</span>}</div>
+              {sessionKind !== 'account'
+                ? <p className="stake-plan-message">Sign in to save a personal base stake and track this market’s steps.</p>
+                : !activeMarketHasAccess
+                  ? <p className="stake-plan-message">Your plan needs access to this market before a personal stake plan can be set.</p>
+                  : stakePlansLoading
+                    ? <p className="stake-plan-message">Loading your saved stake plan…</p>
+                    : stakePlans[activeGame.id]?.locked
+                      ? <div className="stake-plan-locked">
+                        <div><span>Locked base stake</span><strong>{formatStake(stakePlans[activeGame.id].baseAmount)}</strong></div>
+                        <div><span>Next step</span><strong>Step {stakePlans[activeGame.id].step}</strong></div>
+                        <div className="stake-plan-recommendation"><span>Recommended stake</span><strong>{getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction) === null
+                          ? 'Waiting for pick'
+                          : formatStake(getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction))}</strong></div>
+                        <button className="btn btn-secondary" type="button" disabled={savingStakePlan} onClick={() => saveStakePlan(false)}>Change base stake</button>
+                      </div>
+                      : <form className="stake-plan-form" onSubmit={event => { event.preventDefault(); saveStakePlan(true); }}>
+                        <label htmlFor={`stake-base-${activeGame.id}`}>Base stake (₦)</label>
+                        <input id={`stake-base-${activeGame.id}`} type="number" min="0.01" max="1000000000" step="0.01" inputMode="decimal" value={stakeDrafts[activeGame.id] ?? stakePlans[activeGame.id]?.baseAmount ?? ''} onChange={event => setStakeDrafts(current => ({ ...current, [activeGame.id]: event.target.value }))} placeholder="Enter your base stake" required />
+                        <button className="btn btn-primary" type="submit" disabled={savingStakePlan}>{savingStakePlan ? 'Saving…' : 'Lock base stake'}</button>
+                      </form>}
+              {stakePlanError && sessionKind === 'account' && <p className="stake-plan-error" role="alert">{stakePlanError}</p>}
+              {stakePlanNotice && <p className="stake-plan-notice" role="status">{stakePlanNotice}</p>}
+              <p className="stake-plan-disclaimer">A loss advances this market’s step; a win returns it to Step 1. Skips do not change the step. Stakes are estimates only and do not place bets.</p>
+            </section>
           </article>
         </div>
       </section>
