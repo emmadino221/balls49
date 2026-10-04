@@ -499,15 +499,58 @@ const ML_RETRAINER_SCRIPT = path.join(__dirname, 'ml_retrainer.py');
 let modelRefreshMarkers = { 10: 0, 50: 0, 100: 0 };
 
 function loadJSON(file, fallback) {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return fallback; }
+    let contents;
+    try {
+        contents = fs.readFileSync(file, 'utf8');
+    } catch (error) {
+        if (error.code === 'ENOENT') return fallback;
+        const message = `[Persistence] Failed to read JSON file "${file}": ${error.message || error}`;
+        console.error(message);
+        throw new Error(message);
+    }
+
+    try {
+        return JSON.parse(contents);
+    } catch (error) {
+        const message = `[Persistence] Failed to parse JSON file "${file}": ${error.message || error}`;
+        console.error(message);
+        throw new Error(message);
+    }
 }
 
 function saveJSON(file, data) {
-    try { fs.writeFileSync(file, JSON.stringify(data, null, 2)); } catch (e) {}
+    let serialized;
+    try {
+        serialized = JSON.stringify(data, null, 2);
+        if (serialized === undefined) throw new TypeError('JSON serialization returned no data.');
+    } catch (error) {
+        const message = `[Persistence] Failed to serialize JSON for "${file}": ${error.message || error}`;
+        console.error(message);
+        throw new Error(message);
+    }
+
+    const temporaryFile = `${file}.${process.pid}.tmp`;
+    try {
+        fs.writeFileSync(temporaryFile, serialized);
+        fs.renameSync(temporaryFile, file);
+    } catch (error) {
+        try {
+            fs.unlinkSync(temporaryFile);
+        } catch (cleanupError) {
+            if (cleanupError.code !== 'ENOENT') {
+                console.error(`[Persistence] Could not remove temporary file "${temporaryFile}": ${cleanupError.message || cleanupError}`);
+            }
+        }
+        const message = `[Persistence] Failed to write JSON file "${file}": ${error.message || error}`;
+        console.error(message);
+        throw new Error(message);
+    }
 }
 
 let telegramPredictionOutbox = loadJSON(TELEGRAM_PREDICTION_OUTBOX_FILE, []);
-if (!Array.isArray(telegramPredictionOutbox)) telegramPredictionOutbox = [];
+if (!Array.isArray(telegramPredictionOutbox)) {
+    throw new Error(`[Persistence] Telegram prediction outbox "${TELEGRAM_PREDICTION_OUTBOX_FILE}" must contain a JSON array; refusing to discard queued predictions.`);
+}
 let telegramPredictionDeliveryInFlight = false;
 
 const persistedState = SITE_PUBLIC_MODE ? {} : loadJSON(SESSION_STATE_FILE, {});
@@ -583,7 +626,13 @@ function restoreSession(session, clientId) {
 }
 
 if (!SITE_PUBLIC_MODE) {
-    setInterval(persistSessions, 5000);
+    setInterval(() => {
+        try {
+            persistSessions();
+        } catch (error) {
+            console.error(`[Persistence] Session state was not saved: ${error.message || error}`);
+        }
+    }, 5000);
     process.on('SIGINT', () => { persistSessions(); process.exit(0); });
     process.on('SIGTERM', () => { persistSessions(); process.exit(0); });
 }
@@ -606,11 +655,12 @@ function getBallEmoji(n) {
 }
 
 let predictionLog = SITE_PUBLIC_MODE ? [] : loadJSON(PREDICTIONS_FILE, []);
+if (!Array.isArray(predictionLog)) {
+    throw new Error(`[Persistence] Prediction history "${PREDICTIONS_FILE}" must contain a JSON array.`);
+}
 if (!SITE_PUBLIC_MODE) {
-    try {
-        const persisted = loadJSON(LAST_PRED_FILE, null);
-        if (persisted && persisted.drawId && persisted.pred) lastPrediction = persisted;
-    } catch (e) {}
+    const persisted = loadJSON(LAST_PRED_FILE, null);
+    if (persisted && persisted.drawId && persisted.pred) lastPrediction = persisted;
 }
 
 if (SITE_PUBLIC_MODE) {
@@ -977,21 +1027,19 @@ function getAdaptiveLongRunCalibration(key, history = predictionLog) {
 }
 
 function ensureModelStore() {
-    try {
-        if (!fs.existsSync(path.dirname(ML_RETRAIN_FILE))) fs.mkdirSync(path.dirname(ML_RETRAIN_FILE), { recursive: true });
-        if (!fs.existsSync(ML_RETRAIN_FILE)) {
-            saveJSON(ML_RETRAIN_FILE, {
-                version: 1,
-                updatedAt: null,
-                marketModels: {
-                    u4: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 },
-                    color: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 },
-                    sum: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 },
-                    totalColor: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 }
-                }
-            });
-        }
-    } catch (e) {}
+    if (!fs.existsSync(path.dirname(ML_RETRAIN_FILE))) fs.mkdirSync(path.dirname(ML_RETRAIN_FILE), { recursive: true });
+    if (!fs.existsSync(ML_RETRAIN_FILE)) {
+        saveJSON(ML_RETRAIN_FILE, {
+            version: 1,
+            updatedAt: null,
+            marketModels: {
+                u4: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 },
+                color: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 },
+                sum: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 },
+                totalColor: { samples: 0, bias: 0, winRate10: 0.50, winRate50: 0.50, winRate100: 0.50 }
+            }
+        });
+    }
 }
 
 function getMarketResultKey(key) {
@@ -1809,13 +1857,8 @@ function sendTelegramToChat(chatId, label, text) {
 }
 
 function persistTelegramPredictionOutbox() {
-    try {
-        fs.writeFileSync(TELEGRAM_PREDICTION_OUTBOX_FILE, JSON.stringify(telegramPredictionOutbox, null, 2));
-        return true;
-    } catch (error) {
-        console.error(`[Telegram] Could not persist prediction outbox (${error.code || 'file error'}).`);
-        return false;
-    }
+    saveJSON(TELEGRAM_PREDICTION_OUTBOX_FILE, telegramPredictionOutbox);
+    return true;
 }
 
 function queueTelegramPrediction(drawId, text) {
@@ -1935,12 +1978,12 @@ async function sendPrediction(drawId, drawDate, pred) {
         pred.unifiedPick = best;
         const unifiedNames = { u4: 'BetZero', color: 'Rainbow', sum: 'High / Low', totalColor: 'Total Color 3-way' };
         const unifiedPicks = {
-            u4: pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' '),
-            color: `${cEm[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`,
-            sum: pred.sumRange,
-            totalColor: `${pred.totalColorPred.topColors.map(color => `${cEm[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')} (avoid ${cEm[pred.totalColorPred.noWinColor] || '⚪'} ${pred.totalColorPred.noWinColor.toUpperCase()})`
+            u4: () => pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' '),
+            color: () => `${cEm[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`,
+            sum: () => pred.sumRange,
+            totalColor: () => `${pred.totalColorPred.topColors.map(color => `${cEm[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')} (avoid ${cEm[pred.totalColorPred.noWinColor] || '⚪'} ${pred.totalColorPred.noWinColor.toUpperCase()})`
         };
-        unifiedFormat = `Selected market: <b>${unifiedNames[best.key]}</b>\nPick: <b>${unifiedPicks[best.key]}</b>${summaryLabelFor(best.key)}`;
+        unifiedFormat = `Selected market: <b>${unifiedNames[best.key]}</b>\nPick: <b>${unifiedPicks[best.key]()}</b>${summaryLabelFor(best.key)}`;
     } else {
         pred.unifiedPick = null;
         unifiedFormat = '⏳ No pick this draw';
@@ -3310,10 +3353,12 @@ async function tick() {
                 }
             }
         }
-    } catch (e) {}
+    } catch (error) {
+        console.error('[ERROR] Tick failed:', error.stack || error.message || error);
+    }
 }
 
-http.createServer(async (req, res) => {
+async function handleHttpRequest(req, res) {
     const origin = req.headers.origin;
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
     const isPredictionIngest = req.method === 'POST' && parsedUrl.pathname === '/internal/prediction-snapshot';
@@ -4383,6 +4428,14 @@ http.createServer(async (req, res) => {
             }
         });
     } else { res.writeHead(404); res.end(); }
+}
+
+http.createServer((req, res) => {
+    handleHttpRequest(req, res).catch(error => {
+        console.error(`[HTTP] Request failed: ${error.message || error}`);
+        if (!res.headersSent) sendJson(res, 500, { error: 'Internal server error.' });
+        else res.destroy();
+    });
 }).listen(PORT, process.env.HOST || (SITE_PUBLIC_MODE ? '0.0.0.0' : '127.0.0.1'), () => {
     const host = process.env.HOST || (SITE_PUBLIC_MODE ? '0.0.0.0' : '127.0.0.1');
     console.log(`[Server] Core active on ${host}:${PORT}${SITE_PUBLIC_MODE ? ' (public website routes only)' : ' (local mode)'}`);
