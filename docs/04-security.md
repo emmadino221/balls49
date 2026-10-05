@@ -10,6 +10,7 @@ Public website mode exposes an explicit allowlist of account, admin, read-only p
 
 - The Node worker reads `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` from its environment for channel broadcasts; personal Telegram destinations are configured separately for user sessions. The optional standalone `bot.py` sequence-calculator bot also reads `TELEGRAM_BOT_TOKEN`.
 - `SITE_ADMIN_KEY`, `PREDICTION_INGEST_SECRET`, and optional `GOOGLE_SHEET_URL` belong only in server/worker environment configuration.
+- `RESEND_API_KEY` belongs only in the hosted API environment. The API sends one-time, expiring email-verification links before creating or approving member accounts.
 - Never put server secrets in source code, the extension, website code, or `VITE_*` build variables.
 - Rotate any credential that may have been committed or shared.
 

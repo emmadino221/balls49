@@ -39,6 +39,13 @@ siteDb.exec(`
         expires_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS site_sessions_expiry_idx ON site_sessions(expires_at);
+    CREATE TABLE IF NOT EXISTS site_email_verifications (
+        email TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        pending_name TEXT,
+        expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS site_email_verifications_expiry_idx ON site_email_verifications(expires_at);
     CREATE TABLE IF NOT EXISTS public_prediction_feed (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         current_json TEXT,
@@ -89,6 +96,15 @@ const saveSiteUserStatement = siteDb.prepare(`
     ON CONFLICT(email) DO UPDATE SET user_json = excluded.user_json
 `);
 const createSiteUserStatement = siteDb.prepare('INSERT INTO site_users(email, user_json) VALUES (?, ?)');
+const getEmailVerificationByHashStatement = siteDb.prepare('SELECT email, pending_name, expires_at FROM site_email_verifications WHERE token_hash = ?');
+const upsertEmailVerificationStatement = siteDb.prepare(`
+    INSERT INTO site_email_verifications(email, token_hash, pending_name, expires_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(email) DO UPDATE SET
+        token_hash = excluded.token_hash,
+        pending_name = excluded.pending_name,
+        expires_at = excluded.expires_at
+`);
+const deleteEmailVerificationStatement = siteDb.prepare('DELETE FROM site_email_verifications WHERE email = ?');
 const getPublicPredictionFeedStatement = siteDb.prepare('SELECT * FROM public_prediction_feed WHERE id = 1');
 const getSiteSettingStatement = siteDb.prepare('SELECT setting_value FROM site_settings WHERE setting_key = ?');
 const setSiteSettingStatement = siteDb.prepare(`
@@ -158,6 +174,21 @@ if (!SITE_PUBLIC_MODE && PREDICTION_INGEST_URL) {
 }
 const SITE_ALLOWED_ORIGINS = new Set((process.env.SITE_ALLOWED_ORIGINS || (SITE_PUBLIC_MODE ? '' : 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://logigames.bet9ja.com'))
     .split(',').map(origin => origin.trim()).filter(Boolean));
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const SITE_EMAIL_FROM = process.env.SITE_EMAIL_FROM || '';
+const SITE_PUBLIC_URL = process.env.SITE_PUBLIC_URL || [...SITE_ALLOWED_ORIGINS][0] || 'http://localhost:5173';
+let parsedSitePublicUrl;
+try {
+    parsedSitePublicUrl = new URL(SITE_PUBLIC_URL);
+    if (!['http:', 'https:'].includes(parsedSitePublicUrl.protocol) || parsedSitePublicUrl.username || parsedSitePublicUrl.password
+        || parsedSitePublicUrl.pathname !== '/' || parsedSitePublicUrl.search || parsedSitePublicUrl.hash
+        || (SITE_PUBLIC_MODE && parsedSitePublicUrl.protocol !== 'https:')) {
+        throw new Error();
+    }
+} catch {
+    throw new Error('SITE_PUBLIC_URL must be an HTTPS site origin in public mode.');
+}
+siteDb.prepare('DELETE FROM site_email_verifications WHERE expires_at <= ?').run(Date.now());
 if (SITE_PUBLIC_MODE && SITE_ALLOWED_ORIGINS.size === 0) {
     throw new Error('SITE_ALLOWED_ORIGINS must contain the deployed website origin when SITE_PUBLIC_MODE=true.');
 }
@@ -165,6 +196,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
+    'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan',
     'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
     'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout'
@@ -187,6 +219,40 @@ function getSiteUser(email) {
 }
 function getSiteUsers() {
     return listSiteUsersStatement.all().map(row => JSON.parse(row.user_json));
+}
+function issueSiteEmailVerification(email, pendingName = null) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    upsertEmailVerificationStatement.run(email, tokenHash, pendingName, expiresAt);
+    return token;
+}
+async function sendSiteEmailVerification(email, name, token) {
+    if (!RESEND_API_KEY || !SITE_EMAIL_FROM) throw new Error('Email verification is not configured.');
+    const verificationUrl = new URL('/verify-email.html', parsedSitePublicUrl);
+    verificationUrl.searchParams.set('token', token);
+    const safeName = String(name || 'there').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+    const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${RESEND_API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            from: SITE_EMAIL_FROM,
+            to: [email],
+            subject: 'Verify your Emmy-Bet email',
+            text: `Hi ${name || 'there'},\n\nVerify your email and finish creating your Emmy-Bet account by opening this link:\n${verificationUrl}\n\nThis link expires in 24 hours. If you did not request an account, you can ignore this email.`,
+            html: `<p>Hi ${safeName},</p><p>Verify your email and finish creating your Emmy-Bet account:</p><p><a href="${verificationUrl}">Verify email</a></p><p>This link expires in 24 hours. If you did not request an account, you can ignore this email.</p>`
+        }),
+        signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) {
+        console.error(`[SiteAuth] Verification email provider returned HTTP ${response.status}.`);
+        throw new Error('Verification email could not be sent.');
+    }
 }
 function sendJson(res, status, data) {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -294,8 +360,9 @@ function allowSiteAuthAttempt(req, res, rules) {
 function publicAccount(session) {
     if (!session || session.admin) return null;
     const user = getSiteUser(session.email);
-    const plan = user && user.expiresAt > Date.now() ? user.plan : { tier: 'trial', games: [], expiresAt: null, telegram: false };
-    return { email: session.email, plan };
+    const emailVerified = user?.emailVerified === true;
+    const plan = emailVerified && user.expiresAt > Date.now() ? user.plan : { tier: 'trial', games: [], expiresAt: null, telegram: false };
+    return { email: session.email, emailVerified, plan };
 }
 function latestSettledPredictionDrawId() {
     return predictionLog.reduce((latestId, record) => {
@@ -3606,30 +3673,147 @@ async function handleHttpRequest(req, res) {
     const clientId = parsedUrl.searchParams.get('clientId');
 
     if (parsedUrl.pathname === '/auth/signup' && req.method === 'POST') {
-        if (!allowSiteAuthAttempt(req, res, [{ scope: 'signup-ip', limit: 120, windowMs: 60 * 60 * 1000 }])) return;
         try {
             const data = await readRequestJson(req);
             const email = String(data.email || '').trim().toLowerCase();
+            const name = String(data.name || '').trim().slice(0, 100);
+            if (!allowSiteAuthAttempt(req, res, [
+                { scope: 'signup-ip', limit: 10, windowMs: 60 * 60 * 1000 },
+                { scope: 'signup-email', identity: email.slice(0, 254), limit: 3, windowMs: 60 * 60 * 1000 }
+            ])) return;
+            if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254 || !name) {
+                return sendJson(res, 400, { error: 'Enter your name and a valid email address.' });
+            }
+            if (!RESEND_API_KEY || !SITE_EMAIL_FROM) {
+                return sendJson(res, 503, { error: 'Email verification is not configured. Please contact the site owner.' });
+            }
+            if (getSiteUser(email)) {
+                return sendJson(res, 409, { error: 'An account with this email already exists. Sign in or request a verification email.' });
+            }
+            const verificationToken = issueSiteEmailVerification(email, name);
+            try {
+                await sendSiteEmailVerification(email, name, verificationToken);
+            } catch (error) {
+                console.error('[SiteAuth] Could not send a signup verification email.');
+                return sendJson(res, 503, { error: 'We could not send the verification email. Please try again shortly.' });
+            }
+            return sendJson(res, 201, { verificationRequired: true });
+        } catch (error) {
+            console.error('[SiteAuth] Signup request failed.');
+            return sendJson(res, 500, { error: 'Signup could not be completed. Please try again.' });
+        }
+    }
+
+    if (parsedUrl.pathname === '/auth/verification-status' && req.method === 'GET') {
+        const token = String(parsedUrl.searchParams.get('token') || '');
+        if (!/^[a-f0-9]{64}$/.test(token)) return sendJson(res, 400, { error: 'This verification link is invalid or has expired.' });
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const verification = getEmailVerificationByHashStatement.get(tokenHash);
+        if (!verification || verification.expires_at <= Date.now()) {
+            return sendJson(res, 400, { error: 'This verification link is invalid or has expired. Request a new one and try again.' });
+        }
+        const user = getSiteUser(verification.email);
+        if (!user && verification.pending_name === null) {
+            return sendJson(res, 400, { error: 'This verification link is invalid or has expired. Request a new one and try again.' });
+        }
+        return sendJson(res, 200, { requiresPassword: !user, name: user?.name || verification.pending_name });
+    }
+
+    if (parsedUrl.pathname === '/auth/verify-email' && req.method === 'POST') {
+        if (!allowSiteAuthAttempt(req, res, [{ scope: 'verify-email-ip', limit: 30, windowMs: 60 * 60 * 1000 }])) return;
+        try {
+            const data = await readRequestJson(req);
+            const token = String(data.token || '');
             const password = String(data.password || '');
-            if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 10) return sendJson(res, 400, { error: 'Enter a valid email and a password with at least 10 characters.' });
-            if (getSiteUser(email)) return sendJson(res, 409, { error: 'An account with this email already exists.' });
-            const salt = crypto.randomBytes(16).toString('hex');
-            const passwordHash = await new Promise((resolve, reject) => crypto.scrypt(password, salt, 64, (error, key) => error ? reject(error) : resolve(key.toString('hex'))));
-            const user = { email, name: String(data.name || '').trim().slice(0, 100), salt, passwordHash, plan: { tier: 'trial', games: [], expiresAt: null, telegram: false }, expiresAt: 0, createdAt: new Date().toISOString() };
-            const token = crypto.randomBytes(32).toString('hex');
-            const expiresAt = Date.now() + 30 * 86400000;
+            if (!/^[a-f0-9]{64}$/.test(token)) return sendJson(res, 400, { error: 'This verification link is invalid or has expired.' });
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+            const initialVerification = getEmailVerificationByHashStatement.get(tokenHash);
+            if (!initialVerification || initialVerification.expires_at <= Date.now()) {
+                return sendJson(res, 400, { error: 'This verification link is invalid or has expired. Request a new one and try again.' });
+            }
+            const initialUser = getSiteUser(initialVerification.email);
+            if (!initialUser && (initialVerification.pending_name === null || password.length < 10)) {
+                return sendJson(res, 400, { error: 'Create a password with at least 10 characters to finish signing up.' });
+            }
+            const newUserCredentials = initialUser ? null : await new Promise((resolve, reject) => {
+                const salt = crypto.randomBytes(16).toString('hex');
+                crypto.scrypt(password, salt, 64, (error, key) => error
+                    ? reject(error)
+                    : resolve({ salt, passwordHash: key.toString('hex') }));
+            });
+            const sessionTokenValue = crypto.randomBytes(32).toString('hex');
+            const sessionExpiresAt = Date.now() + 30 * 86400000;
             siteDb.exec('BEGIN IMMEDIATE');
             try {
-                createSiteUser(user);
-                siteSessions.create(token, { email, expiresAt });
+                const verification = getEmailVerificationByHashStatement.get(tokenHash);
+                if (!verification || verification.expires_at <= Date.now()) {
+                    siteDb.exec('ROLLBACK');
+                    return sendJson(res, 400, { error: 'This verification link is invalid or has expired. Request a new one and try again.' });
+                }
+                let user = getSiteUser(verification.email);
+                if (user) {
+                    user.emailVerified = true;
+                    saveSiteUser(user);
+                } else {
+                    if (verification.pending_name === null || !newUserCredentials) {
+                        siteDb.exec('ROLLBACK');
+                        return sendJson(res, 400, { error: 'This verification link is invalid or has expired. Request a new one and try again.' });
+                    }
+                    user = {
+                        email: verification.email,
+                        name: verification.pending_name,
+                        ...newUserCredentials,
+                        emailVerified: true,
+                        plan: { tier: 'trial', games: [], expiresAt: null, telegram: false },
+                        expiresAt: 0,
+                        createdAt: new Date().toISOString()
+                    };
+                    createSiteUser(user);
+                }
+                deleteEmailVerificationStatement.run(verification.email);
+                siteSessions.create(sessionTokenValue, { email: verification.email, expiresAt: sessionExpiresAt });
                 siteDb.exec('COMMIT');
             } catch (error) {
                 siteDb.exec('ROLLBACK');
                 throw error;
             }
-            setSessionCookie(res, token, 30 * 86400);
-            return sendJson(res, 201, { account: publicAccount({ email }) });
-        } catch { return sendJson(res, 400, { error: 'Invalid signup request.' }); }
+            setSessionCookie(res, sessionTokenValue, 30 * 86400);
+            return sendJson(res, 200, { account: publicAccount({ email: initialVerification.email }) });
+        } catch (error) {
+            console.error('[SiteAuth] Email verification request failed.');
+            return sendJson(res, 500, { error: 'Email verification could not be completed. Please try again.' });
+        }
+    }
+
+    if (parsedUrl.pathname === '/auth/resend-verification' && req.method === 'POST') {
+        try {
+            const data = await readRequestJson(req);
+            const email = String(data.email || '').trim().toLowerCase();
+            if (!allowSiteAuthAttempt(req, res, [
+                { scope: 'resend-verification-ip', limit: 20, windowMs: 60 * 60 * 1000 },
+                { scope: 'resend-verification-email', identity: email.slice(0, 254), limit: 3, windowMs: 60 * 60 * 1000 }
+            ])) return;
+            if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) {
+                return sendJson(res, 200, { message: 'If this email needs verification, we will send a link shortly.' });
+            }
+            if (!RESEND_API_KEY || !SITE_EMAIL_FROM) {
+                return sendJson(res, 503, { error: 'Email verification is not configured. Please contact the site owner.' });
+            }
+            const user = getSiteUser(email);
+            if (user && user.emailVerified !== true) {
+                const verificationToken = issueSiteEmailVerification(email, null);
+                try {
+                    await sendSiteEmailVerification(email, user.name, verificationToken);
+                } catch (error) {
+                    console.error('[SiteAuth] Could not send an account verification email.');
+                    return sendJson(res, 503, { error: 'We could not send the verification email. Please try again shortly.' });
+                }
+            }
+            return sendJson(res, 200, { message: 'If this email needs verification, we will send a link shortly.' });
+        } catch (error) {
+            console.error('[SiteAuth] Verification email request failed.');
+            return sendJson(res, 500, { error: 'Verification email request could not be completed.' });
+        }
     }
 
     if (parsedUrl.pathname === '/auth/login' && req.method === 'POST') {
@@ -3644,6 +3828,7 @@ async function handleHttpRequest(req, res) {
             if (!user || !user.salt || !user.passwordHash) return sendJson(res, 401, { error: 'Email or password is incorrect.' });
             const candidate = await new Promise((resolve, reject) => crypto.scrypt(String(data.password || ''), user.salt, 64, (error, key) => error ? reject(error) : resolve(key)));
             if (!crypto.timingSafeEqual(candidate, Buffer.from(user.passwordHash, 'hex'))) return sendJson(res, 401, { error: 'Email or password is incorrect.' });
+            if (user.emailVerified !== true) return sendJson(res, 403, { error: 'Verify your email before signing in. You can request a new link below.' });
             const token = crypto.randomBytes(32).toString('hex');
             const expiresAt = Date.now() + 30 * 86400000;
             siteSessions.create(token, { email, expiresAt });
@@ -3655,6 +3840,8 @@ async function handleHttpRequest(req, res) {
     if (parsedUrl.pathname === '/auth/me' && req.method === 'GET') {
         const session = siteSession(req);
         if (!session || session.admin) return sendJson(res, 401, { error: 'Sign in to view your plan.' });
+        const user = getSiteUser(session.email);
+        if (!user || user.emailVerified !== true) return sendJson(res, 401, { error: 'Verify your email before signing in.' });
         return sendJson(res, 200, { account: publicAccount(session) });
     }
 
@@ -3662,7 +3849,7 @@ async function handleHttpRequest(req, res) {
         const session = siteSession(req);
         if (!session || session.admin) return sendJson(res, 401, { error: 'Sign in to manage your personal stake plans.' });
         const user = getSiteUser(session.email);
-        if (!user) return sendJson(res, 401, { error: 'Your account could not be found. Sign in again.' });
+        if (!user || user.emailVerified !== true) return sendJson(res, 401, { error: 'Verify your email before managing your personal stake plans.' });
         return sendJson(res, 200, { plans: reconcilePredictionStakePlans(user) });
     }
 
@@ -3670,7 +3857,7 @@ async function handleHttpRequest(req, res) {
         const session = siteSession(req);
         if (!session || session.admin) return sendJson(res, 401, { error: 'Sign in to manage your personal stake plans.' });
         const user = getSiteUser(session.email);
-        if (!user) return sendJson(res, 401, { error: 'Your account could not be found. Sign in again.' });
+        if (!user || user.emailVerified !== true) return sendJson(res, 401, { error: 'Verify your email before managing your personal stake plans.' });
         try {
             const data = await readRequestJson(req);
             const market = String(data.market || '');
@@ -3728,7 +3915,7 @@ async function handleHttpRequest(req, res) {
 
     if (parsedUrl.pathname === '/admin/users' && req.method === 'GET') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
-        return sendJson(res, 200, { users: getSiteUsers().map(({ email, name, createdAt, plan, expiresAt }) => ({ email, name, createdAt, plan, expiresAt })) });
+        return sendJson(res, 200, { users: getSiteUsers().map(({ email, name, createdAt, plan, expiresAt, emailVerified }) => ({ email, name, createdAt, plan, expiresAt, emailVerified: emailVerified === true })) });
     }
 
     if (parsedUrl.pathname === '/admin/reset-market-stats' && req.method === 'POST') {
@@ -3747,6 +3934,7 @@ async function handleHttpRequest(req, res) {
             const months = Math.max(1, Math.min(12, Number.parseInt(data.months, 10) || 1));
             const games = Array.isArray(data.games) ? [...new Set(data.games.filter(game => siteMarkets.includes(game)))] : [];
             if (!user) return sendJson(res, 404, { error: 'Create the user account before approving it.' });
+            if (user.emailVerified !== true) return sendJson(res, 409, { error: 'This account must verify its email address before it can be approved.' });
             if (!['trial', 'premium', 'elite'].includes(tier)) return sendJson(res, 400, { error: 'Choose Trial, Premium, or Elite.' });
             if (tier === 'premium' && !games.length) return sendJson(res, 400, { error: 'Select at least one Premium game.' });
             const expiresAt = Date.now() + months * 30 * 86400000;

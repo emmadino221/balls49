@@ -11,7 +11,7 @@ The extension automation routes include `/stream`, `/ack`, `/config`, `/stats`, 
 
 ## Website access and plans
 
-Accounts can be approved for Trial, Premium, or Elite. Trial users choose one market on the Free Trial page; the pick is revealed during the final ten seconds. Premium access is limited to the markets selected for that account, while Elite includes all seven public markets. Owner preview is bound to the owner's authenticated browser session and does not change user accounts.
+New accounts are created only after the user opens a time-limited email verification link and sets a password. Login, personal stake plans, and owner plan approval require a verified email address. Accounts can then be approved for Trial, Premium, or Elite. Trial users choose one market on the Free Trial page; the pick is revealed during the final ten seconds. Premium access is limited to the markets selected for that account, while Elite includes all seven public markets. Owner preview is bound to the owner's authenticated browser session and does not change user accounts.
 
 The public API checks the session and plan server-side before revealing paid-market live picks. `/public-history` serves settled public history and `/public-clock` serves the current clock; `/public-current-prediction` applies market access and reveal rules.
 
