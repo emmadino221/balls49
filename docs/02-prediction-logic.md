@@ -13,7 +13,7 @@ The public prediction/history surfaces expose seven markets:
 | Public market | Prediction/result keys | Rule summary |
 |---|---|---|
 | BetZero | `betzero` | Select four numbers; win if none appear in the draw. |
-| Bet49 | `bet49` | Select one number; win if it appears in the draw. |
+| Bet49 | `bet49` | Select the number with the longest current absence in the latest 100 completed draws; hold that number until it appears, then select the currently most-overdue number. Win if the selected number appears in the draw. |
 | Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
 | Total Color (3-way) | `totalColor` | Select two colors and an excluded color; settlement follows the documented top-color/tie rule. |
 | Total Color (2-way) | `totalColor2` | Select two colors; a tie outcome is represented as black. |
@@ -21,6 +21,8 @@ The public prediction/history surfaces expose seven markets:
 | Unified | `unified` | A wrapper around the chosen supported market; its result follows that market. |
 
 Skipped/inactive picks settle as `SKIP` and are not wins or losses. Bet49 is an independent market and is not a target in the extension's Unified automation strategy.
+
+Bet49 breaks equal absence streaks by choosing the lowest number, so the same draw history always produces the same initial pick. Its active target and the draw ID from which it is being tracked are saved with the global tracker, allowing the pick to survive worker restarts and absences longer than 100 draws. After a hit, it selects a new target using the longest current absence in the latest 100 draws.
 
 ## Draw lifecycle
 

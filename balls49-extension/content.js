@@ -5,9 +5,11 @@ let IS_UNIFIED_MODE = false;
 let CURRENT_STAKES = { betzero: 500, bet49: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
 let isBettingActive = false;
 let lastExecutedDrawId = null;          
+let betBalanceUnconfirmed = false;
 let SOUND_ENABLED = true;
 let CLIENT_ID = ""; 
 let LICENSE_KEY = ""; 
+const EXECUTION_CLIENT_TOKEN = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 
 const SERVER_URL = "http://localhost:3001";
 
@@ -184,30 +186,12 @@ async function placeBet() {
 
     try {
         safeClick(btn);
-        await sleep(500);
+        await sleep(1200);
 
-        // If the page quickly re-renders the same button or uses a confirm action,
-        // try the same deterministic fallback path a second time.
-        const reCheckBtn = findPlaceBetButton();
-        if (reCheckBtn && reCheckBtn !== btn) {
-            safeClick(reCheckBtn);
-            await sleep(300);
-        }
-
-        let afterBal = getLiveAccountBalance();
-        if (beforeBal !== null && afterBal !== null && (beforeBal - afterBal) < 1) {
-            await sleep(700);
-            afterBal = getLiveAccountBalance();
-            if (beforeBal !== null && afterBal !== null && (beforeBal - afterBal) < 1) {
-                // final safety fallback: click the freshest visible place button again
-                const retryBtn = findPlaceBetButton();
-                if (retryBtn) safeClick(retryBtn);
-                await sleep(500);
-                afterBal = getLiveAccountBalance();
-                if (beforeBal !== null && afterBal !== null && (beforeBal - afterBal) < 1) {
-                    return false;
-                }
-            }
+        const afterBal = getLiveAccountBalance();
+        if (beforeBal === null || afterBal === null || (beforeBal - afterBal) < 1) {
+            betBalanceUnconfirmed = true;
+            console.warn('[Balls49] Bet submit was clicked but the balance change was not confirmed; not retrying to avoid a duplicate.');
         }
         return true;
     } catch (e) {
@@ -1035,7 +1019,7 @@ async function listen() {
     if (!LICENSE_KEY) return setTimeout(listen, 2000);
 
     try {
-        const r = await fetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`);
+        const r = await fetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&key=${LICENSE_KEY}&executionToken=${EXECUTION_CLIENT_TOKEN}`);
         if (r.ok) {
             const m = await r.json();
             
@@ -1068,9 +1052,14 @@ async function listen() {
             }
 
             if (m && m.action === "EXECUTE_BET" && !isBettingActive) {
-                const storage = await getStorage(['running', 'stakes', 'gameSteps', 'hiloMultiplier', 'hiloRollover', 'bzRbRollover']);
+                const storage = await getStorage(['running', 'stakes', 'gameSteps', 'hiloMultiplier']);
                 if (storage.running !== true) {
                     isBettingActive = false;
+                    fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ drawId: m.drawId, status: 'CANCELLED', executionToken: m.executionToken })
+                    }).catch(() => {});
                     return setTimeout(listen, 1200);
                 }
 
@@ -1078,7 +1067,7 @@ async function listen() {
                     fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ drawId: m.drawId, status: 'SUCCESS' })
+                        body: JSON.stringify({ drawId: m.drawId, status: 'SUCCESS', executionToken: m.executionToken })
                     }).catch(() => {});
                     return setTimeout(listen, 1200);
                 }
@@ -1093,16 +1082,18 @@ async function listen() {
                 const bzStake  = m.stake || calcLocalStake('u4', serverSteps.betzero, userStakes, gameStepsLimits, hiloMult);
                 const bet49Stake = m.bet49Stake || calcLocalStake('bet49', serverSteps.bet49, userStakes, gameStepsLimits, hiloMult);
                 const rbStake  = m.colorStake || calcLocalStake('color', serverSteps.rainbow, userStakes, gameStepsLimits, hiloMult);
-                let hlStake = m.sumStake || calcLocalStake('sum', serverSteps.hilo, userStakes, gameStepsLimits, hiloMult);
+                const serverHiLoStake = Number(m.sumStake);
+                const hlStake = Number.isFinite(serverHiLoStake) && serverHiLoStake > 0
+                    ? Math.round(serverHiLoStake)
+                    : m.hiloRollover
+                        ? 0
+                        : calcLocalStake('sum', serverSteps.hilo, userStakes, gameStepsLimits, hiloMult);
                 const tcStake  = m.tcStake || calcLocalStake('totalColor', serverSteps.totalColor, userStakes, gameStepsLimits, hiloMult);
                 const tc2Stake = m.tc2Stake || calcLocalStake('totalColor2', serverSteps.totalColor2, userStakes, gameStepsLimits, hiloMult);
 
-                const hiloRollover = storage.hiloRollover || storage.bzRbRollover;
-                if (hiloRollover && m.lastHiLoWon && m.previousHiLoStake) {
-                    hlStake = Math.round(m.previousHiLoStake * hiloMult);
-                }
-
                 try {
+                    lastExecutedDrawId = String(m.drawId);
+                    betBalanceUnconfirmed = false;
                     let playedAny = false;
                     let betSuccess = true;
 
@@ -1124,7 +1115,7 @@ async function listen() {
                         if (!res) betSuccess = false;
                         playedAny = true;
                     }
-                    if (m.sumRange && (m.sumStake > 0 || hiloRollover)) {
+                    if (m.sumRange && hlStake > 0) {
                         SELECTED_GAME = 'hilo';
                         let res = await runHiLo(m.sumRange, hlStake);
                         if (!res) betSuccess = false;
@@ -1146,9 +1137,10 @@ async function listen() {
                     if (playedAny && m.drawId) {
                         startRuntimeOnFirstBet();
 
-                        lastExecutedDrawId = String(m.drawId);
                         setOverlayDecisionReason(betSuccess
-                            ? `Bet placed for draw #${m.drawId}.`
+                            ? betBalanceUnconfirmed
+                                ? `Bet submitted for draw #${m.drawId}; balance change not confirmed. Verify the account manually. No retry was sent to avoid a duplicate.`
+                                : `Bet placed for draw #${m.drawId}.`
                             : 'Bet was not placed: the market control reported an execution failure.');
 
                         const drawEl = document.getElementById('overlayDrawId');
@@ -1159,16 +1151,27 @@ async function listen() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ 
                                 drawId: m.drawId,
-                                status: betSuccess ? 'SUCCESS' : 'FAILED' 
+                                status: betSuccess ? 'SUCCESS' : 'FAILED',
+                                executionToken: m.executionToken
                             })
                         });
                     }
                     if (!playedAny) {
                         setOverlayDecisionReason('Bet was not placed: no eligible market was included in the instruction.');
+                        await fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken })
+                        });
                     }
                 } catch(e) {
                     console.error("Execution Failed. Receipt not sent.");
                     setOverlayDecisionReason(`Bet was not placed: ${e.message || 'execution error'}.`);
+                    fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken })
+                    }).catch(() => {});
                 }
 
                 isBettingActive = false;

@@ -336,7 +336,7 @@ function reconcilePredictionStakePlans(user) {
 }
 let globalTracker = { 
     u4: { step: 1 },
-    bet49: { step: 1 },
+    bet49: { step: 1, target: null, targetSinceDrawId: null },
     color: { step: 1 },
     sum: { step: 1 },
     totalColor: { step: 1 },
@@ -451,6 +451,7 @@ function getSession(clientId) {
                 initialVirtualBalance: null
             },
             pendingBetPayload: null,
+            betExecutionClaim: null,
             lastBetDrawId: null,
             lastBetDetails: null,
             balanceVerification: {
@@ -512,6 +513,12 @@ function loadJSON(file, fallback) {
     try {
         return JSON.parse(contents);
     } catch (error) {
+        if (path.resolve(file) === path.resolve(STREAKS_FILE) && contents.trim() === '') {
+            const rebuilt = rebuildStreaksFromPredictionHistory();
+            saveJSON(file, rebuilt);
+            console.warn(`[Persistence] Rebuilt empty streak history from ${predictionLog.length} saved prediction records.`);
+            return rebuilt;
+        }
         const message = `[Persistence] Failed to parse JSON file "${file}": ${error.message || error}`;
         console.error(message);
         throw new Error(message);
@@ -558,9 +565,17 @@ const persistedSessions = persistedState.sessions || (persistedState.globalTrack
 
 if (persistedState.globalTracker) {
     for (const key of Object.keys(globalTracker)) {
-        if (persistedState.globalTracker[key]) globalTracker[key] = persistedState.globalTracker[key];
+        if (persistedState.globalTracker[key]) {
+            globalTracker[key] = { ...globalTracker[key], ...persistedState.globalTracker[key] };
+        }
     }
 }
+globalTracker.bet49 = {
+    step: 1,
+    target: null,
+    targetSinceDrawId: null,
+    ...globalTracker.bet49
+};
 lastDrawId = persistedState.lastDrawId ?? null;
 predSentForId = persistedState.predSentForId ?? null;
 lastGlobalDrawId = persistedState.lastGlobalDrawId ?? null;
@@ -661,6 +676,12 @@ if (!Array.isArray(predictionLog)) {
 if (!SITE_PUBLIC_MODE) {
     const persisted = loadJSON(LAST_PRED_FILE, null);
     if (persisted && persisted.drawId && persisted.pred) lastPrediction = persisted;
+    if (Number.isInteger(lastPrediction?.pred?.bet49Pick)
+        && lastPrediction.pred.bet49Pick >= 1
+        && lastPrediction.pred.bet49Pick <= 49
+        && !Number.isInteger(globalTracker.bet49.target)) {
+        globalTracker.bet49.target = lastPrediction.pred.bet49Pick;
+    }
 }
 
 if (SITE_PUBLIC_MODE) {
@@ -692,6 +713,47 @@ function getBet49HistoricalLossStreaks() {
         }
     }
     return { current, maximum };
+}
+
+function getBet49Prediction(draws) {
+    const tracker = globalTracker.bet49;
+    const latestDrawId = draws[0]?.id;
+    const target = Number(tracker.target);
+    if (Number.isInteger(target) && target >= 1 && target <= 49) {
+        const sinceDrawId = tracker.targetSinceDrawId === null || tracker.targetSinceDrawId === undefined
+            ? Number.NaN
+            : Number(tracker.targetSinceDrawId);
+        if (Number.isSafeInteger(sinceDrawId)) {
+            const targetHasAppeared = draws.some(draw => Number(draw.id) > sinceDrawId
+                && (draw.dr || '').split(',').some(value => Number(value) === target));
+            if (!targetHasAppeared) return target;
+            tracker.target = null;
+            tracker.targetSinceDrawId = null;
+        } else {
+            tracker.targetSinceDrawId = latestDrawId === undefined ? null : String(latestDrawId);
+            return target;
+        }
+    }
+
+    const recentDraws = draws.slice(0, 100);
+    let selectedNumber = null;
+    let longestAbsence = -1;
+    for (let number = 1; number <= 49; number++) {
+        let absence = 0;
+        for (const draw of recentDraws) {
+            const appeared = (draw.dr || '').split(',').some(value => Number(value) === number);
+            if (appeared) break;
+            absence++;
+        }
+        if (absence > longestAbsence) {
+            longestAbsence = absence;
+            selectedNumber = number;
+        }
+    }
+
+    tracker.target = selectedNumber;
+    tracker.targetSinceDrawId = latestDrawId === undefined ? null : String(latestDrawId);
+    return selectedNumber;
 }
 
 if (!SITE_PUBLIC_MODE && !(persistedState.globalTracker && persistedState.globalTracker.bet49)) {
@@ -1299,6 +1361,30 @@ function updateOneStreakByMode(s, key, mode, won) {
     }
 }
 
+function rebuildStreaksFromPredictionHistory() {
+    const streaks = {};
+    const markets = [
+        ['u4', 'betzero'],
+        ['color', 'rainbow'],
+        ['totalColor', 'totalColor'],
+        ['totalColor2', 'totalColor2'],
+        ['sum', 'hilo'],
+        ['unified', 'unified']
+    ];
+
+    for (const record of predictionLog.slice().reverse()) {
+        for (const [key, resultKey] of markets) {
+            const outcome = record.result?.[resultKey];
+            if (outcome === 'WIN' || outcome === 'LOSS') {
+                updateOneStreakByMode(streaks, key, 'SAFE', outcome === 'WIN');
+            }
+        }
+    }
+
+    streaks.bet49 = { worst: getBet49HistoricalLossStreaks().maximum };
+    return streaks;
+}
+
 function getBetPayloadExposure(payload) {
     if (!payload || payload.action !== 'EXECUTE_BET') return 0;
 
@@ -1324,6 +1410,7 @@ function haltForPayloadRisk(session, clientId, payload) {
     const stopLossLimit = Math.abs(session.config.stopLoss);
 
     session.pendingBetPayload = null;
+    session.betExecutionClaim = null;
     session.stats.isHalted = true;
     session.stats.haltReason = `Stop Loss Protection: next exposure exceeds limit (N${stopLossLimit.toLocaleString()})`;
 
@@ -1780,7 +1867,8 @@ function getUnifiedMasterStake(clientId, targetGameKey, mlScore = 0) {
         else if (mlScore >= 0.65) baseUnit = Math.round(baseUnit * 1.5);
     }
 
-    if (session.config.bzRbRollover && (targetGameKey === 'u4' || targetGameKey === 'color' || targetGameKey === 'sum')) {
+    if ((session.config.bzRbRollover && (targetGameKey === 'u4' || targetGameKey === 'color' || targetGameKey === 'sum'))
+        || (session.config.hiloRollover && targetGameKey === 'sum')) {
         const state = session.martingaleState[targetGameKey];
         if (state && state.isRollover) {
             return state.rolloverStake;
@@ -2146,9 +2234,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
             .map(n => ({ number: parseInt(n, 10), riskScore: localStats[n].riskScore, strk: localStats[n].strk }))
             .sort((a, b) => a.riskScore - b.riskScore || b.strk - a.strk);
 
-        // Bet49 is the opposite pick: select the number with the highest weighted
-        // appearance rate in the same 20/50/100 draw windows used by BetZero.
-        bet49Pick = allSorted.slice().sort((a, b) => b.riskScore - a.riskScore || a.strk - b.strk)[0]?.number ?? null;
+        bet49Pick = getBet49Prediction(draws);
 
         if (validBzNumbers.length >= 4) {
             betzeroStatus = 'ACTIVE';
@@ -2360,6 +2446,10 @@ function processUpdates(pred, actualDraw) {
     var u4Win = pred.unlikely4.filter(x => new Set(actualNums).has(x.number)).length === 0;
     var bet49Active = Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49;
     var bet49Win = bet49Active && actualNums.includes(pred.bet49Pick);
+    if (bet49Win && Number(globalTracker.bet49.target) === pred.bet49Pick) {
+        globalTracker.bet49.target = null;
+        globalTracker.bet49.targetSinceDrawId = null;
+    }
     var colorWin = actualNums.filter(n => getBallColor(n) === pred.topColor.name).length >= 2;
     var sumWin = pred.sumRange === actualRange;
 
@@ -2971,6 +3061,7 @@ async function tick() {
             if (session.pendingBetPayload && String(session.pendingBetPayload.drawId) === nextId && session.pendingBetPayload.action === "EXECUTE_BET") {
                 if (timeLeft <= 15) {
                     session.pendingBetPayload = null;
+                    session.betExecutionClaim = null;
                     session.failedBetRecovery = null;
                     if (session.config.telegramChatId) {
                         sendPersonalDM(session.config.telegramChatId, `🚨 <b>Bet Placement Timeout!</b>\n\nFailed to place bet for Draw #${nextId}. Time dropped below 15 seconds. Bet cancelled to protect sequence.`).catch(()=>{});
@@ -3218,8 +3309,7 @@ async function tick() {
                             colorStake: emitColor ? computedStake : 0,
                             sumRange: emitSum ? pred.sumRange : null,
                             sumStake: emitSum ? computedStake : 0,
-                            lastHiLoWon: session.martingaleState.sum.isRollover,
-                            previousHiLoStake: session.martingaleState.sum.isRollover ? (session.masterState.lastGamePlayed === 'sum' ? session.masterState.lastStake : session.martingaleState.sum.lastStandardStake || Math.round(session.martingaleState.sum.rolloverStake / (session.config.hiloMultiplier || 2.0))) : 0,
+                            hiloRollover: session.martingaleState.sum.isRollover,
                             totalColor: emitTotalColor ? pred.totalColorPred.topColors : null,
                             tcStake: emitTotalColor ? computedStake : 0,
                             steps: {
@@ -3327,8 +3417,7 @@ async function tick() {
                             
                             sumRange: hasHiLo ? pred.sumRange : null,
                             sumStake: hasHiLo ? hlStake : 0,
-                            lastHiLoWon: session.martingaleState.sum.isRollover,
-                            previousHiLoStake: session.martingaleState.sum.isRollover ? (session.martingaleState.sum.lastStandardStake || Math.round(session.martingaleState.sum.rolloverStake / (session.config.hiloMultiplier || 2.0))) : 0,
+                            hiloRollover: session.martingaleState.sum.isRollover,
                             
                             totalColor: hasTotalColor ? pred.totalColorPred.topColors : null,
                             tcStake: hasTotalColor ? tcStake : 0,
@@ -4034,7 +4123,27 @@ async function handleHttpRequest(req, res) {
 
     if (parsedUrl.pathname === '/stream') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify(session.pendingBetPayload ? session.pendingBetPayload : { action: 'WAIT' }));
+        const payload = session.pendingBetPayload;
+        if (!payload) return res.end(JSON.stringify({ action: 'WAIT' }));
+        if (payload.action !== 'EXECUTE_BET') return res.end(JSON.stringify(payload));
+
+        const drawId = String(payload.drawId);
+        if (String(session.failedBetRecovery?.payload?.drawId || '') === drawId) {
+            return res.end(JSON.stringify({ action: 'WAIT' }));
+        }
+        const executionToken = parsedUrl.searchParams.get('executionToken') || '';
+        if (!/^[a-f0-9]{32}$/.test(executionToken)) {
+            return res.end(JSON.stringify({ action: 'WAIT' }));
+        }
+
+        const claim = session.betExecutionClaim;
+        if (claim && claim.drawId === drawId && claim.token !== executionToken) {
+            return res.end(JSON.stringify({ action: 'WAIT' }));
+        }
+        if (!claim || claim.drawId !== drawId) {
+            session.betExecutionClaim = { drawId, token: executionToken };
+        }
+        return res.end(JSON.stringify({ ...payload, executionToken }));
     }
     
     else if (parsedUrl.pathname === '/risk-profile' && req.method === 'GET') {
@@ -4191,14 +4300,31 @@ async function handleHttpRequest(req, res) {
                 }
 
                 if (data && data.drawId) {
+                    const drawId = String(data.drawId);
+                    if (data.status === 'SUCCESS' && session.lastBetDrawId === drawId) {
+                        res.writeHead(200); return res.end(JSON.stringify({ ok: true, duplicate: true }));
+                    }
+
+                    const payload = session.pendingBetPayload;
+                    const claim = session.betExecutionClaim;
+                    if (!payload || payload.action !== 'EXECUTE_BET' || String(payload.drawId) !== drawId
+                        || !claim || claim.drawId !== drawId || claim.token !== String(data.executionToken || '')) {
+                        res.writeHead(409); return res.end(JSON.stringify({ error: 'Bet execution claim is missing or no longer valid.' }));
+                    }
+
+                    if (data.status === 'CANCELLED') {
+                        session.betExecutionClaim = null;
+                        res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
+                    }
+
                     if (data.status === 'FAILED') {
                         if (!session.failedBetRecovery) session.failedBetRecovery = { retries: 0 };
                         session.failedBetRecovery.retries += 1;
-                        session.pendingBetPayload = null; 
+                        session.failedBetRecovery.payload = { drawId };
+                        session.pendingBetPayload = null;
                     } else {
-                        const payload = session.pendingBetPayload;
                         let totalStake = 0;
-                        const details = { drawId: String(data.drawId), stakes: {}, odds: {}, games: [] };
+                        const details = { drawId, stakes: {}, odds: {}, games: [] };
 
                         if (payload && payload.action === 'EXECUTE_BET') {
                             if (payload.numbers && payload.stake > 0) {
@@ -4253,6 +4379,7 @@ async function handleHttpRequest(req, res) {
                         session.pendingBetPayload = null;
                         session.failedBetRecovery = null;
                     }
+                    session.betExecutionClaim = null;
                 }
                 res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
             } catch (e) { res.writeHead(400); return res.end(); }
@@ -4272,6 +4399,7 @@ async function handleHttpRequest(req, res) {
         session.stats.haltReason = "🛑 Wiped & Stopped by User";
         
         session.pendingBetPayload = null;
+        session.betExecutionClaim = null;
         session.failedBetRecovery = null;
 
         session.userTracker = {

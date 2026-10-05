@@ -38,6 +38,7 @@ Website accounts use the authenticated account/session API. Market access is che
 - Verify that the current draw ID and prediction ID match.
 - Confirm the prediction record exists before relying on its later settlement/result.
 - Check bot logs and the Telegram outbox if a pick message is missing; the result can be delivered while the pick is awaiting retry.
+- If `streaks.json` is empty, the worker rebuilds streak summaries from `predictions.json` and logs the recovery. Other malformed persistence files remain fatal so corrupted state is not silently discarded.
 - Check extension acknowledgement and overlay state before trusting automated placement.
 - Keep runtime JSON, outbox messages, SQLite files, cookies, and credentials out of version control.
 - Validate changes with Node syntax checks, extension syntax checks, a Vite production build, and focused Python tests as applicable.
