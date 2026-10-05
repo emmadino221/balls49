@@ -764,6 +764,7 @@ const lastPublishedHistoryHashes = new Map();
 let predictionPublishInFlight = false;
 
 function buildPublicFeedHistory() {
+    const seenDrawIds = new Set();
     return predictionLog.map(record => ({
         drawId: String(record.drawId ?? ''),
         drawDate: record.drawDate || null,
@@ -802,7 +803,13 @@ function buildPublicFeedHistory() {
             hilo: record.result.hilo || 'SKIP',
             unified: record.result.unified || 'SKIP'
         } : null
-    })).filter(record => record.drawId);
+    })).filter(record => {
+        if (!/^[0-9]{1,32}$/.test(record.drawId) || !Number.isSafeInteger(Number(record.drawId))) return false;
+        // History is newest-first; preserve the latest entry when old data has duplicate draw IDs.
+        if (seenDrawIds.has(record.drawId)) return false;
+        seenDrawIds.add(record.drawId);
+        return true;
+    });
 }
 
 function getPublicSummaryLabel(value) {
@@ -964,13 +971,17 @@ async function publishPredictionSnapshot() {
                     'X-Prediction-Signature': signature
                 }
             }, response => {
-                response.resume();
+                response.setEncoding('utf8');
+                let responseBody = '';
+                response.on('data', chunk => {
+                    if (responseBody.length < 512) responseBody += chunk.slice(0, 512 - responseBody.length);
+                });
                 response.on('end', () => {
                     if (response.statusCode >= 200 && response.statusCode < 300) {
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
                         resolve(true);
                     } else {
-                        console.error(`[PredictionFeed] Publish failed (HTTP ${response.statusCode || 'unknown'}).`);
+                        console.error(`[PredictionFeed] Publish failed (HTTP ${response.statusCode || 'unknown'}): ${responseBody || 'no response body'}`);
                         resolve(false);
                     }
                 });
