@@ -15,19 +15,7 @@ Open Predictions on the website, expand **Site owner tools**, enter the key, and
 
 ## Approve an account
 
-The person enters their name and email at **Sign up**, opens the verification link sent to that inbox, and chooses a password on the verification page. Only after confirming mailbox access is the account created and listed in **Site owner tools**. Select that verified account email, choose Free Trial, Premium, or Elite, set the duration, and save. Premium needs at least one checked market. Elite includes all seven markets and is marked with Telegram access. User records and salted password hashes are stored in `site_users.sqlite`.
-
-### Configure signup verification email
-
-The hosted Node service sends verification messages through Resend. Verify a sender domain with Resend first, then set these values in the **`emmybet` Node Web Service → Environment** settings in Render:
-
-```text
-RESEND_API_KEY=<Resend API key>
-SITE_EMAIL_FROM=Emmy-Bet <no-reply@your-verified-domain.example>
-SITE_PUBLIC_URL=https://balls49.onrender.com
-```
-
-Keep `RESEND_API_KEY` only in the backend environment; it must never be a `VITE_*` variable. `SITE_EMAIL_FROM` must use an address on a domain verified with Resend. Save and redeploy the Node service after setting these values. Signup and verification links will not work until email delivery is configured. Existing accounts created before email verification was enabled must request a verification email from the sign-in page; their existing plan data is preserved, but login and plan approval remain blocked until the email is verified.
+The person enters their name, email, and password at **Sign up**. The account is created immediately, and the person can sign in; prediction-plan access remains pending until owner approval. New accounts appear first in **Site owner tools** as pending. Select the account email, choose Free Trial, Premium, or Elite, set the duration, and save. Premium needs at least one checked market. Elite includes all seven markets and is marked with Telegram access. User records and salted password hashes are stored in `site_users.sqlite`.
 
 ## Notes
 

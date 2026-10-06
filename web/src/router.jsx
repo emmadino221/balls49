@@ -11,7 +11,6 @@ import HistoryPage from './pages/HistoryPage.jsx';
 import GuidePage from './pages/GuidePage.jsx';
 import PredictionsPage from './pages/PredictionsPage.jsx';
 import CalculatorPage from './pages/CalculatorPage.jsx';
-import VerifyEmailPage from './pages/VerifyEmailPage.jsx';
 
 export function getPageName() {
   const route = window.location.pathname.replace(/^\/|\/index.html$/g, '').replace(/^\/|\/$/, '');
@@ -27,7 +26,6 @@ export function getPageName() {
   if (route === 'contact.html') return 'contact';
   if (route === 'login.html') return 'login';
   if (route === 'signup.html') return 'signup';
-  if (route === 'verify-email.html') return 'verify-email';
   return 'home';
 }
 
@@ -43,6 +41,5 @@ export function PageRenderer({ page }) {
   if (page === 'contact') return <ContactPage />;
   if (page === 'login') return <LoginPage />;
   if (page === 'signup') return <SignupPage />;
-  if (page === 'verify-email') return <VerifyEmailPage />;
   return <HomePage />;
 }

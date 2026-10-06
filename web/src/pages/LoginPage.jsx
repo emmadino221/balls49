@@ -4,10 +4,9 @@ import AuthLayout from './AuthLayout.jsx';
 
 export default function LoginPage() {
   const [message, setMessage] = useState('');
-  const [verificationMessage, setVerificationMessage] = useState('');
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
-  const [resending, setResending] = useState(false);
+
   async function submit(event) {
     event.preventDefault(); setBusy(true); setMessage('');
     const form = new FormData(event.currentTarget);
@@ -17,21 +16,7 @@ export default function LoginPage() {
     } catch (error) { setMessage(error.message); }
     finally { setBusy(false); }
   }
-  async function resendVerification() {
-    setResending(true);
-    setVerificationMessage('');
-    try {
-      const result = await apiRequest('/auth/resend-verification', {
-        method: 'POST',
-        body: JSON.stringify({ email })
-      });
-      setVerificationMessage(result.message);
-    } catch (error) {
-      setVerificationMessage(error.message);
-    } finally {
-      setResending(false);
-    }
-  }
+
   return <AuthLayout mode="login" eyebrow="MEMBER ACCESS" title="Sign in to your account" description="Pick up where you left off and view the plan access attached to your account.">
     <form className="auth-form auth-form-professional" onSubmit={submit}>
       <label htmlFor="login-email">Email address</label>
@@ -40,13 +25,6 @@ export default function LoginPage() {
       <input id="login-password" name="password" type="password" placeholder="Enter your password" autoComplete="current-password" required />
       <button className="btn btn-primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
       {message && <p className="auth-feedback" role="alert">{message}</p>}
-      <div className="auth-resend-verification">
-        <p>Need to verify your email or get a fresh link?</p>
-        <button className="btn btn-secondary" type="button" onClick={resendVerification} disabled={resending || !email}>
-          {resending ? 'Sending…' : 'Resend verification email'}
-        </button>
-        {verificationMessage && <p className="auth-verification-status" role="status">{verificationMessage}</p>}
-      </div>
     </form>
   </AuthLayout>;
 }

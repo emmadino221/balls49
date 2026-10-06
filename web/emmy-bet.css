@@ -713,16 +713,10 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .auth-form-professional .btn { width: 100%; min-height: 49px; justify-self: stretch; margin-top: 15px; }
 .auth-password-hint { margin-top: -2px; color: var(--muted); font-size: 9px; }
 .auth-feedback { margin: 7px 0 0; padding: 10px 12px; border: 1px solid #f0c5bd; border-radius: 9px; color: #92392d; background: #fff3f0; font-size: 11px; line-height: 1.5; }
-.auth-verification-message { display: grid; justify-items: start; gap: 10px; padding: 20px; border: 1px solid color-mix(in srgb, var(--green-bright) 30%, var(--line)); border-radius: 14px; background: color-mix(in srgb, var(--green-soft) 45%, var(--surface)); }
-.auth-verification-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; color: var(--green); background: var(--green-soft); font-size: 20px; }
-.auth-verification-message h2 { margin: 2px 0 0; font-size: 19px; }
-.auth-verification-message p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
-.auth-verification-message p strong { color: var(--ink); }
-.auth-verification-status { margin: 4px 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--surface-soft); font-size: 11px; line-height: 1.6; }
-.auth-resend-verification { display: grid; justify-items: start; gap: 8px; margin-top: 10px; padding-top: 15px; border-top: 1px solid var(--line); }
-.auth-resend-verification > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
-.auth-resend-verification .btn { min-height: 40px; margin: 0; font-size: 10px; }
-.auth-resend-verification .auth-verification-status { margin-top: 2px; }
+.auth-success-message { display: grid; justify-items: start; gap: 10px; padding: 20px; border: 1px solid color-mix(in srgb, var(--green-bright) 30%, var(--line)); border-radius: 14px; background: color-mix(in srgb, var(--green-soft) 45%, var(--surface)); }
+.auth-success-message h2 { margin: 2px 0 0; font-size: 19px; }
+.auth-success-message p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.auth-success-message p strong { color: var(--ink); }
 .auth-switch-link { margin: 23px 0 0; color: var(--muted); font-size: 11px; }
 .auth-switch-link a { margin-left: 4px; color: var(--green); font-weight: 800; }
 .auth-approval-note { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.6; }

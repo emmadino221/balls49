@@ -10,7 +10,6 @@ Public website mode exposes an explicit allowlist of account, admin, read-only p
 
 - The Node worker reads `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` from its environment for channel broadcasts; personal Telegram destinations are configured separately for user sessions. The optional standalone `bot.py` sequence-calculator bot also reads `TELEGRAM_BOT_TOKEN`.
 - `SITE_ADMIN_KEY`, `PREDICTION_INGEST_SECRET`, and optional `GOOGLE_SHEET_URL` belong only in server/worker environment configuration.
-- `RESEND_API_KEY` belongs only in the hosted API environment. The API sends one-time, expiring email-verification links before creating or approving member accounts.
 - Never put server secrets in source code, the extension, website code, or `VITE_*` build variables.
 - Rotate any credential that may have been committed or shared.
 
@@ -24,7 +23,7 @@ The Telegram prediction outbox stores unsent pick-message text and retries it wi
 
 - Validate API input and market/step/stake values on the server.
 - Keep session authorization and prediction access checks server-side.
-- Do not trust unverified browser identity or forwarding headers.
+- Do not trust client-supplied account identity or forwarding headers.
 - Extension DOM selectors target a third-party game page and may change; test selectors and acknowledgement behavior before live use.
 - Martingale progressions can grow quickly. Max-step and stop-loss settings are independent safeguards; stake calculators are estimates, not guarantees.
 - Monitor bot tick failures, Telegram delivery logs/outbox growth, prediction settlement, extension acknowledgements, and persistent-storage availability.

@@ -15,8 +15,7 @@ const pageFiles = [
   'contact.html',
   'free-trial.html',
   'login.html',
-  'signup.html',
-  'verify-email.html'
+  'signup.html'
 ];
 
 await Promise.all(pageFiles.map(page => copyFile(indexFile, path.join(outputDirectory, page))));

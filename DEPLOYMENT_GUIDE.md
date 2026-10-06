@@ -17,7 +17,6 @@ The deployment will also need:
 - A persistent volume for `site_users.sqlite` and related SQLite WAL files.
 - HTTPS and the exact deployed frontend origin in `SITE_ALLOWED_ORIGINS`.
 - Server-side environment variables for `SITE_PUBLIC_MODE`, `SITE_ALLOWED_ORIGINS`, `SITE_ADMIN_KEY`, and `SITE_DB_PATH`.
-- Resend email delivery on the hosted API: `RESEND_API_KEY`, `SITE_EMAIL_FROM` (a sender on a Resend-verified domain), and `SITE_PUBLIC_URL` (the exact HTTPS frontend origin). Keep the Resend key only in backend environment settings.
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `TELEGRAM_CHANNEL_ID` only on the private worker that sends Telegram messages.
 - `GOOGLE_SHEET_URL` only on the private worker if you use the optional Google Sheets export.
 - `PREDICTION_INGEST_URL` and `PREDICTION_INGEST_SECRET` on the private worker; only `PREDICTION_INGEST_SECRET` on the hosted API.
