@@ -1,74 +1,169 @@
 import React from 'react';
 
-const previewMarkets = [
-  { name: 'BetZero', status: 'Example pick', detail: 'Numbers selected', tone: 'mint' },
-  { name: 'Rainbow Color', status: 'Example pick', detail: 'Color signal', tone: 'violet' },
-  { name: 'High / Low', status: 'Waiting', detail: 'Conditions not met', tone: 'amber' },
+const featureCards = [
+  {
+    number: '01',
+    icon: '◷',
+    title: 'Signals, in context',
+    description: 'See market suggestions, draw timing, and status together—without digging through noisy screens.',
+  },
+  {
+    number: '02',
+    icon: '⌁',
+    title: 'Seven ways to explore',
+    description: 'Compare signals across number, color, total-color, and high / low markets.',
+  },
+  {
+    number: '03',
+    icon: '↗',
+    title: 'History that tells the story',
+    description: 'Review settled outcomes and understand how each signal performed over time.',
+  },
+];
+
+const orbitBalls = [
+  { number: '07', className: 'orbit-ball-one' },
+  { number: '18', className: 'orbit-ball-two' },
+  { number: '29', className: 'orbit-ball-three' },
+  { number: '34', className: 'orbit-ball-four' },
+  { number: '41', className: 'orbit-ball-five' },
+  { number: '49', className: 'orbit-ball-six' },
 ];
 
 export default function HomePage() {
   return (
-    <main>
-      <section className="hero">
-        <div className="hero-grid page-container">
-          <div className="hero-copy">
-            <div className="eyebrow"><span className="eyebrow-dot" /> BALLS49 · PREDICTION INSIGHTS</div>
-            <h1>A clearer view of every <span>draw.</span></h1>
-            <p className="hero-description">
-              Follow market signals, understand each pick, and review results in one calm, easy-to-read place.
-            </p>
-            <div className="hero-actions">
-              <a className="btn btn-primary" href="free-trial.html">Explore the free trial <span aria-hidden="true">→</span></a>
-              <a className="text-link" href="about.html">How it works <span aria-hidden="true">↗</span></a>
+    <main className="home-page">
+      <section className="hero cinematic-hero">
+        <div className="hero-atmosphere" aria-hidden="true">
+          <span className="hero-orb hero-orb-main" />
+          <span className="hero-orb hero-orb-small" />
+          <span className="hero-grid-lines" />
+          {orbitBalls.map((ball) => (
+            <span className={`orbit-ball ${ball.className}`} key={ball.number} aria-hidden="true">
+              {ball.number}
+            </span>
+          ))}
+        </div>
+
+        <div className="hero-grid page-container cinematic-hero-grid">
+          <div className="hero-copy cinematic-hero-copy">
+            <div className="eyebrow cinematic-eyebrow">
+              <span className="eyebrow-dot" />
+              A sharper view of every draw
             </div>
-            <p className="hero-footnote">A decision-support tool. No prediction can guarantee a result.</p>
+            <h1>Read the game.<br />See <span>what’s next.</span></h1>
+            <p className="hero-description">
+              Clear prediction insights, live draw context, and a complete result history—all in one considered experience.
+            </p>
+            <div className="hero-actions cinematic-actions">
+              <a className="btn btn-primary cinematic-primary" href="free-trial.html">
+                Explore the free trial <span aria-hidden="true">↗</span>
+              </a>
+              <a className="cinematic-text-link" href="predictions.html">
+                Explore predictions <span aria-hidden="true">→</span>
+              </a>
+            </div>
+            <div className="hero-trust-note">
+              <span className="hero-trust-mark" aria-hidden="true">✳</span>
+              <span>Insights for a more considered approach.<br /><strong>No outcome is guaranteed.</strong></span>
+            </div>
           </div>
 
-          <div className="prediction-preview" aria-label="Example prediction preview">
-            <div className="preview-glow" />
-            <div className="preview-header">
-              <div>
-                <span className="preview-kicker">PREDICTION PREVIEW</span>
-                <h2>One message. Clear signals.</h2>
-              </div>
-              <span className="preview-badge"><span /> Example</span>
-            </div>
-            <div className="preview-draw"><span className="draw-icon">49</span><span><small>GAME</small><strong>Balls49</strong></span><span className="preview-time">Illustrative only</span></div>
-            <div className="preview-market-list">
-              {previewMarkets.map((market) => (
-                <div className="preview-market" key={market.name}>
-                  <span className={`market-dot ${market.tone}`} />
-                  <span className="market-copy"><strong>{market.name}</strong><small>{market.detail}</small></span>
-                  <span className={`market-status ${market.tone}`}>{market.status}</span>
+          <div className="cinematic-stage" aria-label="Illustrative Balls49 prediction interface preview">
+            <div className="stage-ambient-ring stage-ring-one" aria-hidden="true" />
+            <div className="stage-ambient-ring stage-ring-two" aria-hidden="true" />
+            <div className="stage-caption"><span>EMMY-BET / 049</span><span>THE SIGNAL ROOM</span></div>
+
+            <div className="stage-ball stage-ball-large" aria-hidden="true"><span>49</span></div>
+            <div className="stage-ball stage-ball-small stage-ball-left" aria-hidden="true"><span>12</span></div>
+            <div className="stage-ball stage-ball-small stage-ball-right" aria-hidden="true"><span>31</span></div>
+
+            <div className="signal-card">
+              <div className="signal-card-top">
+                <div>
+                  <span className="signal-eyebrow">SIGNAL SNAPSHOT</span>
+                  <h2>Every market.<br /><span>One clear view.</span></h2>
                 </div>
-              ))}
+                <span className="signal-sample-tag"><i /> SAMPLE</span>
+              </div>
+              <div className="signal-card-divider" />
+              <div className="signal-market-row">
+                <span className="signal-market-index">01</span>
+                <span className="signal-market-name"><i className="signal-dot signal-dot-green" />Number markets</span>
+                <span className="signal-market-count">BETZERO · BET49</span>
+              </div>
+              <div className="signal-market-row">
+                <span className="signal-market-index">02</span>
+                <span className="signal-market-name"><i className="signal-dot signal-dot-violet" />Color markets</span>
+                <span className="signal-market-count">RAINBOW · TOTAL</span>
+              </div>
+              <div className="signal-market-row">
+                <span className="signal-market-index">03</span>
+                <span className="signal-market-name"><i className="signal-dot signal-dot-gold" />Range &amp; unified</span>
+                <span className="signal-market-count">HIGH / LOW · MORE</span>
+              </div>
+              <div className="signal-card-bottom">
+                <span className="signal-live-mark" aria-hidden="true">✳</span>
+                <span>Illustrative interface preview</span>
+                <span className="signal-card-arrow" aria-hidden="true">↗</span>
+              </div>
             </div>
-            <div className="preview-footer"><span className="preview-check">✓</span> Sample layout · not a live prediction</div>
+            <div className="stage-bottom-label"><span>01 — 07</span><span>CLARITY IN EVERY SIGNAL</span></div>
+          </div>
+        </div>
+
+        <div className="hero-scroll-cue" aria-hidden="true"><span /> SCROLL TO EXPLORE</div>
+      </section>
+
+      <section className="home-proof-strip" aria-label="Platform highlights">
+        <div className="page-container proof-strip-inner">
+          <div className="proof-brand"><span className="proof-brand-mark">E</span><span>THE GAME, IN A CLEARER LIGHT.</span></div>
+          <div className="proof-item"><strong>07</strong><span>Markets to explore</span></div>
+          <span className="proof-separator" aria-hidden="true" />
+          <div className="proof-item"><strong>LIVE</strong><span>Draw context</span></div>
+          <span className="proof-separator" aria-hidden="true" />
+          <div className="proof-item"><strong>FULL</strong><span>Result history</span></div>
+        </div>
+      </section>
+
+      <section className="section value-section cinematic-value-section">
+        <div className="page-container">
+          <div className="cinematic-section-heading">
+            <div>
+              <span className="overline">A MORE THOUGHTFUL EXPERIENCE</span>
+              <h2>Less noise.<br /><span>More perspective.</span></h2>
+            </div>
+            <p>Designed to make every signal easier to understand—from the first look to the final result.</p>
+          </div>
+          <div className="feature-grid cinematic-feature-grid">
+            {featureCards.map((feature) => (
+              <article className="feature-card cinematic-feature-card" key={feature.number}>
+                <div className="cinematic-feature-top">
+                  <span className="feature-icon" aria-hidden="true">{feature.icon}</span>
+                  <span className="feature-number">{feature.number}</span>
+                </div>
+                <h3>{feature.title}</h3>
+                <p>{feature.description}</p>
+                <span className="feature-card-line" aria-hidden="true" />
+              </article>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="section value-section">
-        <div className="page-container">
-          <div className="section-heading">
-            <span className="overline">MADE TO BE CLEAR</span>
-            <h2>Useful information, without the noise.</h2>
-            <p>See what the signal says, what it means, and what happened next.</p>
+      <section className="home-final-cta">
+        <div className="page-container final-cta-inner">
+          <div>
+            <span className="overline">YOUR NEXT VIEW STARTS HERE</span>
+            <h2>Step into the<br /><span>signal room.</span></h2>
           </div>
-          <div className="feature-grid">
-            <article className="feature-card">
-              <span className="feature-number">01</span><span className="feature-icon" aria-hidden="true">◷</span>
-              <h3>Timely signals</h3><p>Read each market suggestion and its status before the next draw.</p>
-            </article>
-            <article className="feature-card">
-              <span className="feature-number">02</span><span className="feature-icon" aria-hidden="true">⌁</span>
-              <h3>At-a-glance context</h3><p>Keep the selected market, current step, and model confidence together.</p>
-            </article>
-            <article className="feature-card">
-              <span className="feature-number">03</span><span className="feature-icon" aria-hidden="true">▤</span>
-              <h3>Built for review</h3><p>Follow signals with a measured approach and review outcomes over time.</p>
-            </article>
+          <div className="final-cta-action">
+            <p>Explore the free trial and see the experience for yourself.</p>
+            <a className="btn btn-primary cinematic-primary" href="free-trial.html">
+              Get started <span aria-hidden="true">↗</span>
+            </a>
           </div>
+          <span className="final-cta-orb" aria-hidden="true" />
         </div>
       </section>
     </main>

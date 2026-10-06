@@ -19,8 +19,10 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [session, setSession] = useState({ checking: true, user: null, admin: false });
   const [darkMode, setDarkMode] = useState(() => {
-    try { return localStorage.getItem('emmy-bet-theme') === 'dark'; }
-    catch { return false; }
+    try {
+      const savedTheme = localStorage.getItem('emmy-bet-theme');
+      return savedTheme === null ? true : savedTheme === 'dark';
+    } catch { return true; }
   });
 
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function App() {
   useEffect(() => setMenuOpen(false), [page]);
 
   return (
-    <div className={`site${darkMode ? ' dark-theme' : ''}`}>
+    <div className={`site${darkMode ? ' dark-theme' : ''}${page === 'home' ? ' home-site' : ' cinematic-site'}`}>
       <a className="skip-link" href="#main-content">Skip to content</a>
       <header className="site-header">
         <a className="brand" href="index.html" aria-label="Emmy-Bet home">

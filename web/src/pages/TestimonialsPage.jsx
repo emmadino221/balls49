@@ -8,11 +8,11 @@ const principles = [
 
 export default function TestimonialsPage() {
   return (
-    <main className="page-wrap">
+    <main className="page-wrap principles-page">
       <section className="page-intro">
-        <span className="overline">Our approach</span>
+        <span className="overline">OUR PRINCIPLES</span>
         <h1>Built for a more considered workflow.</h1>
-        <p>We focus on readable signals, useful context, and a clear view of uncertainty.</p>
+        <p>We focus on readable signals, useful context, and a clear view of uncertainty—not promises about future results.</p>
       </section>
       <section className="testimonial-grid principles-grid" aria-label="Platform principles">
         {principles.map((item) => (
@@ -22,6 +22,11 @@ export default function TestimonialsPage() {
             <p>{item.text}</p>
           </article>
         ))}
+      </section>
+      <section className="principles-note">
+        <span className="principles-note-mark" aria-hidden="true">✳</span>
+        <div><strong>Predictions are uncertain.</strong><p>Review the public history, set limits that work for you, and never stake money you cannot afford to lose.</p></div>
+        <a className="cinematic-text-link" href="history.html">View the track record <span aria-hidden="true">→</span></a>
       </section>
     </main>
   );

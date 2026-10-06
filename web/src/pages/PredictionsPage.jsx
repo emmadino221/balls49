@@ -343,6 +343,9 @@ export default function PredictionsPage() {
   const activeMarketPrediction = clock?.drawId === marketPredictions[activeGame.id]?.drawId ? marketPredictions[activeGame.id] : null;
   const activeMarketHasAccess = previewPlan?.tier === 'elite' || accountPlan?.tier === 'elite' || (previewPlan?.tier === 'premium' && previewPlan.games.includes(activeGame.id)) || (accountPlan?.tier === 'premium' && accountPlan.games.includes(activeGame.id));
   const activeMarketReveal = Boolean(activeMarketPrediction && activeMarketHasAccess);
+  const activePredictionKey = activeMarketPrediction
+    ? `${activeMarketPrediction.drawId}:${JSON.stringify(activeMarketPrediction.predicted || {})}`
+    : 'waiting';
   return (
     <main className="page-wrap prediction-page">
       <section className="page-intro prediction-intro">
@@ -393,7 +396,7 @@ export default function PredictionsPage() {
             <p>{activeGame.detail}</p>
             <div className={`live-prediction-value${activeMarketReveal ? ' is-revealed' : ' is-hidden'}`}>
               {activeMarketReveal
-                ? <LiveMarketPick record={activeMarketPrediction} marketId={activeGame.id} />
+                ? <LiveMarketPick key={activePredictionKey} record={activeMarketPrediction} marketId={activeGame.id} />
                 : <span className="trial-pick-message">{activeMarketHasAccess ? 'No prediction is available for this market yet. It will appear here when the bot publishes one.' : previewPlan?.tier === 'trial' || accountPlan?.tier === 'trial' ? 'Your trial pick is on the Free Trial page' : 'Unlock this market with Premium or Elite'}</span>}
             </div>
             {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
