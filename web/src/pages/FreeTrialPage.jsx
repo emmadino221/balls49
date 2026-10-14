@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import TotalColorPick from '../components/TotalColorPick.jsx';
 
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
 const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-clock');
@@ -7,7 +8,7 @@ const markets = [
   { id: 'betzero', name: 'BetZero', help: 'Four-number set; the pick wins if none of those numbers appear.' },
   { id: 'bet49', name: 'Bet49', help: 'One number pick; it wins if the number appears in the next draw.' },
   { id: 'rainbow', name: 'Rainbow Color', help: 'One color prediction.' },
-  { id: 'totalColor', name: 'Total Color (3-way)', help: 'Two target colors and one eliminated color.' },
+  { id: 'totalColor', name: 'Total Color (3-way)', help: 'Three selected outcomes. After a DRAW, Red, Blue and Green are selected; No Winning Color is eliminated.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', help: 'Two selected colors.' },
   { id: 'hilo', name: 'High / Low', help: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', help: 'The single pick chosen from the available markets.' },
@@ -32,8 +33,7 @@ function Pick({ record, market }) {
   if (market === 'rainbow') return pick.rainbow && pick.rainbow !== 'SKIP' ? <span className={`color-name color-${String(pick.rainbow).toLowerCase()}`}><i />{pick.rainbow}</span> : <span className="no-pick">No active pick this draw</span>;
   if (market === 'hilo') return pick.hilo && pick.hilo !== 'SKIP' ? <span className={`range-tag range-${String(pick.hilo).toLowerCase()}`}>{pick.hilo}</span> : <span className="no-pick">No active pick this draw</span>;
   if (market === 'totalColor') {
-    const item = pick.totalColor;
-    return item?.status === 'ACTIVE' ? <span className="live-market-picks"><span className="pick-colors">{item.topColors.map(color => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i />{color}</span>)}<span className="color-name color-black"><i />NO WIN</span></span><small>Eliminated: {item.noWinColor || '—'}</small></span> : <span className="no-pick">No active pick this draw</span>;
+    return <TotalColorPick pick={pick.totalColor} />;
   }
   if (market === 'totalColor2') return pick.totalColor2?.status === 'ACTIVE' ? <span className="pick-colors">{pick.totalColor2.top2.map(color => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i />{color}</span>)}</span> : <span className="no-pick">No active pick this draw</span>;
   if (market === 'unified') {

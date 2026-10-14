@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import TotalColorPick from '../components/TotalColorPick.jsx';
 
 const PAGE_SIZE = 200;
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
@@ -51,10 +52,7 @@ function MarketPick({ record, market }) {
     return predicted.rainbow && predicted.rainbow !== 'SKIP' ? <ColorTag color={predicted.rainbow} /> : <NoPick />;
   }
   if (market.id === 'totalColor') {
-    const colors = predicted.totalColor?.topColors || [];
-    return predicted.totalColor?.status === 'ACTIVE' && colors.length
-      ? <span className="pick-colors">{colors.map((color) => <ColorTag key={color} color={color} />)}<span className="color-name color-black"><i aria-hidden="true" />NO WIN</span></span>
-      : <NoPick />;
+    return <TotalColorPick pick={predicted.totalColor} />;
   }
   if (market.id === 'totalColor2') {
     const colors = predicted.totalColor2?.top2 || [];

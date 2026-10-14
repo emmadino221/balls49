@@ -18,8 +18,8 @@ const markets = [
   },
   {
     name: 'Total Color (3-way)',
-    pick: 'Two target colors and one color to eliminate.',
-    result: 'A win means the eliminated color is not the sole most frequent color. A tie for most frequent counts as a win.',
+    pick: 'Three selected outcomes and one eliminated outcome. After a DRAW (No Winning Color), the next pick is Red + Blue + Green, eliminating No Winning Color. Otherwise, the usual two colors plus No Winning Color are selected when the prediction filter allows an entry.',
+    result: 'A win means the actual outcome is one of the three selections. A tie for the most frequent color is DRAW / No Winning Color. When that outcome is eliminated, another DRAW is a loss.',
   },
   {
     name: 'Total Color (2-way)',

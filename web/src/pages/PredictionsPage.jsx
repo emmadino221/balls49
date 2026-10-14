@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
+import PredictionMarketStats from '../components/PredictionMarketStats.jsx';
+import TotalColorPick from '../components/TotalColorPick.jsx';
 
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
 const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-clock');
@@ -8,7 +10,7 @@ const games = [
   { id: 'betzero', name: 'BetZero', detail: 'Four-number set. A win means none of the selected numbers appear.' },
   { id: 'bet49', name: 'Bet49', detail: 'One number pick. A win means the number appears in the next draw.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
-  { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Two target colors and one eliminated color.' },
+  { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Three selected outcomes. After a DRAW, pick Red, Blue and Green; eliminate No Winning Color.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },
   { id: 'hilo', name: 'High / Low', detail: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', detail: 'One selected pick from the available markets.' },
@@ -43,9 +45,11 @@ function OwnerTools({ onSession }) {
   }
   async function approve(event) {
     event.preventDefault();
+    if (!window.confirm('Have you personally confirmed this person through a phone, WhatsApp, or Telegram contact you already trust?')) return;
     try {
-      const result = await apiRequest('/admin/approve', { method: 'POST', body: JSON.stringify({ email, tier, months, games: gamesSelected }) });
-      setNotice(`${result.user.email} approved for ${tier}.`); loadUsers();
+      const result = await apiRequest('/admin/approve', { method: 'POST', body: JSON.stringify({ email, tier, months, games: gamesSelected, identityConfirmed: true }) });
+      setNotice(`${result.user.email} approved for ${tier}.`);
+      loadUsers();
     } catch (error) { setNotice(error.message); }
   }
   async function preview(previewTier) {
@@ -170,10 +174,7 @@ function LiveMarketPick({ record, marketId }) {
       : <span className="no-pick">Waiting</span>;
   }
   if (marketId === 'totalColor') {
-    const pick = predicted.totalColor;
-    return pick?.status === 'ACTIVE' && pick.topColors?.length
-      ? <span className="live-market-picks"><span className="pick-colors">{pick.topColors.map((color) => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i aria-hidden="true" />{color}</span>)}<span className="color-name color-black"><i aria-hidden="true" />NO WIN</span></span><small>Eliminated: {pick.noWinColor || '—'}</small></span>
-      : <span className="no-pick">Waiting</span>;
+    return <TotalColorPick pick={predicted.totalColor} />;
   }
   if (marketId === 'totalColor2') {
     const colors = predicted.totalColor2?.top2 || [];
@@ -400,12 +401,7 @@ export default function PredictionsPage() {
                 : <span className="trial-pick-message">{activeMarketHasAccess ? 'No prediction is available for this market yet. It will appear here when the bot publishes one.' : previewPlan?.tier === 'trial' || accountPlan?.tier === 'trial' ? 'Your trial pick is on the Free Trial page' : 'Unlock this market with Premium or Elite'}</span>}
             </div>
             {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
-            {activeMarketReveal && activeMarketPrediction.marketStats && (
-              <div className="prediction-market-stats" aria-label={`${activeGame.name} step and losing streak statistics`}>
-                <div><span>Current step</span><strong>{activeMarketPrediction.marketStats.step > 0 ? `Step ${activeMarketPrediction.marketStats.step}` : '—'}</strong></div>
-                <div><span>Max losing streak · tracking period</span><strong>{activeMarketPrediction.marketStats.maxLosingStreak} {activeMarketPrediction.marketStats.maxLosingStreak === 1 ? 'loss' : 'losses'}</strong></div>
-              </div>
-            )}
+            {activeMarketReveal && <PredictionMarketStats stats={activeMarketPrediction.marketStats} marketName={activeGame.name} />}
             <div className="game-last-result">
               <div className="game-last-result-label"><span>LAST DRAW{previousPrediction ? ` · #${previousPrediction.drawId}` : ''}</span><small>Previous pick</small></div>
               <div className="game-last-pick"><LiveMarketPick record={previousPrediction} marketId={activeGame.id} /></div>

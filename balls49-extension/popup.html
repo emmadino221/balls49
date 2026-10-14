@@ -50,6 +50,7 @@
         .sniper-market-toggle input { accent-color: var(--accent-green); }
         .sniper-config-row input[type="number"] { min-width: 0; padding: 5px 6px; font-size: 9px; }
         .sniper-help { margin: 7px 0 10px; color: var(--text-muted); font-size: 8px; line-height: 1.5; }
+        .summary-market-select { display: flex; flex-direction: column; gap: 5px; font-size: 10px; }
 
         .game-btn { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted); padding: 6px; border-radius: 6px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center; }
         .game-btn.active { background: rgba(16, 185, 129, 0.1); border-color: var(--accent-green); color: var(--accent-green); }
@@ -216,12 +217,12 @@
                 <span>Off by default</span>
             </div>
             <div class="grid-2" style="margin-bottom: 4px;">
-                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-betzero"> BetZero</label>
-                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-rainbow"> Rainbow</label>
-                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-hilo"> High/Low</label>
-                <label class="check-wrap" title="Require the summary model to recommend ENTER before this market can be automated"><input type="checkbox" id="summary-model-totalColor"> Total Color (3-Way)</label>
+                <label class="summary-market-select">BetZero<select id="summary-model-betzero"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
+                <label class="summary-market-select">Rainbow<select id="summary-model-rainbow"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
+                <label class="summary-market-select">High/Low<select id="summary-model-hilo"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
+                <label class="summary-market-select">Total Color (3-Way)<select id="summary-model-totalColor"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
             </div>
-            <p class="sniper-help">When enabled, the model must say ENTER as well as the existing rules. HOLD or insufficient history pauses that market's automated bet. This does not change displayed predictions, and ML Override does not bypass this gate. A bet already queued is not recalled.</p>
+            <p class="sniper-help">Choose which saved summary label permits each market to trade. Summary HOLD trades the prediction when its label is HOLD; Summary ENTER requires ENTER. LEARNING or missing summary data pauses either gate. Existing confidence, sniper, stake and stop rules still apply. ML Override only bypasses confidence thresholds. Unified uses the chosen market's gate. Save settings to apply; a bet already queued is not recalled.</p>
             
             <div class="grid-2" style="margin-bottom: 8px;">
                 <select id="hilo-multiplier" title="High/Low Multiplier">

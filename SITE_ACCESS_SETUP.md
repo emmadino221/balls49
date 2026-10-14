@@ -30,6 +30,24 @@ The person enters their name, email, and password at **Sign up**. The account is
 - In local mode, the API accepts browser requests from the Bet9ja game page and Chrome extension pages so the browser extension can receive live signals. Keep the API on loopback; the extension and bot need to run on the same computer.
 - Prediction broadcasts read `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` when `bot.js` starts. Add the bot as an administrator with permission to post in the channel. Pick messages are written to the worker's `telegram_prediction_outbox.json` before delivery; failures are logged and retried with backoff. Keep this local runtime file on persistent storage and out of source control. A result can arrive while its pick is waiting for a retry.
 
+## Total Color 3-way after a DRAW
+
+When the immediately preceding completed draw is tied for the most frequent color (DRAW / No Winning Color), the next 3-way prediction selects **Red + Blue + Green** and eliminates **No Winning Color**. A sole winning color wins; another DRAW loses. The normal two-color-plus-DRAW prediction filter resumes after a sole color result. If the preceding result is missing or incomplete, it cannot trigger this rule.
+
+Telegram, current/trial/history pages, results, exports, and the extension use the actual three selections. Historical predictions retain their original choices and grading. It still uses three equal stakes; existing confidence, summary, sniper, and stop rules govern automation. Reload the extension and refresh its game tab as well as restarting the bot so execution uses the new three-selection payload.
+
+## Summary losing streak statistics
+
+Each market displays separate maximum losing streaks for saved **Summary ENTER** and **Summary HOLD** predictions on the Predictions page and in Telegram draw results. Both use settled history within the existing max-loss tracking period. A loss increases only the streak for the label issued with that prediction; a win resets only that label's current streak. Other labels, skipped draws, pending results, and LEARNING labels do not change it. The maximum stays recorded until the owner resets max-loss tracking.
+
+HOLD statistics measure the underlying prediction's result even when no bet was placed. Unified uses the summary label of its chosen market for that draw and tracks its own results. Old records without summary labels and markets without summary decisions (currently Bet49 and Total Color 2-way) show no summary data instead of inventing a label. Existing history is retained, so these statistics survive restarts and include previously saved labels.
+
+## Extension summary entry gate
+
+In **Expert Settings → Summary model entry gate**, each supported market has **Off**, **Summary ENTER**, and **Summary HOLD** choices. Click **Save Settings** after choosing. HOLD allows an active pick only when the summary label saved for that draw is HOLD; ENTER requires ENTER. LEARNING and missing summary data block both enabled modes. BetZero, Rainbow, High/Low, and Total Color 3-way currently supply summary decisions. Unified mode applies the gate of its selected underlying market.
+
+Existing enabled gates migrate to ENTER. Choices are saved in extension storage and bot sessions and restored after restarting. The label is the one issued with the prediction, so a model retraining during the draw does not change the gate. Confidence thresholds, sniper conditions, and all other execution rules still apply; ML Override bypasses only the confidence thresholds. Changing the gate does not recall a bet already queued. Reload the extension and refresh the game tab after installing this update, and restart the bot.
+
 ## Public hosting boundary
 
 The bot and website API share `bot.js`. Keep the normal local mode for your current desktop automation. For local website access, Vite proxies `/api` requests to the bot API on loopback, so the API does not need to be exposed on your LAN. When hosting the API for the website, set these server environment variables:

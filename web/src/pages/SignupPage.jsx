@@ -19,9 +19,9 @@ export default function SignupPage() {
       setBusy(false);
       return;
     }
-
+    const submittedEmail = String(form.get('email') || '').trim();
+    setEmail(submittedEmail);
     try {
-      const submittedEmail = String(form.get('email') || '').trim();
       await apiRequest('/auth/signup', {
         method: 'POST',
         body: JSON.stringify({
@@ -30,7 +30,6 @@ export default function SignupPage() {
           password
         })
       });
-      setEmail(submittedEmail);
       setAccountCreated(true);
     } catch (error) {
       setMessage(error.message);
@@ -42,25 +41,24 @@ export default function SignupPage() {
   return <AuthLayout
     mode="signup"
     eyebrow="CREATE YOUR ACCOUNT"
-    title={accountCreated ? 'Your account is ready.' : 'A better start begins here.'}
-    description="Create an account with your email and password. Prediction access is activated after owner approval."
+    title={accountCreated ? 'Your request is submitted.' : 'A better start begins here.'}
+    description="The site owner confirms each new account through a separate, trusted contact method before granting access."
   >
     {accountCreated
       ? <div className="auth-success-message" role="status">
-          <h2>Waiting for owner approval</h2>
-          <p>Your account for <strong>{email}</strong> has been created. You can sign in now; prediction access will be available after the site owner approves your account.</p>
-          <a className="btn btn-primary" href="predictions.html">Continue to predictions</a>
+          <h2>Waiting for owner confirmation</h2>
+          <p>Your request for <strong>{email}</strong> is saved but cannot sign in yet. The site owner must first confirm your identity through a contact method they already know.</p>
         </div>
       : <form className="auth-form auth-form-professional" onSubmit={submit}>
           <label htmlFor="signup-name">Full name</label>
           <input id="signup-name" name="name" type="text" placeholder="Your name" autoComplete="name" maxLength="100" required />
           <label htmlFor="signup-email">Email address</label>
-          <input id="signup-email" name="email" type="email" placeholder="you@example.com" autoComplete="email" maxLength="254" required />
+          <input id="signup-email" name="email" type="email" placeholder="you@example.com" autoComplete="email" maxLength="254" value={email} onChange={event => setEmail(event.target.value)} required />
           <label htmlFor="signup-password">Password</label>
           <input id="signup-password" name="password" type="password" placeholder="At least 10 characters" autoComplete="new-password" minLength="10" maxLength="1024" required />
           <label htmlFor="signup-confirm-password">Confirm password</label>
           <input id="signup-confirm-password" name="confirm-password" type="password" placeholder="Enter the password again" autoComplete="new-password" minLength="10" maxLength="1024" required />
-          <small className="auth-password-hint">Your account will be listed in the owner tools for manual access approval.</small>
+          <small className="auth-password-hint">Your account stays locked until the site owner confirms you through a trusted contact method.</small>
           <button className="btn btn-primary" disabled={busy}>{busy ? 'Creating account…' : 'Create account'}</button>
           {message && <p className="auth-feedback" role="alert">{message}</p>}
         </form>}

@@ -10,8 +10,10 @@ export default function LoginPage() {
   async function submit(event) {
     event.preventDefault(); setBusy(true); setMessage('');
     const form = new FormData(event.currentTarget);
+    const submittedEmail = String(form.get('email') || '').trim();
+    setEmail(submittedEmail);
     try {
-      await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email: form.get('email'), password: form.get('password') }) });
+      await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email: submittedEmail, password: form.get('password') }) });
       window.location.href = 'predictions.html';
     } catch (error) { setMessage(error.message); }
     finally { setBusy(false); }

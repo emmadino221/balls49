@@ -264,6 +264,8 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .prediction-market-stats > div { display: flex; flex-direction: column; gap: 5px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
 .prediction-market-stats span { color: var(--muted); font-size: 9px; font-weight: 700; }
 .prediction-market-stats strong { color: var(--ink); font-family: Manrope, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
+.prediction-market-stats small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.prediction-game-card .prediction-summary-stats-note { margin: -5px 0 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .summary-model-badge { display: inline-flex; width: max-content; align-items: center; gap: 4px; margin: 6px 0 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface-soft); font-size: 9px; font-weight: 800; letter-spacing: .02em; }
 .summary-model-enter { border-color: rgba(19, 132, 91, .4); color: #08744f; background: rgba(19, 132, 91, .1); }
 .summary-model-hold { border-color: rgba(174, 86, 36, .35); color: #96501f; background: rgba(174, 86, 36, .1); }

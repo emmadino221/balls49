@@ -356,23 +356,33 @@ async function runHiLo(range, stake) {
 
 async function runTotalColor(topColors, stake) {
     try {
+        if (!Array.isArray(topColors)) return false;
+        const targets = topColors.map(color => String(color).toLowerCase());
+        // Older bot payloads carry only two colors and implicitly include DRAW.
+        if (targets.length === 2 && targets.every(color => ['red', 'blue', 'green'].includes(color))) targets.push('black');
+        if (targets.length !== 3 || new Set(targets).size !== 3
+            || targets.some(color => !['red', 'blue', 'green', 'black'].includes(color))) return false;
         const tabIcon = document.querySelector('.total-colour');
         if (tabIcon) { const tab = tabIcon.closest('a'); if (tab) safeClick(tab); }
         await sleep(300);
 
-        const targets = [topColors[0].toLowerCase(), topColors[1].toLowerCase(), 'black'];
+        if (targets.some(color => !document.querySelector(`.g-total__btn.${color}`))
+            || !document.querySelector('input[type="number"]')) return false;
         let allSuccess = true;
         for (let colorClass of targets) {
             const btn = document.querySelector(`.g-total__btn.${colorClass}`);
             if (btn) {
                 safeClick(btn); await sleep(150);
                 const input = document.querySelector('input[type="number"]');
-                if (input) { input.value = stake; input.dispatchEvent(new Event('input', { bubbles: true })); }
+                if (!input) return false;
+                input.value = stake; input.dispatchEvent(new Event('input', { bubbles: true }));
                 await sleep(200);
                 
                 const placed = await placeBet();
                 if (!placed) allSuccess = false;
-                await sleep(200); 
+                await sleep(200);
+            } else {
+                allSuccess = false;
             }
         }
         return allSuccess;
@@ -1279,7 +1289,7 @@ async function startApp() {
             'enabledGames', 'schedule', 'telegramChatId', 'step1Only', 
             'hiloStrategy', 'flatBetting', 'sniperMode', 'sniperStep', 'sniperResetLosses',
             'dynamicStakePercent', 'cbMaxLosses', 'cbCooldown',
-            'mlOverrideMode', 'unifiedMode', 'hiloMultiplier' 
+            'mlOverrideMode', 'unifiedMode', 'hiloMultiplier', 'summaryModelMarkets', 'summaryModelTargets'
         ], (data) => {
             if (data) {
                 setSelectedGameFromSettings(data);

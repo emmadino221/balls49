@@ -449,7 +449,10 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const mlOverrideMode = getToggleValue('ml-override');
     const summaryModelMarkets = Object.fromEntries(SUMMARY_MODEL_MARKETS.map(({ id, key }) => ([
         key,
-        !!document.getElementById(`summary-model-${id}`)?.checked
+        ['ENTER', 'HOLD'].includes(document.getElementById(`summary-model-${id}`)?.value)
+    ])));
+    const summaryModelTargets = Object.fromEntries(SUMMARY_MODEL_MARKETS.map(({ id, key }) => ([
+        key, document.getElementById(`summary-model-${id}`)?.value === 'HOLD' ? 'HOLD' : 'ENTER'
     ])));
     const shadowMode = getToggleValue('shadowMode');
     const weightedStaking = getToggleValue('weightedStaking');
@@ -488,7 +491,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloMultiplier, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets,
+        unifiedMode, bzRbRollover, hiloMultiplier, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets, summaryModelTargets,
         shadowMode, weightedStaking 
     };
 
@@ -572,7 +575,7 @@ function loadParameters() {
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
         'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'baseStakePercent', 'backtestDraws',
-        'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'shadowMode', 'weightedStaking'
+        'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'summaryModelTargets', 'shadowMode', 'weightedStaking'
     ], (data) => {
         let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
         const stakes = data.stakes || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
@@ -611,7 +614,9 @@ function loadParameters() {
         setCheckState('bzrb-rollover', data.bzRbRollover);
         setCheckState('ml-override', data.mlOverrideMode);
         SUMMARY_MODEL_MARKETS.forEach(({ id, key }) => {
-            setCheckState(`summary-model-${id}`, data.summaryModelMarkets?.[key]);
+            const select = document.getElementById(`summary-model-${id}`);
+            if (select) select.value = data.summaryModelMarkets?.[key]
+                ? (data.summaryModelTargets?.[key] === 'HOLD' ? 'HOLD' : 'ENTER') : 'OFF';
         });
         setCheckState('shadowMode', data.shadowMode);
         setCheckState('weightedStaking', data.weightedStaking);
