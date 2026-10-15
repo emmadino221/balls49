@@ -81,7 +81,9 @@ function calculateSummaryLossStats(records, marketResultKeys, resetAt = 0) {
 function formatTelegramSummaryStats(labels, stats, market) {
     const value = label => stats[market]?.[label]?.settled > 0 ? stats[market][label].maxLosingStreak : '—';
     const label = getPublicSummaryLabel(labels?.[market]);
-    return `🧠 Summary${label ? ` ${label}` : ''} · Max losses: ENTER ${value('ENTER')} | HOLD ${value('HOLD')}`;
+    if (!label) return '';
+    const icon = { ENTER: '🟢', HOLD: '🟠', LEARNING: '⚪' }[label];
+    return `🧠 Summary: ${icon} <b>${label}</b>\nSummary max losses: 🟢 ENTER <b>${value('ENTER')}</b> · 🟠 HOLD <b>${value('HOLD')}</b>`;
 }
 
 module.exports = {

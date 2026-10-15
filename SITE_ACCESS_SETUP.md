@@ -15,7 +15,7 @@ Open Predictions on the website, expand **Site owner tools**, enter the key, and
 
 ## Approve an account
 
-The person enters their name, email, and password at **Sign up**. The account is created immediately, and the person can sign in; prediction-plan access remains pending until owner approval. New accounts appear first in **Site owner tools** as pending. Select the account email, choose Free Trial, Premium, or Elite, set the duration, and save. Premium needs at least one checked market. Elite includes all seven markets and is marked with Telegram access. User records and salted password hashes are stored in `site_users.sqlite`.
+The person enters their name, email, and password at **Sign up**. New accounts wait for owner identity confirmation before they can sign in. In **Site owner tools**, confirm the person through a known contact, select their account email, choose Free Trial, Premium, or Elite, set the duration, and save manual approval. Premium needs at least one checked market. Elite includes all seven markets and is marked with Telegram access. User records and salted password hashes are stored in `site_users.sqlite`.
 
 ## Notes
 
@@ -41,6 +41,17 @@ Telegram, current/trial/history pages, results, exports, and the extension use t
 Each market displays separate maximum losing streaks for saved **Summary ENTER** and **Summary HOLD** predictions on the Predictions page and in Telegram draw results. Both use settled history within the existing max-loss tracking period. A loss increases only the streak for the label issued with that prediction; a win resets only that label's current streak. Other labels, skipped draws, pending results, and LEARNING labels do not change it. The maximum stays recorded until the owner resets max-loss tracking.
 
 HOLD statistics measure the underlying prediction's result even when no bet was placed. Unified uses the summary label of its chosen market for that draw and tracks its own results. Old records without summary labels and markets without summary decisions (currently Bet49 and Total Color 2-way) show no summary data instead of inventing a label. Existing history is retained, so these statistics survive restarts and include previously saved labels.
+
+Telegram results use a separate block for each game: game and outcome, colored
+pick, tracking step and maximum losses, then summary details when applicable.
+The summary section appears only for an active prediction with a saved summary
+label for that draw. Games without a label and skipped games omit the section;
+their underlying statistics remain stored. The website's no-data display is
+unchanged. Draw numbers, total/range, selected colors and Unified's source game
+remain included in the Telegram result. Total Color 3-way shows only its selected
+outcomes in Telegram predictions and results, including Unified picks; the
+avoided color is omitted from the message. Prediction and settlement logic are
+unchanged.
 
 ## Extension summary entry gate
 
@@ -69,7 +80,16 @@ Public mode requires HTTPS: its authentication cookie is HttpOnly, Secure, and S
 After this cookie change, users of the previous browser-token version must sign in once again. The app removes its old account/admin tokens from local storage; future sessions are kept in the HttpOnly cookie.
 
 The API now throttles signups per source IP, login attempts per source IP and email, and owner-key attempts per source IP. If a hosting proxy combines visitor IPs, configure additional rate limits at that trusted edge; the app does not trust client-supplied forwarding headers. SQLite now provides durable account and session storage, but a public launch still needs a persistent host volume for the database and a deployment setup that runs the prediction/bot worker exactly once. Keep using private test accounts until those hosting requirements are in place.
-# Reset prediction streak tracking
+## Reset prediction streak tracking
+
+The owner reported the deployed reset working on 15 October 2026. The reset and
+history-range update was released in commit `61d0b7d`.
+
+1. Open **Predictions** and expand **Site owner tools**.
+2. Unlock the controls with the hosted API's `SITE_ADMIN_KEY`.
+3. Choose **Reset all prediction streaks** and confirm the reset.
+4. Allow the next successful worker feed exchange to synchronize both services.
+5. New Telegram messages and refreshed website statistics use the new period.
 
 In Predictions, unlock Owner tools and choose **Reset all prediction streaks**.
 This starts a new reporting period for every game's current tracking step,
@@ -93,3 +113,7 @@ period, for each game within the selected last 10/50/100/200/500/1,000 draws or
 all saved resolved draws. All time includes older results even before loading
 their cards. A win ends a streak; skipped picks neither increase nor reset it.
 Draw ID search filters cards but does not change this range statistic.
+
+An empty Summary ENTER/HOLD bucket can show **No summary data** until a new
+prediction with that label settles. Markets without a summary model continue
+to show no summary data. This does not mean synchronization has failed.

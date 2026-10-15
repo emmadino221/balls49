@@ -36,3 +36,16 @@ Runtime state includes local JSON files such as `draws.json`, `predictions.json`
 7. Back up persistent SQLite/state before migrations and confirm deployment runs exactly one prediction worker.
 
 Keep the extension and website behavior aligned with the server's seven public market keys and access rules. Distinguish website-only personal stake plans from extension stake configuration and bot-global loss tracking.
+
+## Latest streak reporting release
+
+- Commit `61d0b7d`: owner reset synchronization, current reporting steps, and
+  history-range worst losing streaks.
+- The owner reported the deployed reset working on 15 October 2026.
+- The frontend production build completed before the push. Automated tests were
+  not run for this release; the owner confirmation covers the observed reset flow.
+- Update the VPS worker, Render API (`emmybet`), and Render website (`balls49`)
+  together when this reporting contract changes.
+- Use [the deployment guide](../DEPLOYMENT_GUIDE.md#updating-the-existing-deployment)
+  for release commands and [the owner setup guide](../SITE_ACCESS_SETUP.md#reset-prediction-streak-tracking)
+  for reset instructions.

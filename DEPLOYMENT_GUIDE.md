@@ -32,3 +32,65 @@ Build the frontend from the `web` directory with `npm ci` and `npm run build`. S
 The root `.gitignore` excludes credentials, cookies, account/session databases, generated predictions, local state, dependencies, and build output. Ignore rules do not remove files that were already committed or uploaded. Before publishing a repository, inspect its tracked-file history and rotate any secret that was ever committed.
 
 For local owner setup and manual account approvals, see [SITE_ACCESS_SETUP.md](SITE_ACCESS_SETUP.md).
+
+## Updating the existing deployment
+
+The current installation has three separately updated components:
+
+| Component | Location | Update required |
+| --- | --- | --- |
+| Prediction worker | VPS, `~/balls49`, `balls49-bot.service` | Pull code and restart the service |
+| Website API | Render service `emmybet` | Deploy the latest GitHub commit |
+| React website | Render service `balls49` | Deploy and rebuild the latest GitHub commit |
+
+Repository: `https://github.com/emmadino221/balls49`, branch `main`.
+The owner confirmed the streak reset working after release `61d0b7d` on
+15 October 2026. Updating only the VPS does not update either Render service.
+
+### Render
+
+For both `emmybet` and `balls49`, check whether automatic deployment has started.
+Otherwise choose **Manual Deploy > Deploy latest commit**. Confirm that both
+services show the intended commit as live, then refresh the website.
+
+### VPS
+
+From a trusted terminal logged in as the `balls49` user:
+
+```bash
+cd ~/balls49
+git status --short
+git pull --ff-only origin main
+```
+
+If the pull fails or reports conflicts, resolve that before restarting. Preserve
+local runtime state; do not use a hard reset to discard unexpected changes.
+After a successful pull:
+
+```bash
+sudo systemctl restart balls49-bot.service
+sudo systemctl status balls49-bot.service --no-pager -l
+sudo journalctl -u balls49-bot.service -n 50 --no-pager
+```
+
+Restart `balls49-collector.service` only when its code or configuration changes.
+The Render frontend build handles website assets; a VPS worker-only update does
+not require building the website on the VPS.
+
+### Streak reset synchronization
+
+Both worker and hosted API must include the reset update. The signed snapshot
+carries `marketStatsResetAt`; the API returns its latest reset timestamp in the
+response. Each side keeps the newer timestamp in SQLite. No history is deleted,
+and no extension martingale or automation state is reset. Offline workers catch
+up after the next successful feed exchange.
+
+If website statistics are missing while Telegram works, first check the deployed
+API version. `/public-current-prediction` includes `marketStats.summaryStats` for
+an accessible prediction. `/public-history` includes `worstLosingStreaks` and
+`streakDrawCount`; `range=all` calculates across all saved resolved draws even
+when the returned history cards are paginated.
+
+The last attempted automated SSH connection was blocked by a changed host key.
+Before reusing that connection, verify the server identity through the hosting
+console. Do not disable SSH host-key checking to bypass the mismatch.

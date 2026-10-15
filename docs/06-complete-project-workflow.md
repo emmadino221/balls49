@@ -35,6 +35,28 @@ Website accounts use the authenticated account/session API. Market access is che
 
 ## Operational checks
 
+### Prediction streak reporting
+
+Owner tools expose **Reset all prediction streaks** through the authenticated
+`POST /admin/reset-market-stats` route. This records a new reporting cutoff for
+current tracking steps, maximum losses, and Summary ENTER/HOLD streaks. The
+worker and hosted API synchronize the newest cutoff through the prediction feed.
+The reset preserves historical records, extension martingale amounts, global
+automation steps, and sniper state. Reporting steps may differ from automation
+steps after a reset.
+
+Telegram `/resetstreaks` (alias `/resetmaxloss`) requires the private worker's
+`TELEGRAM_OWNER_CHAT_ID` to match the sender. Existing Telegram messages remain
+unchanged; subsequent messages use the new tracking period. The separate
+`/reset` command changes betting state and is not the reporting reset.
+
+History's per-market worst losing streak uses the selected draw range, independent
+of the reporting cutoff. Supported ranges are 10, 50, 100, 200, 500, 1,000, and
+all saved resolved draws. Wins end a streak; skipped picks leave it unchanged.
+Draw ID search filters cards without changing the range statistic.
+
+### Routine checks
+
 - Verify that the current draw ID and prediction ID match.
 - Confirm the prediction record exists before relying on its later settlement/result.
 - Check bot logs and the Telegram outbox if a pick message is missing; the result can be delivered while the pick is awaiting retry.

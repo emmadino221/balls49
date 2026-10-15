@@ -2109,7 +2109,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         : `⏳ No pick this draw · Tracking step ${getTrackingStep('rainbow', globalTracker.color.step)}`;
 
     var tcFormat = pred.totalColorPred.status === 'ACTIVE'
-        ? `${getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color]} <b>${totalColorName(color)}</b>`).join(' + ')} · Avoid ${cEm[pred.totalColorPred.noWinColor]} <b>${totalColorName(pred.totalColorPred.noWinColor)}</b> · Tracking step ${getTrackingStep('totalColor', globalTracker.totalColor.step)}${summaryLabelFor('totalColor')}`
+        ? `${getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color]} <b>${totalColorName(color)}</b>`).join(' + ')} · Tracking step ${getTrackingStep('totalColor', globalTracker.totalColor.step)}${summaryLabelFor('totalColor')}`
         : `⏳ No pick this draw · Tracking step ${getTrackingStep('totalColor', globalTracker.totalColor.step)}`;
 
     var tc2Format = pred.totalColor2Pred.status === 'ACTIVE'
@@ -2150,7 +2150,7 @@ async function sendPrediction(drawId, drawDate, pred) {
             u4: () => pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' '),
             color: () => `${cEm[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`,
             sum: () => pred.sumRange,
-            totalColor: () => `${getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color] || '⚪'} ${totalColorName(color)}`).join(' + ')} (avoid ${cEm[pred.totalColorPred.noWinColor] || '⚪'} ${totalColorName(pred.totalColorPred.noWinColor)})`
+            totalColor: () => getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color] || '⚪'} ${totalColorName(color)}`).join(' + ')
         };
         unifiedFormat = `Selected market: <b>${unifiedNames[best.key]}</b>\nPick: <b>${unifiedPicks[best.key]()}</b>${summaryLabelFor(best.key)}`;
     } else {
@@ -2752,10 +2752,15 @@ function processUpdates(pred, actualDraw) {
     };
     const resultLine = (name, active, won, pick, trackerKey) => {
         const outcome = !active ? '⚪ SKIPPED' : won ? '✅ WIN' : '❌ LOSS';
-        const details = active && pick ? ` · ${pick}` : '';
         const stepLabel = active ? 'Next tracking step' : 'Tracking step';
         const marketKey = trackerToPublicMarket[trackerKey];
-        return `${outcome} <b>${name}</b>${details} · ${stepLabel} ${getTrackingStep(marketKey, globalTracker[trackerKey].step)} · Max losses ${periodMaxLosses[marketKey] || 0}\n${formatTelegramSummaryStats(settledSummaryLabels, summaryLossStats, marketKey)}`;
+        const lines = [
+            `<b>${name}</b> — ${outcome}`,
+            active && pick ? `Pick: ${pick}` : '',
+            `${stepLabel}: <b>${getTrackingStep(marketKey, globalTracker[trackerKey].step)}</b> · Max losses: <b>${periodMaxLosses[marketKey] || 0}</b>`,
+            active ? formatTelegramSummaryStats(settledSummaryLabels, summaryLossStats, marketKey) : ''
+        ];
+        return lines.filter(Boolean).join('\n');
     };
 
     const betzeroPick = pred.betzeroStatus === 'ACTIVE'
@@ -2767,7 +2772,7 @@ function processUpdates(pred, actualDraw) {
         ? `${colorEmojis[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`
         : '';
     const tcPick = pred.totalColorPred.status === 'ACTIVE'
-        ? `${getTotalColorTargets(pred.totalColorPred).map(color => `${colorEmojis[color] || '⚪'} ${totalColorName(color)}`).join(' + ')} (avoid ${colorEmojis[pred.totalColorPred.noWinColor] || '⚪'} ${totalColorName(pred.totalColorPred.noWinColor)})`
+        ? getTotalColorTargets(pred.totalColorPred).map(color => `${colorEmojis[color] || '⚪'} ${totalColorName(color)}`).join(' + ')
         : '';
     const tc2Pick = pred.totalColor2Pred.status === 'ACTIVE'
         ? pred.totalColor2Pred.top2.map(color => `${colorEmojis[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')
@@ -2792,22 +2797,23 @@ function processUpdates(pred, actualDraw) {
         '',
         '<b>MARKET RESULTS</b>',
         '',
-        resultLine('BetZero', pred.betzeroStatus === 'ACTIVE', u4Win, betzeroPick, 'u4'),
+        resultLine('🔵 BetZero', pred.betzeroStatus === 'ACTIVE', u4Win, betzeroPick, 'u4'),
         '',
-        resultLine('Bet49', bet49Active, bet49Win, bet49PickText, 'bet49'),
+        resultLine('🎯 Bet49', bet49Active, bet49Win, bet49PickText, 'bet49'),
         '',
-        resultLine('Rainbow', pred.rainbowStatus === 'ACTIVE', colorWin, rainbowPick, 'color'),
+        resultLine('🌈 Rainbow', pred.rainbowStatus === 'ACTIVE', colorWin, rainbowPick, 'color'),
         '',
-        resultLine('Total Color · 3-way', pred.totalColorPred.status === 'ACTIVE', tcWin, tcPick, 'totalColor'),
+        resultLine('🎨 Total Color · 3-way', pred.totalColorPred.status === 'ACTIVE', tcWin, tcPick, 'totalColor'),
         '',
-        resultLine('Total Color · 2-way', pred.totalColor2Pred.status === 'ACTIVE', tc2Win, tc2Pick, 'totalColor2'),
+        resultLine('🎨 Total Color · 2-way', pred.totalColor2Pred.status === 'ACTIVE', tc2Win, tc2Pick, 'totalColor2'),
         '',
-        resultLine('High / Low', pred.hiloStatus === 'ACTIVE', sumWin, hiloPick, 'sum'),
+        resultLine('📊 High / Low', pred.hiloStatus === 'ACTIVE', sumWin, hiloPick, 'sum'),
         '',
-        resultLine(`Unified${unifiedName ? ` · ${unifiedName}` : ''}`, unifiedStatus === 'ACTIVE', unifiedWin, unifiedPickText, 'unified'),
-        '',
-        'Summary streaks track each label separately. — = no settled summary data.'
+        resultLine(`🔗 Unified${unifiedName ? ` · ${unifiedName}` : ''}`, unifiedStatus === 'ACTIVE', unifiedWin, unifiedPickText, 'unified')
     ];
+    if (groupReportLines.some(line => line.includes('Summary max losses:'))) {
+        groupReportLines.push('', 'Summary streaks track each label separately. — = no settled summary data.');
+    }
     sendTelegram(groupReportLines.join('\n')).catch(() => {});
 }
 
