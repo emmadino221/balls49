@@ -6,7 +6,7 @@ export default function PredictionMarketStats({ stats, marketName }) {
   return (
     <div className="prediction-stats-block">
       <div className="prediction-market-stats" aria-label={`${marketName} step and losing streak statistics`}>
-        <div><span>Current step</span><strong>{stats.step > 0 ? `Step ${stats.step}` : '—'}</strong></div>
+        <div><span>Current tracking step</span><strong>{stats.step > 0 ? `Step ${stats.step}` : '—'}</strong></div>
         <div><span>Max losing streak · tracking period</span><strong>{losses(stats.maxLosingStreak)}</strong></div>
         {['ENTER', 'HOLD'].map(label => {
           const summary = stats.summaryStats?.[label];

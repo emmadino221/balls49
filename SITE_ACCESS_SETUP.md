@@ -69,3 +69,27 @@ Public mode requires HTTPS: its authentication cookie is HttpOnly, Secure, and S
 After this cookie change, users of the previous browser-token version must sign in once again. The app removes its old account/admin tokens from local storage; future sessions are kept in the HttpOnly cookie.
 
 The API now throttles signups per source IP, login attempts per source IP and email, and owner-key attempts per source IP. If a hosting proxy combines visitor IPs, configure additional rate limits at that trusted edge; the app does not trust client-supplied forwarding headers. SQLite now provides durable account and session storage, but a public launch still needs a persistent host volume for the database and a deployment setup that runs the prediction/bot worker exactly once. Keep using private test accounts until those hosting requirements are in place.
+# Reset prediction streak tracking
+
+In Predictions, unlock Owner tools and choose **Reset all prediction streaks**.
+This starts a new reporting period for every game's current tracking step,
+maximum losing streak, and Summary ENTER/HOLD current and maximum losing streaks.
+Existing predictions and results remain saved. The extension's martingale,
+stakes, global automation steps and sniper state are unchanged. Displayed
+tracking steps can therefore differ from automation steps after a reset.
+
+For Telegram, set `TELEGRAM_OWNER_CHAT_ID` to your personal numeric Telegram
+user/chat ID in the bot's private environment, restart the bot, and send
+`/resetstreaks` privately to the bot. `/resetmaxloss` is an alias for the same
+owner-only action. Do not use `/reset`: that separate command resets betting state.
+
+The VPS bot and hosted API exchange the newest reset timestamp through the
+signed prediction feed. Both must run this version. A reset on either side
+reaches the other on the next successful feed exchange; offline instances
+catch up when publishing resumes. Existing Telegram messages are not edited.
+
+History's **Worst losing streak** is calculated separately from the live reset
+period, for each game within the selected last 10/50/100/200/500/1,000 draws or
+all saved resolved draws. All time includes older results even before loading
+their cards. A win ends a streak; skipped picks neither increase nor reset it.
+Draw ID search filters cards but does not change this range statistic.

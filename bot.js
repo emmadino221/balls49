@@ -915,6 +915,27 @@ function resetMarketStatsTracking() {
     return resetAt;
 }
 
+function syncMarketStatsReset(value) {
+    const resetAt = Number(value);
+    if (Number.isSafeInteger(resetAt) && resetAt > getMarketStatsResetAt() && resetAt <= Date.now() + 60000) {
+        setSiteSettingStatement.run('market_stats_reset_at', String(resetAt));
+    }
+}
+
+function getTrackingStep(market, fallback = 1) {
+    const resetAt = getMarketStatsResetAt();
+    if (!resetAt) return fallback;
+    let losses = 0;
+    for (const record of predictionLog) {
+        const time = Date.parse(record?.settledAt || record?.timestamp || '');
+        if (!Number.isFinite(time) || time <= resetAt) continue;
+        const outcome = record.result?.[market];
+        if (outcome === 'WIN') break;
+        if (outcome === 'LOSS') losses++;
+    }
+    return losses + 1;
+}
+
 function getPublicMarketMaxLosses(records = predictionLog) {
     const runningLosses = Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, 0]));
     const maximumLosses = Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, 0]));
@@ -943,7 +964,7 @@ function buildPublicMarketStats(currentRecord, records = predictionLog) {
     const summaryStats = calculateSummaryLossStats(records, PUBLIC_MARKET_RESULT_KEYS, getMarketStatsResetAt());
 
     return Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, {
-        step: safePublicCount(currentRecord?.steps?.[market]),
+        step: getTrackingStep(market, safePublicCount(currentRecord?.steps?.[market])),
         maxLosingStreak: maximumLosses[market],
         summaryStats: summaryStats[market]
     }]));
@@ -999,6 +1020,7 @@ async function publishPredictionSnapshot() {
         const snapshot = {
             version: 1,
             snapshotAt: Number(timestamp),
+            marketStatsResetAt: getMarketStatsResetAt(),
             current: buildPublicFeedCurrent(),
             clock: publicClock,
             historyUpdates
@@ -1026,6 +1048,7 @@ async function publishPredictionSnapshot() {
                 });
                 response.on('end', () => {
                     if (response.statusCode >= 200 && response.statusCode < 300) {
+                        try { syncMarketStatsReset(JSON.parse(responseBody).marketStatsResetAt); } catch { /* Retry synchronization on the next snapshot. */ }
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
                         resolve(true);
                     } else {
@@ -2074,28 +2097,28 @@ async function sendPrediction(drawId, drawDate, pred) {
         return label ? `\n🧠 <b>SUMMARY</b> ${summaryStyles[label] || '⚪'} <b>${label}</b>` : '';
     };
     var u4Format = pred.betzeroStatus === 'ACTIVE'
-        ? `${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')} · Step ${globalTracker.u4.step}${summaryLabelFor('u4')}`
-        : `⏳ No pick this draw · Step ${globalTracker.u4.step}`;
+        ? `${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')} · Tracking step ${getTrackingStep('betzero', globalTracker.u4.step)}${summaryLabelFor('u4')}`
+        : `⏳ No pick this draw · Tracking step ${getTrackingStep('betzero', globalTracker.u4.step)}`;
 
     var bet49Format = Number.isInteger(pred.bet49Pick)
-        ? `${getBallEmoji(pred.bet49Pick)} <b>${pred.bet49Pick}</b> · Step ${globalTracker.bet49.step}`
+        ? `${getBallEmoji(pred.bet49Pick)} <b>${pred.bet49Pick}</b> · Tracking step ${getTrackingStep('bet49', globalTracker.bet49.step)}`
         : '⏳ Waiting for enough draw history';
 
     var rainbowFormat = pred.rainbowStatus === 'ACTIVE'
-        ? `${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b> · Step ${globalTracker.color.step}${summaryLabelFor('color')}`
-        : `⏳ No pick this draw · Step ${globalTracker.color.step}`;
+        ? `${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b> · Tracking step ${getTrackingStep('rainbow', globalTracker.color.step)}${summaryLabelFor('color')}`
+        : `⏳ No pick this draw · Tracking step ${getTrackingStep('rainbow', globalTracker.color.step)}`;
 
     var tcFormat = pred.totalColorPred.status === 'ACTIVE'
-        ? `${getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color]} <b>${totalColorName(color)}</b>`).join(' + ')} · Avoid ${cEm[pred.totalColorPred.noWinColor]} <b>${totalColorName(pred.totalColorPred.noWinColor)}</b> · Step ${globalTracker.totalColor.step}${summaryLabelFor('totalColor')}`
-        : `⏳ No pick this draw · Step ${globalTracker.totalColor.step}`;
+        ? `${getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color]} <b>${totalColorName(color)}</b>`).join(' + ')} · Avoid ${cEm[pred.totalColorPred.noWinColor]} <b>${totalColorName(pred.totalColorPred.noWinColor)}</b> · Tracking step ${getTrackingStep('totalColor', globalTracker.totalColor.step)}${summaryLabelFor('totalColor')}`
+        : `⏳ No pick this draw · Tracking step ${getTrackingStep('totalColor', globalTracker.totalColor.step)}`;
 
     var tc2Format = pred.totalColor2Pred.status === 'ACTIVE'
-        ? `${cEm[pred.totalColor2Pred.top2[0]] || '⚫'} <b>${pred.totalColor2Pred.top2[0].toUpperCase()}</b> + ${cEm[pred.totalColor2Pred.top2[1]] || '⚫'} <b>${pred.totalColor2Pred.top2[1].toUpperCase()}</b> · Step ${globalTracker.totalColor2.step}`
+        ? `${cEm[pred.totalColor2Pred.top2[0]] || '⚫'} <b>${pred.totalColor2Pred.top2[0].toUpperCase()}</b> + ${cEm[pred.totalColor2Pred.top2[1]] || '⚫'} <b>${pred.totalColor2Pred.top2[1].toUpperCase()}</b> · Tracking step ${getTrackingStep('totalColor2', globalTracker.totalColor2.step)}`
         : '⏳ No pick this draw';
 
     var hlFormat = pred.hiloStatus === 'ACTIVE'
-        ? `${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> · Step ${globalTracker.sum.step}${summaryLabelFor('sum')}`
-        : `⏳ No pick this draw · Step ${globalTracker.sum.step}`;
+        ? `${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> · Tracking step ${getTrackingStep('hilo', globalTracker.sum.step)}${summaryLabelFor('sum')}`
+        : `⏳ No pick this draw · Tracking step ${getTrackingStep('hilo', globalTracker.sum.step)}`;
 
     let candidateGames = [];
     if (pred.betzeroStatus === 'ACTIVE' && mlBz.recommendation === 'ENTER') {
@@ -2730,9 +2753,9 @@ function processUpdates(pred, actualDraw) {
     const resultLine = (name, active, won, pick, trackerKey) => {
         const outcome = !active ? '⚪ SKIPPED' : won ? '✅ WIN' : '❌ LOSS';
         const details = active && pick ? ` · ${pick}` : '';
-        const stepLabel = active ? 'Next step' : 'Step';
+        const stepLabel = active ? 'Next tracking step' : 'Tracking step';
         const marketKey = trackerToPublicMarket[trackerKey];
-        return `${outcome} <b>${name}</b>${details} · ${stepLabel} ${globalTracker[trackerKey].step} · Max losses ${periodMaxLosses[marketKey] || 0}\n${formatTelegramSummaryStats(settledSummaryLabels, summaryLossStats, marketKey)}`;
+        return `${outcome} <b>${name}</b>${details} · ${stepLabel} ${getTrackingStep(marketKey, globalTracker[trackerKey].step)} · Max losses ${periodMaxLosses[marketKey] || 0}\n${formatTelegramSummaryStats(settledSummaryLabels, summaryLossStats, marketKey)}`;
     };
 
     const betzeroPick = pred.betzeroStatus === 'ACTIVE'
@@ -3637,6 +3660,7 @@ async function handleHttpRequest(req, res) {
                     upsertPublicPredictionHistoryStatement.run(item.drawId, item.sortDrawId, JSON.stringify(item.record));
                 }
                 savePublicPredictionFeedStatement.run(currentJson, clockJson, '[]', '', snapshotAt);
+                syncMarketStatsReset(snapshot.marketStatsResetAt);
                 siteDb.exec('COMMIT');
             } catch (error) {
                 siteDb.exec('ROLLBACK');
@@ -3649,7 +3673,7 @@ async function handleHttpRequest(req, res) {
                 for (const item of normalizedHistoryUpdates) historyByDrawId.set(item.drawId, item.record);
                 predictionLog = [...historyByDrawId.values()].sort((left, right) => Number(right.drawId) - Number(left.drawId));
             }
-            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt });
+            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt() });
         } catch (error) {
             console.error('[PredictionFeed] Could not store an incoming snapshot.');
             return sendJson(res, 500, { error: 'Prediction snapshot could not be stored.' });
@@ -4069,6 +4093,16 @@ async function handleHttpRequest(req, res) {
         const limit = Math.min(1000, Math.max(1, parseInt(parsedUrl.searchParams.get('limit'), 10) || 100));
         const offset = Math.max(0, parseInt(parsedUrl.searchParams.get('offset'), 10) || 0);
         const records = predictionLog.filter(p => p && p.drawId !== undefined && p.drawId !== null && p.result && typeof p.result === 'object');
+        const statsRecords = parsedUrl.searchParams.get('range') === 'all' ? records : records.slice(0, limit);
+        const worstLosingStreaks = {};
+        for (const market of Object.keys(PUBLIC_MARKET_RESULT_KEYS)) {
+            let current = 0, maximum = 0;
+            for (const record of statsRecords.slice().reverse()) {
+                if (record.result[market] === 'WIN') current = 0;
+                if (record.result[market] === 'LOSS') maximum = Math.max(maximum, ++current);
+            }
+            worstLosingStreaks[market] = maximum;
+        }
         const publicPredictions = records.slice(offset, offset + limit).map(p => ({
             drawId: String(p.drawId ?? ''),
             drawDate: p.drawDate || p.timestamp || null,
@@ -4116,7 +4150,9 @@ async function handleHttpRequest(req, res) {
             total: records.length,
             limit,
             offset,
-            predictions: publicPredictions
+            predictions: publicPredictions,
+            worstLosingStreaks,
+            streakDrawCount: statsRecords.length
         }));
     }
 
@@ -4212,7 +4248,7 @@ async function handleHttpRequest(req, res) {
         const suppliedMarketStats = lastPrediction.marketStats?.[market] || {};
         const calculatedMarketStats = buildPublicMarketStats(logged);
         publicPrediction.marketStats = {
-            step: safePublicCount(suppliedMarketStats.step ?? calculatedMarketStats[market].step),
+            step: getTrackingStep(market, safePublicCount(suppliedMarketStats.step ?? calculatedMarketStats[market].step)),
             maxLosingStreak: calculatedMarketStats[market].maxLosingStreak,
             summaryStats: calculatedMarketStats[market].summaryStats
         };
@@ -4990,6 +5026,16 @@ function handleTelegramCommand(chatId, text) {
     const parts = rawCmd.split(/\s+/);
     const cmd = parts[0].toLowerCase();
 
+    if (cmd === '/resetstreaks' || cmd === '/resetmaxloss') {
+        if (!process.env.TELEGRAM_OWNER_CHAT_ID || String(chatId) !== process.env.TELEGRAM_OWNER_CHAT_ID.trim()) {
+            sendPersonalDM(chatId, 'Only the owner can reset tracking. Use the website owner controls or configure TELEGRAM_OWNER_CHAT_ID.').catch(() => {});
+            return;
+        }
+        const resetAt = resetMarketStatsTracking();
+        sendPersonalDM(chatId, `Prediction streak tracking restarted at ${new Date(resetAt).toLocaleString()}. Current tracking steps, maximum losses and Summary ENTER/HOLD streaks start fresh. History and extension martingale amounts are preserved. Website synchronization follows the next successful feed update.`).catch(() => {});
+        return;
+    }
+
     let targetSession = null;
     for (let cid in userSessions) {
         if (String(userSessions[cid].config.telegramChatId) === String(chatId)) { 
@@ -5032,7 +5078,7 @@ function handleTelegramCommand(chatId, text) {
             `• <code>/pause</code> or <code>/stop</code> — Pause automation execution`,
             `• <code>/resume</code> — Resume automation execution`,
             `• <code>/reset</code> — Reset Martingale steps & session trackers`,
-            `• <code>/resetmaxloss</code> — Start a fresh max-loss tracking period across all markets`,
+            `• <code>/resetstreaks</code> — Owner: restart prediction and summary streak tracking`,
             `• <code>/plan</code> — Build a standalone martingale sequence and risk plan`,
             ``,
             `<b>Configuration Commands:</b>`,
@@ -5092,15 +5138,6 @@ function handleTelegramCommand(chatId, text) {
         stats.haltReason = "";
         sendPersonalDM(chatId, `▶️ <b>Automation Resumed.</b>${balString}`);
     } 
-    else if (cmd === '/resetmaxloss') {
-        const resetAt = resetMarketStatsTracking();
-        sendPersonalDM(
-            chatId,
-            `📊 <b>Max-loss tracking restarted for all markets.</b>\n` +
-            `Previous prediction history and current betting steps are unchanged.\n` +
-            `New tracking period: ${new Date(resetAt).toLocaleString()}`
-        ).catch(() => {});
-    }
     else if (cmd === '/reset') {
         targetSession.martingaleState.u4 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         targetSession.martingaleState.color = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };

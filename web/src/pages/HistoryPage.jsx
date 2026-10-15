@@ -102,6 +102,8 @@ function getSummaryLabel(record, marketId) {
 export default function HistoryPage() {
   const [predictions, setPredictions] = useState([]);
   const [total, setTotal] = useState(0);
+  const [rangeStreaks, setRangeStreaks] = useState({});
+  const [streakDrawCount, setStreakDrawCount] = useState(0);
   const [generatedAt, setGeneratedAt] = useState(null);
   const [marketFilter, setMarketFilter] = useState('all');
   const [drawRange, setDrawRange] = useState('100');
@@ -110,9 +112,11 @@ export default function HistoryPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const silentRefreshInFlight = useRef(false);
+  const historyRequestId = useRef(0);
 
   const loadHistory = useCallback(async ({ offset = 0, append = false, silent = false } = {}) => {
     if (silent && silentRefreshInFlight.current) return;
+    const requestId = ++historyRequestId.current;
     if (silent) silentRefreshInFlight.current = true;
     if (!silent) {
       if (offset === 0) setLoading(true);
@@ -121,9 +125,10 @@ export default function HistoryPage() {
     if (!silent) setError('');
     try {
       const limit = drawRange === 'all' ? PAGE_SIZE : Number(drawRange);
-      const response = await fetch(`${HISTORY_API}?limit=${limit}&offset=${offset}`, { cache: 'no-store' });
+      const response = await fetch(`${HISTORY_API}?limit=${limit}&offset=${offset}&range=${drawRange}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`History request failed (${response.status}).`);
       const payload = await response.json();
+      if (requestId !== historyRequestId.current) return;
       setError('');
       const next = Array.isArray(payload.predictions) ? payload.predictions : [];
       setPredictions((current) => {
@@ -136,19 +141,26 @@ export default function HistoryPage() {
         return next;
       });
       setTotal(Number(payload.total) || 0);
+      setRangeStreaks(payload.worstLosingStreaks || {});
+      setStreakDrawCount(Number(payload.streakDrawCount) || 0);
       setGeneratedAt(payload.generatedAt || null);
     } catch (err) {
-      if (!silent) setError('The history service could not be reached. Start the Balls49 bot and collector, then try again.');
+      if (!silent && requestId === historyRequestId.current) setError('The history service could not be reached. Start the Balls49 bot and collector, then try again.');
     } finally {
       if (silent) silentRefreshInFlight.current = false;
-      else {
+      if (requestId === historyRequestId.current) {
         setLoading(false);
         setLoadingMore(false);
       }
     }
   }, [drawRange]);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    setRangeStreaks({});
+    setStreakDrawCount(0);
+    loadHistory();
+    return () => { historyRequestId.current++; };
+  }, [loadHistory]);
   useEffect(() => {
     const refreshInterval = window.setInterval(() => loadHistory({ silent: true }), 5000);
     return () => window.clearInterval(refreshInterval);
@@ -227,6 +239,8 @@ export default function HistoryPage() {
                 </div>
                 <div className="analytics-counts"><span><i className="analytics-dot win" />{market.wins} wins</span><span><i className="analytics-dot loss" />{market.losses} losses</span><span>{market.skipped} skipped</span>{market.pending > 0 && <span>{market.pending} pending</span>}</div>
                 <small>{market.settled.toLocaleString()} settled picks</small>
+                <p><strong>Worst losing streak: {rangeStreaks[market.id] ?? '—'}</strong></p>
+                <small>Across {streakDrawCount.toLocaleString()} draws in the selected range. Skips do not reset a streak. Draw ID search does not change this statistic.</small>
               </article>
             );
           })}
