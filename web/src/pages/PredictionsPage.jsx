@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
 import PredictionMarketStats from '../components/PredictionMarketStats.jsx';
+import StrategyBadge from '../components/StrategyBadge.jsx';
 import TotalColorPick from '../components/TotalColorPick.jsx';
 
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
@@ -401,6 +402,7 @@ export default function PredictionsPage() {
                 : <span className="trial-pick-message">{activeMarketHasAccess ? 'No prediction is available for this market yet. It will appear here when the bot publishes one.' : previewPlan?.tier === 'trial' || accountPlan?.tier === 'trial' ? 'Your trial pick is on the Free Trial page' : 'Unlock this market with Premium or Elite'}</span>}
             </div>
             {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
+            {activeMarketReveal && <StrategyBadge strategy={activeMarketPrediction.strategy} />}
             {activeMarketReveal && <PredictionMarketStats stats={activeMarketPrediction.marketStats} marketName={activeGame.name} />}
             <div className="game-last-result">
               <div className="game-last-result-label"><span>LAST DRAW{previousPrediction ? ` · #${previousPrediction.drawId}` : ''}</span><small>Previous pick</small></div>

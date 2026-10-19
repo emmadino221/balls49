@@ -111,4 +111,69 @@ function applyAdaptiveStrategies(pred, draws, records, targetDrawId) {
     return result;
 }
 
-module.exports = { applyAdaptiveStrategies };
+const STRATEGY_NAMES = {
+    betzero: { current: 'Weighted frequency + absence', alternative: 'Least frequent 100' },
+    rainbow: { current: 'Weighted color frequency', alternative: 'Most 2+ ball outcomes' }
+};
+
+function getStrategyResults(record) {
+    const result = {};
+    for (const market of Object.keys(STRATEGY_NAMES)) {
+        const local = record?.adaptiveStrategies?.version === VERSION ? record.adaptiveStrategies[market] : null;
+        const supplied = record?.strategyResults?.[market];
+        const selected = local?.selected ?? supplied?.selected;
+        if (!['current', 'alternative'].includes(selected)) continue;
+        result[market] = { selected };
+        for (const key of ['current', 'alternative']) {
+            const won = local ? outcome(market, local.candidates?.[key] ?? null, record?.result?.balls) : null;
+            result[market][key] = local ? (won === null ? 'SKIP' : won ? 'WIN' : 'LOSS')
+                : ['WIN', 'LOSS', 'SKIP'].includes(supplied?.[key]) ? supplied[key] : 'SKIP';
+        }
+    }
+    return result;
+}
+
+function getSelectedStrategy(source, market, unifiedKey) {
+    if (market === 'unified') market = ({ u4: 'betzero', color: 'rainbow' })[unifiedKey];
+    const selected = source?.[market]?.selected;
+    const label = STRATEGY_NAMES[market]?.[selected];
+    return label ? { id: selected, label, market } : null;
+}
+
+function calculateStrategyStats(records, resetAt = 0) {
+    const stats = Object.fromEntries(Object.entries(STRATEGY_NAMES).map(([market, names]) => [market,
+        Object.fromEntries(Object.entries(names).map(([key, label]) => [key,
+            { label, currentLosingStreak: 0, maxLosingStreak: 0, settled: 0 }]))]));
+    const seen = new Set();
+    const history = records.filter(record => {
+        if (!record?.result || seen.has(String(record.drawId))) return false;
+        seen.add(String(record.drawId));
+        const time = Date.parse(record.settledAt || record.timestamp || '');
+        return !resetAt || (Number.isFinite(time) && time > resetAt);
+    }).sort((a, b) => Number(a.drawId) - Number(b.drawId));
+    for (const record of history) {
+        const results = getStrategyResults(record);
+        for (const market of Object.keys(stats)) for (const key of ['current', 'alternative']) {
+            const value = results[market]?.[key];
+            if (value !== 'WIN' && value !== 'LOSS') continue;
+            const bucket = stats[market][key];
+            bucket.settled++;
+            bucket.currentLosingStreak = value === 'WIN' ? 0 : bucket.currentLosingStreak + 1;
+            bucket.maxLosingStreak = Math.max(bucket.maxLosingStreak, bucket.currentLosingStreak);
+        }
+    }
+    return stats;
+}
+
+function formatStrategyStats(source, stats, market, unifiedKey) {
+    const selected = getSelectedStrategy(source, market, unifiedKey);
+    if (!selected) return '';
+    const lines = [`📌 Strategy: <b>${selected.label}</b>`];
+    if (market !== 'unified') for (const key of ['current', 'alternative']) {
+        const bucket = stats[market]?.[key];
+        if (bucket) lines.push(`${bucket.label} · Max losses: <b>${bucket.settled ? bucket.maxLosingStreak : '—'}</b>`);
+    }
+    return lines.join('\n');
+}
+
+module.exports = { applyAdaptiveStrategies, getStrategyResults, getSelectedStrategy, calculateStrategyStats, formatStrategyStats };

@@ -72,9 +72,33 @@ Switches are logged as `[Strategy] <market>: <strategy> selected for draw ...`.
 
 No extra bets or Telegram messages are sent for unselected candidate picks.
 Candidate arrays remain private worker data; they are not added to public feed
-payloads. The offline `backtest-markets.js` continues to compare fixed strategies;
+payloads. Selected strategy IDs and settled candidate WIN/LOSS/SKIP outcomes are
+included in the signed feed so the hosted API can rebuild strategy statistics.
+The offline `backtest-markets.js` continues to compare fixed strategies;
 it does not simulate this adaptive selector.
 
 The change has not been deployed or tested by this implementation step. Before
 public release, validate candidate persistence, restart recovery, selection
 thresholds and preserved automation state without placing real bets.
+
+## Strategy labels and losing streaks
+
+Telegram predictions/results and website live cards show the strategy selected
+for that draw. Unified inherits the label when it selects BetZero or Rainbow.
+Free Trial shows the label only after its normal reveal gate opens.
+
+Each candidate strategy has its own current and worst losing streak, rebuilt
+from saved pre-result candidates and actual settled balls. Unselected candidates
+are scored too. A strategy's win resets its own current streak; a skip does not
+increase or reset it. Missing historical candidates are not invented. The website
+shows settled candidate counts alongside the maxima; no settled data displays a dash.
+
+These statistics use the existing owner reporting reset cutoff. Resetting the
+reporting period restarts their displayed streaks but preserves records and does
+not reset adaptive comparison windows or martingale. The existing game streak
+still tracks the published picks across strategy switches.
+
+Deploy the worker, Render API and website together for these displays. The worker
+republishes sanitized historical outcomes, allowing the API to reconstruct counts
+for existing adaptive records. No strategy candidate numbers are exposed by this
+addition to the public current-prediction endpoint.

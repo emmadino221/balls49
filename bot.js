@@ -17,7 +17,7 @@ const {
 } = require('./summary-gate');
 const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
 const { predictHighLow } = require('./high-low');
-const { applyAdaptiveStrategies } = require('./adaptive-strategies');
+const { applyAdaptiveStrategies, getStrategyResults, getSelectedStrategy, calculateStrategyStats, formatStrategyStats } = require('./adaptive-strategies');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHANNEL_CHAT_ID = process.env.TELEGRAM_CHANNEL_ID || '';
@@ -849,6 +849,7 @@ function buildPublicFeedHistory() {
         timestamp: record.timestamp || null,
         settledAt: record.settledAt || null,
         summaryModel: getRecordSummaryModel(record),
+        strategyResults: getStrategyResults(record),
         steps: record.steps && typeof record.steps === 'object' ? {
             bet49: safePublicCount(record.steps.bet49)
         } : null,
@@ -964,11 +965,13 @@ function getPublicMarketMaxLosses(records = predictionLog) {
 function buildPublicMarketStats(currentRecord, records = predictionLog) {
     const maximumLosses = getPublicMarketMaxLosses(records);
     const summaryStats = calculateSummaryLossStats(records, PUBLIC_MARKET_RESULT_KEYS, getMarketStatsResetAt());
+    const strategyStats = calculateStrategyStats(records, getMarketStatsResetAt());
 
     return Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, {
         step: getTrackingStep(market, safePublicCount(currentRecord?.steps?.[market])),
         maxLosingStreak: maximumLosses[market],
-        summaryStats: summaryStats[market]
+        summaryStats: summaryStats[market],
+        strategyStats: strategyStats[market] || null
     }]));
 }
 
@@ -979,6 +982,7 @@ function buildPublicFeedCurrent() {
     return {
         drawId: String(lastPrediction.drawId),
         marketStats: buildPublicMarketStats(currentRecord),
+        strategies: getStrategyResults(currentRecord || { adaptiveStrategies: pred.adaptiveStrategies }),
         summaryModel: currentRecord ? getRecordSummaryModel(currentRecord) : buildPublicSummaryModel(lastPrediction.summaryModel, pred.unifiedPick?.key),
         pred: {
             betzeroStatus: pred.betzeroStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
@@ -2166,15 +2170,17 @@ async function sendPrediction(drawId, drawDate, pred) {
         saveJSON(LAST_PRED_FILE, lastPrediction);
     }
 
+    const strategyStats = calculateStrategyStats(predictionLog, getMarketStatsResetAt());
+    const strategyLine = market => formatStrategyStats(pred.adaptiveStrategies, strategyStats, market, pred.unifiedPick?.key);
     var lines = [
         `🎯 <b>PICKS · DRAW #${drawId}</b>`,
         `<i>${String(drawDate).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</i>`,
         '',
-        `<b>BetZero</b>\n${u4Format}`,
+        `<b>BetZero</b>\n${u4Format}${strategyLine('betzero') ? '\n' + strategyLine('betzero') : ''}`,
         '',
         `<b>Bet49</b>\n${bet49Format}`,
         '',
-        `<b>Rainbow</b>\n${rainbowFormat}`,
+        `<b>Rainbow</b>\n${rainbowFormat}${strategyLine('rainbow') ? '\n' + strategyLine('rainbow') : ''}`,
         '',
         `<b>Total Color · 3-way</b>\n${tcFormat}`,
         '',
@@ -2182,8 +2188,9 @@ async function sendPrediction(drawId, drawDate, pred) {
         '',
         `<b>High / Low</b>\n${hlFormat}`,
         '',
-        `<b>Unified pick</b>\n${unifiedFormat}`
+        `<b>Unified pick</b>\n${unifiedFormat}${strategyLine('unified') ? '\n' + strategyLine('unified') : ''}`
     ];
+    if (pred.adaptiveStrategies) lines.push('', 'Strategy max losses include unselected candidate picks in this tracking period. — = no settled data.');
 
     const predictionRecord = {
         drawId, drawDate,
@@ -2707,6 +2714,7 @@ function processUpdates(pred, actualDraw) {
     const periodMaxLosses = getPublicMarketMaxLosses();
     const summaryLossStats = calculateSummaryLossStats(predictionLog, PUBLIC_MARKET_RESULT_KEYS, getMarketStatsResetAt());
     const settledSummaryLabels = getRecordSummaryModel(targetItem);
+    const strategyStats = calculateStrategyStats(predictionLog, getMarketStatsResetAt());
     const trackerToPublicMarket = {
         u4: 'betzero',
         bet49: 'bet49',
@@ -2724,7 +2732,8 @@ function processUpdates(pred, actualDraw) {
             `<b>${name}</b> — ${outcome}`,
             active && pick ? `Pick: ${pick}` : '',
             `${stepLabel}: <b>${getTrackingStep(marketKey, globalTracker[trackerKey].step)}</b> · Max losses: <b>${periodMaxLosses[marketKey] || 0}</b>`,
-            active ? formatTelegramSummaryStats(settledSummaryLabels, summaryLossStats, marketKey) : ''
+            active ? formatTelegramSummaryStats(settledSummaryLabels, summaryLossStats, marketKey) : '',
+            formatStrategyStats(targetItem?.adaptiveStrategies, strategyStats, marketKey, pred.unifiedPick?.key)
         ];
         return lines.filter(Boolean).join('\n');
     };
@@ -2780,6 +2789,7 @@ function processUpdates(pred, actualDraw) {
     if (groupReportLines.some(line => line.includes('Summary max losses:'))) {
         groupReportLines.push('', 'Summary streaks track each label separately. — = no settled summary data.');
     }
+    if (targetItem?.adaptiveStrategies) groupReportLines.push('', 'Strategy max losses include unselected candidate picks in this tracking period. — = no settled data.');
     sendTelegram(groupReportLines.join('\n')).catch(() => {});
 }
 
@@ -3600,6 +3610,7 @@ async function handleHttpRequest(req, res) {
                     timestamp: safeText(record.timestamp, 64),
                     settledAt: safeText(record.settledAt, 64),
                     summaryModel: buildPublicSummaryModel(record.summaryModel, record.predicted.unified?.key),
+                    strategyResults: getStrategyResults({ strategyResults: record.strategyResults }),
                     steps: {
                         bet49: safePublicCount(record.steps?.bet49)
                     },
@@ -4224,10 +4235,12 @@ async function handleHttpRequest(req, res) {
         }
         const suppliedMarketStats = lastPrediction.marketStats?.[market] || {};
         const calculatedMarketStats = buildPublicMarketStats(logged);
+        publicPrediction.strategy = getSelectedStrategy(logged?.adaptiveStrategies || lastPrediction.strategies, market, live.unifiedPick?.key);
         publicPrediction.marketStats = {
             step: getTrackingStep(market, safePublicCount(suppliedMarketStats.step ?? calculatedMarketStats[market].step)),
             maxLosingStreak: calculatedMarketStats[market].maxLosingStreak,
-            summaryStats: calculatedMarketStats[market].summaryStats
+            summaryStats: calculatedMarketStats[market].summaryStats,
+            strategyStats: calculatedMarketStats[market].strategyStats
         };
         const selectedPicks = {
             betzero: [], bet49: null, rainbow: 'SKIP',
