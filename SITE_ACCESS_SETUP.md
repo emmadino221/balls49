@@ -58,6 +58,13 @@ not be interpreted as validated performance of these new selection rules.
 
 ## Summary losing streak statistics
 
+BetZero and Rainbow now have an adaptive selector on the private worker. It
+starts on the current strategies, saves both candidates for each new draw and
+can switch after enough settled live comparisons show a sustained advantage.
+This does not reset martingale amounts or streak history. See
+[adaptive live strategies](docs/09-adaptive-live-strategies.md) for exact rules,
+warm-up requirements and limitations.
+
 Each market displays separate maximum losing streaks for saved **Summary ENTER** and **Summary HOLD** predictions on the Predictions page and in Telegram draw results. Both use settled history within the existing max-loss tracking period. A loss increases only the streak for the label issued with that prediction; a win resets only that label's current streak. Other labels, skipped draws, pending results, and LEARNING labels do not change it. The maximum stays recorded until the owner resets max-loss tracking.
 
 HOLD statistics measure the underlying prediction's result even when no bet was placed. Unified uses the summary label of its chosen market for that draw and tracks its own results. Old records without summary labels and markets without summary decisions (currently Bet49 and Total Color 2-way) show no summary data instead of inventing a label. Existing history is retained, so these statistics survive restarts and include previously saved labels.

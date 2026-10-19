@@ -17,6 +17,7 @@ const {
 } = require('./summary-gate');
 const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
 const { predictHighLow } = require('./high-low');
+const { applyAdaptiveStrategies } = require('./adaptive-strategies');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHANNEL_CHAT_ID = process.env.TELEGRAM_CHANNEL_ID || '';
@@ -2208,6 +2209,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         mlShadow,
         summaryModel: publicSummaryModel,
         brainData: pred.brainData,
+        adaptiveStrategies: pred.adaptiveStrategies || null,
         result: null, timestamp: new Date().toISOString()
     };
     const existingRecord = predictionLog.find(record => String(record.drawId) === String(drawId));
@@ -3240,6 +3242,11 @@ async function tick() {
             var drawsForPred = await apiGet('/draws');
 
             var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId);
+            pred = applyAdaptiveStrategies(pred, drawsForPred.draws || [], predictionLog, nextId);
+            for (const market of ['betzero', 'rainbow']) {
+                const strategy = pred.adaptiveStrategies?.[market];
+                if (strategy?.switched) console.log(`[Strategy] ${market}: ${strategy.selected} selected for draw ${nextId}; paired samples ${strategy.comparison.pairedDraws}.`);
+            }
             
             lastPrediction = { drawId: nextId, pred: pred };
             saveJSON(LAST_PRED_FILE, lastPrediction);
