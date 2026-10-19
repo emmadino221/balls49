@@ -19,13 +19,16 @@ function getTotalColorOutcome(numbers) {
 
 function applyPreviousDrawRule(prediction, draws, targetDrawId) {
     const target = Number(targetDrawId);
-    if (!Number.isSafeInteger(target) || target <= 0 || !Array.isArray(draws)) return prediction;
+    const skipped = { status: 'SKIP', topColors: [], noWinColor: null, confidence: 0, gap: 0,
+        selectionRule: 'EXCLUDE_PREVIOUS_OUTCOME', skipReason: 'Previous completed draw unavailable' };
+    if (!Number.isSafeInteger(target) || target <= 0 || !Array.isArray(draws)) return skipped;
     const previous = draws.find(draw => Number(draw?.id) === target - 1);
     const numbers = typeof previous?.dr === 'string' ? previous.dr.split(',').map(Number) : [];
-    if (getTotalColorOutcome(numbers) !== 'black') return prediction;
+    const outcome = getTotalColorOutcome(numbers);
+    if (!outcome) return skipped;
     return {
-        ...prediction, status: 'ACTIVE', topColors: [...COLORS], noWinColor: 'black',
-        selectionRule: 'AFTER_DRAW', sourceDrawId: String(previous.id)
+        status: 'ACTIVE', topColors: OUTCOMES.filter(color => color !== outcome), noWinColor: outcome,
+        confidence: 0, gap: 0, selectionRule: 'EXCLUDE_PREVIOUS_OUTCOME', sourceDrawId: String(previous.id)
     };
 }
 

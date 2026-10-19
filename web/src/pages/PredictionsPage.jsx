@@ -10,7 +10,7 @@ const games = [
   { id: 'betzero', name: 'BetZero', detail: 'Four-number set. A win means none of the selected numbers appear.' },
   { id: 'bet49', name: 'Bet49', detail: 'One number pick. A win means the number appears in the next draw.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
-  { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Three selected outcomes. After a DRAW, pick Red, Blue and Green; eliminate No Winning Color.' },
+  { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },
   { id: 'hilo', name: 'High / Low', detail: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', detail: 'One selected pick from the available markets.' },

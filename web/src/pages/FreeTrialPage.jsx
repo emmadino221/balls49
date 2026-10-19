@@ -8,7 +8,7 @@ const markets = [
   { id: 'betzero', name: 'BetZero', help: 'Four-number set; the pick wins if none of those numbers appear.' },
   { id: 'bet49', name: 'Bet49', help: 'One number pick; it wins if the number appears in the next draw.' },
   { id: 'rainbow', name: 'Rainbow Color', help: 'One color prediction.' },
-  { id: 'totalColor', name: 'Total Color (3-way)', help: 'Three selected outcomes. After a DRAW, Red, Blue and Green are selected; No Winning Color is eliminated.' },
+  { id: 'totalColor', name: 'Total Color (3-way)', help: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', help: 'Two selected colors.' },
   { id: 'hilo', name: 'High / Low', help: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', help: 'The single pick chosen from the available markets.' },

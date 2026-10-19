@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { getTotalColorOutcome, applyPreviousDrawRule, getTotalColorTargets, totalColorWins } = require('./total-color');
+const { predictHighLow } = require('./high-low');
 
 const tie = [1, 4, 2, 5, 3, 6];
 const red = [1, 4, 7, 2, 3, 6];
@@ -28,14 +29,21 @@ test('outcome detection handles sole winners, two/three-color ties, and number 4
     }
 });
 
-test('only the immediately preceding completed DRAW triggers red + blue + green', () => {
+test('the immediately preceding completed outcome is excluded; unavailable results skip', () => {
     const pick = afterTie();
     assert.equal(pick.status, 'ACTIVE');
     assert.equal(pick.noWinColor, 'black');
     assert.deepEqual(getTotalColorTargets(pick), ['red', 'blue', 'green']);
     assert.deepEqual(normal.topColors, ['red', 'blue']);
-    for (const draws of [[], [draw(99, tie)], [draw(101, tie)], [draw(100, red)], [draw(100, [1, 2, 3])]]) {
-        assert.equal(applyPreviousDrawRule(normal, draws, 101), normal);
+    for (const draws of [[], [draw(99, tie)], [draw(101, tie)], [draw(100, [1, 2, 3])]]) {
+        assert.equal(applyPreviousDrawRule(normal, draws, 101).status, 'SKIP');
+    }
+    for (const [numbers, excluded] of [[red, 'red'], [blue, 'blue'], [green, 'green']]) {
+        const selection = applyPreviousDrawRule(normal, [draw(100, numbers)], 101);
+        assert.equal(selection.noWinColor, excluded);
+        assert.deepEqual(getTotalColorTargets(selection), ['red', 'blue', 'green', 'black'].filter(color => color !== excluded));
+        assert.equal(totalColorWins(selection, numbers), false);
+        assert.equal(totalColorWins(selection, tie), true);
     }
 });
 
@@ -47,10 +55,10 @@ test('after DRAW: each sole color wins and another DRAW loses', () => {
     assert.equal(totalColorWins(pick, []), false);
 });
 
-test('consecutive DRAWs keep the three colors; a sole color returns to the normal filter', () => {
+test('consecutive DRAWs keep the three colors; a sole color is excluded next', () => {
     const next = applyPreviousDrawRule(normal, [draw(101, tie), draw(100, tie)], 102);
     assert.deepEqual(getTotalColorTargets(next), ['red', 'blue', 'green']);
-    assert.equal(applyPreviousDrawRule(normal, [draw(102, green), draw(101, tie)], 103), normal);
+    assert.deepEqual(getTotalColorTargets(applyPreviousDrawRule(normal, [draw(102, green), draw(101, tie)], 103)), ['red', 'blue', 'black']);
 });
 
 test('historical two-color picks still include DRAW and lose only to the eliminated color', () => {
@@ -69,18 +77,18 @@ test('invalid or skipped selections cannot become valid three-way bets', () => {
     }
 });
 
-test('actual generator applies the DRAW rule even when the ordinary confidence filter would skip', () => {
+test('actual generator selects from the previous outcome independently of the rainbow filter', () => {
     const source = fs.readFileSync(path.join(__dirname, 'bot.js'), 'utf8');
     const start = source.indexOf('function computePredictions(');
     const end = source.indexOf('\nfunction processUpdates', start);
     assert.ok(start >= 0 && end > start);
-    const context = vm.createContext({ applyPreviousDrawRule });
+    const context = vm.createContext({ applyPreviousDrawRule, predictHighLow });
     vm.runInContext(source.slice(start, end), context);
     const predict = numbers => context.computePredictions({ data: { draws: [draw(100, numbers)] } }, null, null, null, null, null, 101);
     const prediction = predict(tie);
     assert.equal(prediction.rainbowStatus, 'SKIP');
     assert.deepEqual(getTotalColorTargets(prediction.totalColorPred), ['red', 'blue', 'green']);
-    assert.equal(predict(red).totalColorPred.status, 'SKIP');
+    assert.deepEqual(getTotalColorTargets(predict(red).totalColorPred), ['blue', 'green', 'black']);
 });
 
 function extensionHarness({ missingButton = null, placementSuccess = true } = {}) {

@@ -15,9 +15,9 @@ The public prediction/history surfaces expose seven markets:
 | BetZero | `betzero` | Select four numbers; win if none appear in the draw. |
 | Bet49 | `bet49` | Select the number with the longest current absence in the latest 100 completed draws; hold that number until it appears, then select the currently most-overdue number. Win if the selected number appears in the draw. |
 | Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
-| Total Color (3-way) | `totalColor` | Select two colors and an excluded color; settlement follows the documented top-color/tie rule. |
+| Total Color (3-way) | `totalColor` | Exclude the previous completed outcome; pick the other three of Red, Blue, Green and DRAW. No frequency selection. |
 | Total Color (2-way) | `totalColor2` | Select two colors; a tie outcome is represented as black. |
-| High/Low | `hilo` | Win when the predicted draw-total range matches the actual range. |
+| High/Low | `hilo` | Use weighted 20/50/100-draw HIGH/LOW counts, with LOW on ties. Always pick with valid history; MID loses for either side. |
 | Unified | `unified` | A wrapper around the chosen supported market; its result follows that market. |
 
 Skipped/inactive picks settle as `SKIP` and are not wins or losses. Bet49 is an independent market and is not a target in the extension's Unified automation strategy.
@@ -51,3 +51,7 @@ The shared website/Telegram maximum-loss tracker starts from the configured rese
 ## Confidence and backtests
 
 `ml_retrainer.py` writes rolling historical summaries used by the bot's confidence/calibration path. Backtests reproduce the simulator's market/stake rules against historical records; they do not reproduce the betting platform's randomness, delays, DOM changes, or payout conditions. Historical performance is not a promise of future results.
+
+## Selection update ? 20 October 2026
+
+See [the selection rules](../SITE_ACCESS_SETUP.md#highlow-rolling-analysis-without-signal-based-skips) for weights, data validation and missing-data handling. These rules change future picks only. Existing martingale and automation gates remain in force. No accuracy improvement has been established through testing.

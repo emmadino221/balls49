@@ -16,6 +16,7 @@ const {
     getSummaryGateTarget, summaryGateAllows, getIssuedSummaryLabels, applySummaryGateConfig
 } = require('./summary-gate');
 const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
+const { predictHighLow } = require('./high-low');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHANNEL_CHAT_ID = process.env.TELEGRAM_CHANNEL_ID || '';
@@ -2426,58 +2427,21 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         totalColor2Pred.gap = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
     }
 
-    var totalColorPred = { status: 'SKIP', topColors: [], noWinColor: null, confidence: 0, gap: 0 };
-    if (rainbowStatus === 'ACTIVE' && rainbowOptions.length >= 3) {
-        totalColorPred.status = 'ACTIVE';
-        totalColorPred.noWinColor = thirdNonBlack.name;
-        totalColorPred.topColors = [rainbowOptions[0].name, rainbowOptions[1].name];
-        totalColorPred.confidence = Math.max(0, topNonBlack.count - secondNonBlack.count);
-        totalColorPred.gap = Math.max(0, topNonBlack.count - secondNonBlack.count);
-    } else if (topNonBlack && topNonBlack.count > 0) {
-        rbSkipReason = rbSkipReason || 'Insufficient color confidence gap';
-    }
-    totalColorPred = applyPreviousDrawRule(totalColorPred, histRaw?.data?.draws, targetDrawId);
+    // Total Color 3-way depends only on the previous completed outcome.
+    var totalColorPred = applyPreviousDrawRule(null, histRaw?.data?.draws, targetDrawId);
 
-    var hiloStatus = 'SKIP';
-    var sumRange = 'LOW';
-    var oppositeStreakLimit = 0;
-    var hlSkipReason = '';
-    
-    if (histRaw && histRaw.data && histRaw.data.draws && histRaw.data.draws.length >= 20) {
-        var recentDraws = histRaw.data.draws.slice(0, 20);
-        var recentSums = recentDraws.map(d => parseInt(d.total, 10) || 150);
-        var sumTotal = recentSums.reduce((acc, val) => acc + val, 0);
-        var movingAverage = sumTotal / recentSums.length;
-
-        var last3 = recentSums.slice(0, 3).map(getSumRange);
-        var isChoppy = (last3.includes('HIGH') && last3.includes('LOW') && last3.includes('MID'));
-
-        var h24 = (stats24HiLo && stats24HiLo.data) ? stats24HiLo.data.stats.find(x => x.sel === 'h') || { strk: 0 } : { strk: 0 };
-        var l24 = (stats24HiLo && stats24HiLo.data) ? stats24HiLo.data.stats.find(x => x.sel === 'l') || { strk: 0 } : { strk: 0 };
-        var hStrk24 = parseInt(h24.strk, 10) || 0;
-        var lStrk24 = parseInt(l24.strk, 10) || 0;
-
-        if (isChoppy) {
-            hlSkipReason = 'Volatility Filter: Action is too choppy';
-        } else if (movingAverage >= 148.0 && movingAverage <= 152.0) {
-            hlSkipReason = `Momentum is flat (MA: ${movingAverage.toFixed(1)} trapped in MID zone)`;
-        } else if (movingAverage >= 150.0) {
-            hiloStatus = 'ACTIVE';
-            sumRange = 'HIGH';
-            oppositeStreakLimit = lStrk24;
-        } else {
-            hiloStatus = 'ACTIVE';
-            sumRange = 'LOW';
-            oppositeStreakLimit = hStrk24;
-        }
-    } else {
-        hlSkipReason = 'Insufficient raw draw history for Momentum calculation';
-    }
+    const highLow = predictHighLow(histRaw?.data?.draws, targetDrawId);
+    var hiloStatus = highLow.status;
+    var sumRange = highLow.range || 'LOW';
+    var hlSkipReason = highLow.reason;
+    const oppositeKey = sumRange === 'HIGH' ? 'l' : 'h';
+    const hiloStats = Array.isArray(stats24HiLo?.data?.stats) ? stats24HiLo.data.stats : [];
+    var oppositeStreakLimit = Math.max(0, parseInt(hiloStats.find(item => item.sel === oppositeKey)?.strk, 10) || 0);
 
     var brainData = {
         betzero: { selected: unlikely4.map(x => x.number), status: betzeroStatus, poolSize: validBzNumbers.length },
         rainbow: { selected: topColor.name, freqs: colorFreqs100, maxFreq: rawColorFreq, weightedMax: maxFreq100 },
-        hilo: { targetLock: sumRange, oppositeStreakLimit: oppositeStreakLimit },
+        hilo: { targetLock: sumRange, oppositeStreakLimit: oppositeStreakLimit, analysis: highLow.analysis },
         totalColor: { status: totalColorPred.status }
     };
 

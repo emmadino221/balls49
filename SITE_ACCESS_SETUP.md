@@ -30,11 +30,31 @@ The person enters their name, email, and password at **Sign up**. New accounts w
 - In local mode, the API accepts browser requests from the Bet9ja game page and Chrome extension pages so the browser extension can receive live signals. Keep the API on loopback; the extension and bot need to run on the same computer.
 - Prediction broadcasts read `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` when `bot.js` starts. Add the bot as an administrator with permission to post in the channel. Pick messages are written to the worker's `telegram_prediction_outbox.json` before delivery; failures are logged and retried with backoff. Keep this local runtime file on persistent storage and out of source control. A result can arrive while its pick is waiting for a retry.
 
-## Total Color 3-way after a DRAW
+## Total Color 3-way: exclude the previous outcome
 
-When the immediately preceding completed draw is tied for the most frequent color (DRAW / No Winning Color), the next 3-way prediction selects **Red + Blue + Green** and eliminates **No Winning Color**. A sole winning color wins; another DRAW loses. The normal two-color-plus-DRAW prediction filter resumes after a sole color result. If the preceding result is missing or incomplete, it cannot trigger this rule.
+The next pick contains the three outcomes other than the immediately preceding
+completed draw's result. DRAW selects Red + Blue + Green; Red selects Blue +
+Green + DRAW; Blue selects Red + Green + DRAW; Green selects Red + Blue + DRAW.
+No frequency or Rainbow confidence filter selects this market. Missing or
+incomplete previous results produce SKIP. A repeated outcome loses; any other
+valid outcome wins. Historical picks keep their saved selections and grading.
+Telegram displays only the selected outcomes. Existing automation gates apply.
 
-Telegram, current/trial/history pages, results, exports, and the extension use the actual three selections. Historical predictions retain their original choices and grading. It still uses three equal stakes; existing confidence, summary, sniper, and stop rules govern automation. Reload the extension and refresh its game tab as well as restarting the bot so execution uses the new three-selection payload.
+## High/Low: rolling analysis without signal-based skips
+
+With valid completed history, the bot always picks HIGH or LOW. It compares the
+last 20, 50 and 100 valid draws with weights 50%, 30% and 20%. Each window uses
+(HIGH count - LOW count) / (sample count + 10); a positive combined score selects
+HIGH, otherwise LOW. Exact ties select LOW. This is an unvalidated historical
+signal, not a win-probability estimate or a proven improvement in accuracy.
+
+Totals are calculated from six distinct valid balls. LOW is at most 148, MID
+is 149-151, and HIGH is at least 152. MID remains a loss for either pick and stays
+in the sample counts. Duplicate draw IDs, invalid draws and current/future draw
+IDs are excluded. No valid history produces SKIP; flat or mixed history does not.
+ML, summary, sniper and stake controls can still prevent an automated bet.
+Existing calibration summaries include the old strategy's outcomes and should
+not be interpreted as validated performance of these new selection rules.
 
 ## Summary losing streak statistics
 
