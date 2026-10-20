@@ -24,14 +24,29 @@ async function initializePopup() {
 }
 
 function checkAuthStatus() {
-    chrome.storage.local.get(['balls49_licenseKey'], (result) => {
+    document.getElementById('connection-client-id').textContent = `Existing session ID: ${CLIENT_ID}`;
+    chrome.storage.local.get(['balls49_licenseKey', 'balls49_connectionMode'], async (result) => {
+        document.getElementById('connection-mode').value = result.balls49_connectionMode || 'local';
         if (result.balls49_licenseKey) {
             LICENSE_KEY = result.balls49_licenseKey;
-            unlockDashboard(); 
+            try {
+                await verifyBotConnection();
+                unlockDashboard();
+            } catch (error) {
+                showLoginScreen(error.message);
+            }
         } else {
             showLoginScreen();
         }
     });
+}
+
+async function verifyBotConnection() {
+    const response = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}`);
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Bot connection failed (HTTP ${response.status}).`);
+    }
 }
 
 function showLoginScreen(errorMsg = "") {
@@ -61,7 +76,14 @@ document.getElementById('verify-license-btn')?.addEventListener('click', async (
         return;
     }
     
-    chrome.storage.local.set({ balls49_licenseKey: keyInput }, () => {
+    const button = document.getElementById('verify-license-btn');
+    button.disabled = true;
+    try {
+        await chrome.storage.local.set({
+            balls49_licenseKey: keyInput,
+            balls49_connectionMode: document.getElementById('connection-mode').value
+        });
+        await verifyBotConnection();
         LICENSE_KEY = keyInput;
         unlockDashboard();
         
@@ -70,7 +92,11 @@ document.getElementById('verify-license-btn')?.addEventListener('click', async (
                 chrome.tabs.sendMessage(tabs[0].id, { type: 'UPDATE_LICENSE', key: keyInput });
             }
         });
-    });
+    } catch (error) {
+        showLoginScreen(error.message);
+    } finally {
+        button.disabled = false;
+    }
 });
 
 document.getElementById('logout-btn')?.addEventListener('click', () => {
@@ -91,7 +117,7 @@ document.getElementById('toggle-btn')?.addEventListener('click', () => {
         const newRunning = !running;
         chrome.storage.sync.set({ running: newRunning }, () => {
             setToggleBtn(newRunning);
-            fetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+            extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ running: newRunning })
@@ -220,7 +246,7 @@ document.getElementById('btn-run-backtest')?.addEventListener('click', async () 
     btn.textContent = 'Running Backtest...';
     try {
         const params = new URLSearchParams({ game, profile, capital, basePercent, draws: drawWindow });
-        const response = await fetch(`${SERVER_URL}/backtest?clientId=${CLIENT_ID}&key=${LICENSE_KEY}&${params}`);
+        const response = await extensionFetch(`${SERVER_URL}/backtest?clientId=${CLIENT_ID}&${params}`);
         if (!response.ok) throw new Error('Backtest request failed');
         const result = await response.json();
         const sign = result.profit >= 0 ? '+' : '-';
@@ -514,7 +540,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         }
 
         try {
-            const response = await fetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+            const response = await extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
@@ -559,7 +585,7 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
     const btn = document.getElementById('reset-btn');
     btn.textContent = '⏳ Clearing...'; btn.disabled = true;
     try {
-        const res = await fetch(`${SERVER_URL}/reset?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, { method: 'POST' });
+        const res = await extensionFetch(`${SERVER_URL}/reset?clientId=${CLIENT_ID}`, { method: 'POST' });
         if (res.ok) {
             btn.textContent = '✅ Cleared';
             setTimeout(() => { btn.textContent = '🔄 Wipe Execution'; btn.disabled = false; }, 1500);
@@ -678,7 +704,7 @@ function setSoundBtn(enabled) {
 async function loadStats() {
     if (!CLIENT_ID || !LICENSE_KEY) return;
     try {
-        const res = await fetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`);
+        const res = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}`);
         if (!res.ok) throw new Error();
         const s = await res.json();
         

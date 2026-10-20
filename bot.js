@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
 const crypto = require('crypto');
+const { authorizeExtensionRequest } = require('./extension-access');
 const { DatabaseSync } = require('node:sqlite');
 const {
     getPublicSummaryLabel, buildPublicSummaryModel, getPublicSummaryLabelForMarket,
@@ -3504,6 +3505,8 @@ async function tick() {
 async function handleHttpRequest(req, res) {
     const origin = req.headers.origin;
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+    const extensionError = authorizeExtensionRequest(req, parsedUrl);
+    if (extensionError) return sendJson(res, extensionError.status, { error: extensionError.error });
     const isPredictionIngest = req.method === 'POST' && parsedUrl.pathname === '/internal/prediction-snapshot';
     if (isPredictionIngest && origin) {
         return sendJson(res, 403, { error: 'Prediction ingestion is server-to-server only.' });

@@ -4,7 +4,8 @@
   "version": "1.0",
   "permissions": ["storage", "notifications", "tabs", "activeTab"],
  "host_permissions": [
-    "http://localhost:3001/*"
+    "http://localhost:3001/*",
+    "https://159.65.25.30/*"
 ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self';"
@@ -26,7 +27,7 @@
         "https://logigames.bet9ja.com/Games/Launcher*",
         "https://logigames.bet9ja.com/*"
       ],
-      "js": ["content.js"]
+      "js": ["api.js", "content.js"]
     }
   ]
 }

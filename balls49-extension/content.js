@@ -113,7 +113,7 @@ async function syncLiveBalanceWithServer() {
     const liveBalance = getLiveAccountBalance();
     if (liveBalance !== null && liveBalance > 0) {
         try {
-            await fetch(`${SERVER_URL}/update-balance?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+            await extensionFetch(`${SERVER_URL}/update-balance?clientId=${CLIENT_ID}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ balance: liveBalance })
@@ -943,7 +943,7 @@ async function pollOverlayData() {
         const settings = await getStorage(['enabledGames', 'unifiedMode']);
         setSelectedGameFromSettings(settings);
 
-        const statsRes = await fetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`);
+        const statsRes = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}`);
         const stats = statsRes.ok ? await statsRes.json() : null;
         updateLiveOverlay(stats);
     } catch(e) {}
@@ -1029,7 +1029,7 @@ async function listen() {
     if (!LICENSE_KEY) return setTimeout(listen, 2000);
 
     try {
-        const r = await fetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&key=${LICENSE_KEY}&executionToken=${EXECUTION_CLIENT_TOKEN}`);
+        const r = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}`);
         if (r.ok) {
             const m = await r.json();
             
@@ -1051,7 +1051,7 @@ async function listen() {
                     safeClick(refreshBtn);
                 }
 
-                fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, { 
+                extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: "REFRESH_BALANCE" })
@@ -1065,7 +1065,7 @@ async function listen() {
                 const storage = await getStorage(['running', 'stakes', 'gameSteps', 'hiloMultiplier']);
                 if (storage.running !== true) {
                     isBettingActive = false;
-                    fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                    extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ drawId: m.drawId, status: 'CANCELLED', executionToken: m.executionToken })
@@ -1074,7 +1074,7 @@ async function listen() {
                 }
 
                 if (m.drawId && String(m.drawId) === String(lastExecutedDrawId)) {
-                    fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                    extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ drawId: m.drawId, status: 'SUCCESS', executionToken: m.executionToken })
@@ -1156,7 +1156,7 @@ async function listen() {
                         const drawEl = document.getElementById('overlayDrawId');
                         if (drawEl) drawEl.innerText = `Draw: #${m.drawId}`;
 
-                        await fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, { 
+                        await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, { 
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ 
@@ -1168,7 +1168,7 @@ async function listen() {
                     }
                     if (!playedAny) {
                         setOverlayDecisionReason('Bet was not placed: no eligible market was included in the instruction.');
-                        await fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                        await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken })
@@ -1177,7 +1177,7 @@ async function listen() {
                 } catch(e) {
                     console.error("Execution Failed. Receipt not sent.");
                     setOverlayDecisionReason(`Bet was not placed: ${e.message || 'execution error'}.`);
-                    fetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                    extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken })
@@ -1201,7 +1201,7 @@ document.addEventListener('keydown', function(e) {
         overlay.style.display = isHidden ? 'block' : 'none';
     }
     if (e.key.toLowerCase() === 'r' && e.target && !e.target.matches('input, textarea') && LICENSE_KEY) {
-        fetch(`${SERVER_URL}/reset?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, { method: 'POST' })
+        extensionFetch(`${SERVER_URL}/reset?clientId=${CLIENT_ID}`, { method: 'POST' })
             .then(() => {
                 const badge = document.getElementById('overlayActionBadge');
                 if (badge) {
@@ -1243,7 +1243,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.type === 'RESET_MARTINGALE') {
         if (LICENSE_KEY) {
-            fetch(`${SERVER_URL}/reset?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, { method: 'POST' })
+            extensionFetch(`${SERVER_URL}/reset?clientId=${CLIENT_ID}`, { method: 'POST' })
                 .then(res => res.json()).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
         }
         resetRuntimeClock();
@@ -1294,7 +1294,7 @@ async function startApp() {
             if (data) {
                 setSelectedGameFromSettings(data);
                 
-                fetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}&key=${LICENSE_KEY}`, {
+                extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)

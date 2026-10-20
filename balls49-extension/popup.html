@@ -77,7 +77,13 @@
 <div class="panel">
     <div id="auth-overlay">
         <h2>🔒 SaaS Authentication</h2>
-        <input type="password" id="license-key-input" placeholder="Enter License Key..." style="margin-bottom: 10px; text-align: center;">
+        <label for="connection-mode">Bot connection</label>
+        <select id="connection-mode" style="margin-bottom: 10px;">
+            <option value="local">Local / SSH tunnel</option>
+            <option value="remote">VPS HTTPS (no tunnel)</option>
+        </select>
+        <div id="connection-client-id" style="font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere;"></div>
+        <input type="password" id="license-key-input" placeholder="Enter access key..." style="margin-bottom: 10px; text-align: center;">
         <button class="btn-primary" id="verify-license-btn">Unlock Terminal</button>
         <div id="auth-message"></div>
     </div>
@@ -300,6 +306,7 @@
     </div>
 </div>
 
+<script src="api.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>
