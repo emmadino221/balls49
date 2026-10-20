@@ -1289,7 +1289,7 @@ async function startApp() {
             'enabledGames', 'schedule', 'telegramChatId', 'step1Only', 
             'hiloStrategy', 'flatBetting', 'sniperMode', 'sniperStep', 'sniperResetLosses',
             'dynamicStakePercent', 'cbMaxLosses', 'cbCooldown',
-            'mlOverrideMode', 'unifiedMode', 'hiloMultiplier', 'summaryModelMarkets', 'summaryModelTargets'
+            'mlOverrideMode', 'unifiedMode', 'hiloMultiplier', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
         ], (data) => {
             if (data) {
                 setSelectedGameFromSettings(data);

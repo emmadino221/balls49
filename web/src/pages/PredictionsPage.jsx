@@ -204,6 +204,13 @@ export default function PredictionsPage() {
   const [accountPlan, setAccountPlan] = useState(null);
   const [previewPlan, setPreviewPlan] = useState(null);
   const [activeMarketId, setActiveMarketId] = useState('betzero');
+  const [compactTabs, setCompactTabs] = useState(() => window.matchMedia('(max-width: 900px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 900px)');
+    const update = () => setCompactTabs(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const [clock, setClock] = useState(null);
   const [marketPredictions, setMarketPredictions] = useState({});
   const [previousPrediction, setPreviousPrediction] = useState(null);
@@ -349,7 +356,7 @@ export default function PredictionsPage() {
     ? `${activeMarketPrediction.drawId}:${JSON.stringify(activeMarketPrediction.predicted || {})}`
     : 'waiting';
   return (
-    <main className="page-wrap prediction-page">
+    <main className="page-wrap prediction-page prediction-clean-layout">
       <section className="page-intro prediction-intro">
         <span className="overline">BALLS49 · LIVE PICKS</span>
         <h1>Predictions for the next draw.</h1>
@@ -378,7 +385,7 @@ export default function PredictionsPage() {
           <a className="text-link" href="guide.html">Read the market guide <span aria-hidden="true">→</span></a>
         </div>
         <div className="prediction-market-browser">
-          <div className="prediction-market-tabs" role="tablist" aria-label="Choose a prediction market" aria-orientation="vertical" onKeyDown={event => {
+          <div className="prediction-market-tabs" role="tablist" aria-label="Choose a prediction market" aria-orientation={compactTabs ? 'horizontal' : 'vertical'} onKeyDown={event => {
             if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)) return;
             event.preventDefault();
             const direction = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
@@ -392,25 +399,18 @@ export default function PredictionsPage() {
               return <button className={`prediction-market-tab${selected ? ' is-active' : ''}`} id={`market-tab-${game.id}`} type="button" role="tab" aria-selected={selected} aria-controls="prediction-market-panel" tabIndex={selected ? 0 : -1} key={game.id} onClick={() => setActiveMarketId(game.id)}><span className="market-tab-index">{String(index + 1).padStart(2, '0')}</span><span className="market-tab-copy"><strong>{game.name}</strong><small>{hasAccess ? 'Included in your plan' : `Premium market`}</small></span><span className={`market-tab-state${hasAccess ? ' is-unlocked' : ''}`} aria-label={hasAccess ? 'Included' : 'Locked'}>{hasAccess ? '✓' : '›'}</span></button>;
             })}
           </div>
-          <article className="prediction-game-card prediction-market-panel" id="prediction-market-panel" role="tabpanel" aria-labelledby={`market-tab-${activeGame.id}`}>
+          <article className="prediction-game-card prediction-market-panel clean-prediction-card" id="prediction-market-panel" role="tabpanel" aria-labelledby={`market-tab-${activeGame.id}`}>
             <div className="prediction-game-heading"><span className="prediction-game-icon" aria-hidden="true">✦</span><span className={`locked-label${activeMarketHasAccess ? ' prediction-active-label' : ''}`}>{activeMarketHasAccess ? 'YOUR PLAN' : 'PREMIUM ACCESS'}</span></div>
             <h3>{activeGame.name}</h3>
-            <p>{activeGame.detail}</p>
+            <div className="prediction-card-draw"><span>{activeMarketReveal ? `Draw #${activeMarketPrediction.drawId}` : 'Waiting for prediction'}</span><span>{formatCountdown(secondsLeft)}</span></div>
+            <p className="prediction-market-description">{activeGame.detail}</p>
             <div className={`live-prediction-value${activeMarketReveal ? ' is-revealed' : ' is-hidden'}`}>
               {activeMarketReveal
                 ? <LiveMarketPick key={activePredictionKey} record={activeMarketPrediction} marketId={activeGame.id} />
                 : <span className="trial-pick-message">{activeMarketHasAccess ? 'No prediction is available for this market yet. It will appear here when the bot publishes one.' : previewPlan?.tier === 'trial' || accountPlan?.tier === 'trial' ? 'Your trial pick is on the Free Trial page' : 'Unlock this market with Premium or Elite'}</span>}
             </div>
-            {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
-            {activeMarketReveal && <StrategyBadge strategy={activeMarketPrediction.strategy} />}
-            {activeMarketReveal && <PredictionMarketStats stats={activeMarketPrediction.marketStats} marketName={activeGame.name} />}
-            <div className="game-last-result">
-              <div className="game-last-result-label"><span>LAST DRAW{previousPrediction ? ` · #${previousPrediction.drawId}` : ''}</span><small>Previous pick</small></div>
-              <div className="game-last-pick"><LiveMarketPick record={previousPrediction} marketId={activeGame.id} /></div>
-              <span className={`outcome-badge ${String(previousPrediction?.result?.[activeGame.id] || 'pending').toLowerCase()}`}>{previousPrediction?.result?.[activeGame.id] || 'WAITING'}</span>
-            </div>
             <section className="prediction-stake-plan" aria-label={`${activeGame.name} personal stake plan`}>
-              <div className="prediction-stake-plan-heading"><div><span className="overline">YOUR MARTINGALE PLAN</span><strong>{activeGame.name}</strong></div>{stakePlans[activeGame.id]?.locked && <span className="stake-plan-lock-state">LOCKED</span>}</div>
+              <div className="prediction-stake-plan-heading"><div><span className="overline">YOUR STAKE</span><strong>Personal stake plan</strong></div>{stakePlans[activeGame.id]?.locked && <span className="stake-plan-lock-state">LOCKED</span>}</div>
               {sessionKind !== 'account'
                 ? <p className="stake-plan-message">Sign in to save a personal base stake and track this market’s steps.</p>
                 : !activeMarketHasAccess
@@ -419,11 +419,12 @@ export default function PredictionsPage() {
                     ? <p className="stake-plan-message">Loading your saved stake plan…</p>
                     : stakePlans[activeGame.id]?.locked
                       ? <div className="stake-plan-locked">
-                        <div><span>Locked base stake</span><strong>{formatStake(stakePlans[activeGame.id].baseAmount)}</strong></div>
-                        <div><span>Next step</span><strong>Step {stakePlans[activeGame.id].step}</strong></div>
                         <div className="stake-plan-recommendation"><span>Recommended stake</span><strong>{getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction) === null
                           ? 'Waiting for pick'
                           : formatStake(getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction))}</strong></div>
+                        <div><span>Locked base stake</span><strong>{formatStake(stakePlans[activeGame.id].baseAmount)}</strong></div>
+                        <div><span>Next step</span><strong>Step {stakePlans[activeGame.id].step}</strong></div>
+
                         <button className="btn btn-secondary" type="button" disabled={savingStakePlan} onClick={() => saveStakePlan(false)}>Change base stake</button>
                       </div>
                       : <form className="stake-plan-form" onSubmit={event => { event.preventDefault(); saveStakePlan(true); }}>
@@ -435,6 +436,21 @@ export default function PredictionsPage() {
               {stakePlanNotice && <p className="stake-plan-notice" role="status">{stakePlanNotice}</p>}
               <p className="stake-plan-disclaimer">A loss advances this market’s step; a win returns it to Step 1. Skips do not change the step. Stakes are estimates only and do not place bets.</p>
             </section>
+            <div className="prediction-card-meta">
+            {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
+            {activeMarketReveal && <StrategyBadge strategy={activeMarketPrediction.strategy} />}
+            {activeMarketReveal && activeMarketPrediction.marketStats?.step > 0 && <span className="prediction-tracking-step">Tracking step {activeMarketPrediction.marketStats.step}</span>}
+            </div>
+            <div className="game-last-result">
+              <div className="game-last-result-label"><span>LAST DRAW{previousPrediction ? ` · #${previousPrediction.drawId}` : ''}</span><small>Previous pick</small></div>
+              <div className="game-last-pick"><LiveMarketPick record={previousPrediction} marketId={activeGame.id} /></div>
+              <span className={`outcome-badge ${String(previousPrediction?.result?.[activeGame.id] || 'pending').toLowerCase()}`}>{previousPrediction?.result?.[activeGame.id] || 'WAITING'}</span>
+            </div>
+            {activeMarketReveal && activeMarketPrediction.marketStats && <details className="prediction-streaks-disclosure" key={activeGame.id}>
+              <summary><span>Maximum losing streaks</span><span className="streaks-toggle" aria-hidden="true">+</span></summary>
+              <PredictionMarketStats stats={activeMarketPrediction.marketStats} marketName={activeGame.name} showStep={false} />
+            </details>}
+
           </article>
         </div>
       </section>

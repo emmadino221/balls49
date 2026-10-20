@@ -80,6 +80,19 @@ outcomes in Telegram predictions and results, including Unified picks; the
 avoided color is omitted from the message. Prediction and settlement logic are
 unchanged.
 
+### Compact Telegram layout (option 2)
+
+Prediction blocks show the game and tracking step, colored picks, then the
+selected strategy and issued summary label on one line. They contain no game,
+summary or strategy maximum-loss statistics. Unified retains its source market.
+
+Result blocks show the outcome, original colored pick, next tracking step and
+game maximum, then strategy/summary labels. Summary maxima use ENTER / HOLD;
+strategy maxima use Current / Alternative. A single footer identifies the full
+strategy names and explains the tracking period, unselected candidates and
+missing-data dash. Games without summaries omit summary rows. Existing Telegram
+messages remain unchanged; the format applies to newly generated messages.
+
 ## Extension summary entry gate
 
 In **Expert Settings → Summary model entry gate**, each supported market has **Off**, **Summary ENTER**, and **Summary HOLD** choices. Click **Save Settings** after choosing. HOLD allows an active pick only when the summary label saved for that draw is HOLD; ENTER requires ENTER. LEARNING and missing summary data block both enabled modes. BetZero, Rainbow, High/Low, and Total Color 3-way currently supply summary decisions. Unified mode applies the gate of its selected underlying market.

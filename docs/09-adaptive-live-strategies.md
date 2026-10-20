@@ -81,6 +81,32 @@ The change has not been deployed or tested by this implementation step. Before
 public release, validate candidate persistence, restart recovery, selection
 thresholds and preserved automation state without placing real bets.
 
+## Extension live strategy filter
+
+Under **Expert Settings > Live strategy filter**, BetZero and Rainbow each offer:
+
+- **Follow live selection** (default): accept either published strategy.
+- **Current**: accept only the original weighted strategy.
+- **Alternative**: accept only the candidate alternative for that game.
+
+Click Save Settings. The filter is stored in Chrome sync storage, sent to the
+private bot and restored with its session configuration. Reload the updated
+extension, refresh the game tab and restart the updated private bot to install
+this feature. A Render website rebuild is not needed for this extension setting.
+
+The filter does not choose a different candidate pick or alter public predictions.
+It holds new entries if the published strategy is different or its label is
+missing. Follow live selection keeps legacy predictions usable. Matching draws
+still need to pass the existing summary, confidence, sniper and stake controls.
+ML Override does not bypass the strategy filter. Unified applies the filter of
+the market it selected.
+
+The mismatch check occurs before sniper entry checks and stake calculation.
+Waiting does not reset or advance martingale or sniper state. Already placed
+bets settle normally; already queued/retry payloads are not recalled by changing
+the setting. Existing session-wide stop conditions still apply. Public global
+steps and strategy statistics continue following actual draw results.
+
 ## Strategy labels and losing streaks
 
 Telegram predictions/results and website live cards show the strategy selected

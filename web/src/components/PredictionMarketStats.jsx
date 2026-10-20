@@ -1,12 +1,12 @@
 import React from 'react';
 
-export default function PredictionMarketStats({ stats, marketName }) {
+export default function PredictionMarketStats({ stats, marketName, showStep = true }) {
   if (!stats) return null;
   const losses = value => `${value} ${value === 1 ? 'loss' : 'losses'}`;
   return (
     <div className="prediction-stats-block">
       <div className="prediction-market-stats" aria-label={`${marketName} step and losing streak statistics`}>
-        <div><span>Current tracking step</span><strong>{stats.step > 0 ? `Step ${stats.step}` : '—'}</strong></div>
+        {showStep && <div><span>Current tracking step</span><strong>{stats.step > 0 ? `Step ${stats.step}` : '—'}</strong></div>}
         <div><span>Max losing streak · tracking period</span><strong>{losses(stats.maxLosingStreak)}</strong></div>
         {['ENTER', 'HOLD'].map(label => {
           const summary = stats.summaryStats?.[label];

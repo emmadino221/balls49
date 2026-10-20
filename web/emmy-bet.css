@@ -1803,3 +1803,67 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
   .site.cinematic-site:not(.dark-theme) .page-intro::before { opacity: .32; }
   .site.cinematic-site:not(.dark-theme) .history-hero::before { opacity: .32; }
 }
+
+/* Clean prediction card: pick, personal stake, details, last result, streaks. */
+.site .prediction-clean-layout .prediction-market-browser { align-items: start; }
+.site .prediction-clean-layout .clean-prediction-card { min-width: 0; padding: clamp(18px, 3vw, 32px); }
+.site .prediction-clean-layout .clean-prediction-card h3 { margin-bottom: 8px; }
+.site .prediction-clean-layout .prediction-card-draw { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.site .prediction-clean-layout .prediction-card-draw > span:last-child { font-weight: 800; color: var(--ink); }
+.site .prediction-clean-layout .prediction-market-description { margin: 12px 0 0; font-size: 13px; line-height: 1.6; }
+.site .prediction-clean-layout .live-prediction-value { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; min-height: 150px; margin: 16px 0 0; padding: 24px 12px; text-align: center; overflow-wrap: anywhere; }
+.site .prediction-clean-layout .live-prediction-value .pick-balls,
+.site .prediction-clean-layout .live-prediction-value .pick-colors { justify-content: center; flex-wrap: wrap; max-width: 100%; }
+.site .prediction-clean-layout .prediction-stake-plan { margin: 0; padding: 18px; gap: 14px; border-radius: 14px; }
+.site .prediction-clean-layout .prediction-stake-plan-heading strong { font-size: 13px; }
+.site .prediction-clean-layout .stake-plan-locked { gap: 12px; }
+.site .prediction-clean-layout .stake-plan-locked > div { min-width: 0; background: transparent; border: 0; padding: 4px; }
+.site .prediction-clean-layout .stake-plan-locked .stake-plan-recommendation { text-align: center; padding: 4px 0 16px; border-bottom: 1px solid var(--line); border-radius: 0; }
+.site .prediction-clean-layout .stake-plan-recommendation > strong { font-size: clamp(24px, 4vw, 36px); line-height: 1.25; overflow-wrap: anywhere; }
+.site .prediction-clean-layout .stake-plan-locked > div > span { font-size: 12px; }
+.site .prediction-clean-layout .stake-plan-form input { font-size: 16px; height: 46px; }
+.site .prediction-clean-layout .stake-plan-form label { font-size: 13px; }
+.site .prediction-clean-layout .stake-plan-message,
+.site .prediction-clean-layout .stake-plan-disclaimer,
+.site .prediction-clean-layout .stake-plan-error,
+.site .prediction-clean-layout .stake-plan-notice { font-size: 12px; }
+.site .prediction-clean-layout .prediction-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 20px 0; }
+.site .prediction-clean-layout .prediction-card-meta:empty { display: none; }
+.site .prediction-clean-layout .prediction-card-meta .summary-model-badge { margin: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
+.site .prediction-clean-layout .prediction-tracking-step { color: var(--muted); font-size: 12px; }
+.site .prediction-clean-layout .game-last-result { margin: 0; padding: 16px 0; background: transparent; border-width: 1px 0 0; border-radius: 0; gap: 10px; }
+.site .prediction-clean-layout .game-last-result-label > span { font-size: 11px; }
+.site .prediction-clean-layout .game-last-result-label small { font-size: 11px; }
+.site .prediction-clean-layout .game-last-result > .outcome-badge { font-size: 11px; padding: 6px 9px; }
+.site .prediction-clean-layout .game-last-pick { min-width: 0; overflow-wrap: anywhere; }
+.site .prediction-clean-layout .game-last-pick .ball-number { width: 28px; height: 28px; font-size: 11px; }
+.site .prediction-clean-layout .prediction-streaks-disclosure { margin-top: 8px; border-top: 1px solid var(--line); }
+.site .prediction-clean-layout .prediction-streaks-disclosure > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 0; cursor: pointer; list-style: none; color: var(--ink); font-size: 14px; font-weight: 700; }
+.site .prediction-clean-layout .prediction-streaks-disclosure > summary::-webkit-details-marker { display: none; }
+.site .prediction-clean-layout .streaks-toggle { font-size: 22px; transition: transform .15s ease; }
+.site .prediction-clean-layout .prediction-streaks-disclosure[open] .streaks-toggle { transform: rotate(45deg); }
+.site .prediction-clean-layout .prediction-market-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.site .prediction-clean-layout .prediction-market-stats > div { min-width: 0; padding: 14px; overflow-wrap: anywhere; }
+.site .prediction-clean-layout .prediction-market-stats span,
+.site .prediction-clean-layout .prediction-market-stats small { font-size: 12px; line-height: 1.5; }
+.site .prediction-clean-layout .prediction-summary-stats-note { font-size: 12px; line-height: 1.6; }
+.site .prediction-clean-layout :is(button, summary, input):focus-visible { outline: 3px solid var(--green-bright); outline-offset: 3px; }
+@media (max-width: 900px) {
+  .site .prediction-clean-layout .prediction-market-browser { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .site .prediction-clean-layout .prediction-market-tabs { display: flex; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding: 4px 3px 12px; min-width: 0; scroll-snap-type: x proximity; }
+  .site .prediction-clean-layout .prediction-market-tab { flex: 0 0 auto; width: auto; min-height: 48px; max-width: 240px; padding: 10px 14px; scroll-snap-align: start; }
+  .site .prediction-clean-layout .market-tab-index,
+  .site .prediction-clean-layout .market-tab-copy small { display: none; }
+  .site .prediction-clean-layout .market-tab-copy strong { font-size: 13px; }
+  .site .prediction-clean-layout .prediction-market-tab:hover { transform: none; }
+}
+@media (max-width: 480px) {
+  .site .prediction-clean-layout .clean-prediction-card { padding: 16px; }
+  .site .prediction-clean-layout .prediction-stake-plan { padding: 14px; }
+  .site .prediction-clean-layout .stake-plan-form,
+  .site .prediction-clean-layout .prediction-market-stats { grid-template-columns: minmax(0, 1fr); }
+  .site .prediction-clean-layout .stake-plan-form .btn,
+  .site .prediction-clean-layout .stake-plan-locked .btn { width: 100%; min-height: 44px; white-space: normal; }
+  .site .prediction-clean-layout .live-prediction-value { min-height: 126px; padding-inline: 0; }
+  .site .prediction-clean-layout .live-prediction-value .ball-number { width: 48px; height: 48px; font-size: 18px; flex-shrink: 0; }
+}

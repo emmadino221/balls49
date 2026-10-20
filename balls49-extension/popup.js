@@ -447,6 +447,8 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const unifiedMode = getToggleValue('unified-mode'); 
     const bzRbRollover = getToggleValue('bzrb-rollover');
     const mlOverrideMode = getToggleValue('ml-override');
+    const strategyFilters = Object.fromEntries(['u4', 'color'].map(key => [key,
+        document.getElementById(`strategy-filter-${key}`)?.value || 'follow']));
     const summaryModelMarkets = Object.fromEntries(SUMMARY_MODEL_MARKETS.map(({ id, key }) => ([
         key,
         ['ENTER', 'HOLD'].includes(document.getElementById(`summary-model-${id}`)?.value)
@@ -491,7 +493,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloMultiplier, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets, summaryModelTargets,
+        unifiedMode, bzRbRollover, hiloMultiplier, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets, summaryModelTargets, strategyFilters,
         shadowMode, weightedStaking 
     };
 
@@ -575,7 +577,7 @@ function loadParameters() {
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
         'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'baseStakePercent', 'backtestDraws',
-        'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'summaryModelTargets', 'shadowMode', 'weightedStaking'
+        'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking'
     ], (data) => {
         let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
         const stakes = data.stakes || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
@@ -613,6 +615,10 @@ function loadParameters() {
         setCheckState('unified-mode', data.unifiedMode);
         setCheckState('bzrb-rollover', data.bzRbRollover);
         setCheckState('ml-override', data.mlOverrideMode);
+        ['u4', 'color'].forEach(key => {
+            const select = document.getElementById(`strategy-filter-${key}`);
+            if (select) select.value = ['current', 'alternative'].includes(data.strategyFilters?.[key]) ? data.strategyFilters[key] : 'follow';
+        });
         SUMMARY_MODEL_MARKETS.forEach(({ id, key }) => {
             const select = document.getElementById(`summary-model-${id}`);
             if (select) select.value = data.summaryModelMarkets?.[key]

@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 const {
     getPublicSummaryLabel, buildPublicSummaryModel, getPublicSummaryLabelForMarket,
-    getRecordSummaryModel, calculateSummaryLossStats, formatTelegramSummaryStats
+    getRecordSummaryModel, calculateSummaryLossStats
 } = require('./summary-stats');
 const {
     SUMMARY_MODEL_MARKETS, makeDefaultSummaryModelMarkets, normalizeSummaryModelTargets,
@@ -17,7 +17,8 @@ const {
 } = require('./summary-gate');
 const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
 const { predictHighLow } = require('./high-low');
-const { applyAdaptiveStrategies, getStrategyResults, getSelectedStrategy, calculateStrategyStats, formatStrategyStats } = require('./adaptive-strategies');
+const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
+const { applyAdaptiveStrategies, getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHANNEL_CHAT_ID = process.env.TELEGRAM_CHANNEL_ID || '';
@@ -504,6 +505,7 @@ function getSession(clientId) {
                 sniperSettings: makeDefaultSniperSettings(),
                 summaryModelMarkets: makeDefaultSummaryModelMarkets(),
                 summaryModelTargets: normalizeSummaryModelTargets(),
+                strategyFilters: { u4: 'follow', color: 'follow' },
                 dynamicStakePercent: 0, cbMaxLosses: 0, cbCooldown: 0,
                 mlOverrideMode: false,
                 unifiedMode: false,
@@ -712,6 +714,8 @@ function restoreSession(session, clientId) {
         ...(saved.config?.summaryModelMarkets || {})
     };
     session.config.summaryModelTargets = normalizeSummaryModelTargets(saved.config?.summaryModelTargets);
+    session.config.strategyFilters = Object.fromEntries(['u4', 'color'].map(key => [key,
+        ['current', 'alternative'].includes(saved.config?.strategyFilters?.[key]) ? saved.config.strategyFilters[key] : 'follow']));
     session.lastBetDrawId = saved.lastBetDrawId || null;
     session.lastBetDetails = saved.lastBetDetails || null;
     session.pendingBetPayload = null;
@@ -1350,6 +1354,15 @@ function getShadowModelDecision(key, pred, score, currentStep) {
 function passesSummaryModelGate(session, key, prediction = lastPrediction) {
     if (getSummaryGateTarget(session.config, key) === null) return true;
     return summaryGateAllows(session.config, key, getIssuedSummaryLabels(prediction, predictionLog));
+}
+
+function passesStrategyFilter(session, key, prediction = lastPrediction) {
+    const market = ({ u4: 'betzero', color: 'rainbow' })[key];
+    const filter = session.config.strategyFilters?.[key] || 'follow';
+    if (!market || filter === 'follow') return true;
+    const issued = prediction?.pred?.adaptiveStrategies
+        || predictionLog.find(record => String(record.drawId) === String(prediction?.drawId))?.adaptiveStrategies;
+    return issued?.[market]?.selected === filter;
 }
 
 function refreshRetrainingModelArtifactFromLog() {
@@ -2093,38 +2106,27 @@ async function sendPrediction(drawId, drawDate, pred) {
         sum: getShadowModelDecision('sum', pred, mlHl.score, globalTracker.sum.step),
         totalColor: getShadowModelDecision('totalColor', pred, mlTc.score, globalTracker.totalColor.step)
     };
-    const summaryLabelFor = key => {
-        const label = getPublicSummaryLabel(mlShadow[key]);
-        const summaryStyles = {
-            ENTER: '🟢 🚀',
-            HOLD: '🟠 ⏸️',
-            LEARNING: '🔵 🧠'
-        };
-        return label ? `\n🧠 <b>SUMMARY</b> ${summaryStyles[label] || '⚪'} <b>${label}</b>` : '';
-    };
-    var u4Format = pred.betzeroStatus === 'ACTIVE'
-        ? `${pred.unlikely4.map(x => getBallEmoji(x.number) + ' <b>' + x.number + '</b>').join(' ')} · Tracking step ${getTrackingStep('betzero', globalTracker.u4.step)}${summaryLabelFor('u4')}`
-        : `⏳ No pick this draw · Tracking step ${getTrackingStep('betzero', globalTracker.u4.step)}`;
-
-    var bet49Format = Number.isInteger(pred.bet49Pick)
-        ? `${getBallEmoji(pred.bet49Pick)} <b>${pred.bet49Pick}</b> · Tracking step ${getTrackingStep('bet49', globalTracker.bet49.step)}`
-        : '⏳ Waiting for enough draw history';
-
-    var rainbowFormat = pred.rainbowStatus === 'ACTIVE'
-        ? `${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b> · Tracking step ${getTrackingStep('rainbow', globalTracker.color.step)}${summaryLabelFor('color')}`
-        : `⏳ No pick this draw · Tracking step ${getTrackingStep('rainbow', globalTracker.color.step)}`;
-
-    var tcFormat = pred.totalColorPred.status === 'ACTIVE'
-        ? `${getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color]} <b>${totalColorName(color)}</b>`).join(' + ')} · Tracking step ${getTrackingStep('totalColor', globalTracker.totalColor.step)}${summaryLabelFor('totalColor')}`
-        : `⏳ No pick this draw · Tracking step ${getTrackingStep('totalColor', globalTracker.totalColor.step)}`;
-
-    var tc2Format = pred.totalColor2Pred.status === 'ACTIVE'
-        ? `${cEm[pred.totalColor2Pred.top2[0]] || '⚫'} <b>${pred.totalColor2Pred.top2[0].toUpperCase()}</b> + ${cEm[pred.totalColor2Pred.top2[1]] || '⚫'} <b>${pred.totalColor2Pred.top2[1].toUpperCase()}</b> · Tracking step ${getTrackingStep('totalColor2', globalTracker.totalColor2.step)}`
-        : '⏳ No pick this draw';
-
-    var hlFormat = pred.hiloStatus === 'ACTIVE'
-        ? `${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b> · Tracking step ${getTrackingStep('hilo', globalTracker.sum.step)}${summaryLabelFor('sum')}`
-        : `⏳ No pick this draw · Tracking step ${getTrackingStep('hilo', globalTracker.sum.step)}`;
+    const pickBlock = (name, market, tracker, pick, summaryKey = tracker, unifiedKey = null) => predictionBlock({
+        name, step: getTrackingStep(market, globalTracker[tracker].step), pick,
+        strategy: getSelectedStrategy(pred.adaptiveStrategies, market, unifiedKey),
+        summary: getPublicSummaryLabel(mlShadow[summaryKey])
+    });
+    const betzeroPickText = pred.betzeroStatus === 'ACTIVE'
+        ? pred.unlikely4.map(x => `${getBallEmoji(x.number)} <b>${x.number}</b>`).join(' · ') : '';
+    const rainbowPickText = pred.rainbowStatus === 'ACTIVE'
+        ? `${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b>` : '';
+    const tcPickText = pred.totalColorPred.status === 'ACTIVE'
+        ? getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color]} <b>${totalColorName(color)}</b>`).join(' + ') : '';
+    const hlPickText = pred.hiloStatus === 'ACTIVE'
+        ? `${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b>` : '';
+    const u4Format = pickBlock('🔵 BETZERO', 'betzero', 'u4', betzeroPickText);
+    const bet49Format = pickBlock('🎯 BET49', 'bet49', 'bet49', Number.isInteger(pred.bet49Pick)
+        ? `${getBallEmoji(pred.bet49Pick)} <b>${pred.bet49Pick}</b>` : '');
+    const rainbowFormat = pickBlock('🌈 RAINBOW', 'rainbow', 'color', rainbowPickText);
+    const tcFormat = pickBlock('🎨 TOTAL COLOR · 3-WAY', 'totalColor', 'totalColor', tcPickText);
+    const tc2Format = pickBlock('🎨 TOTAL COLOR · 2-WAY', 'totalColor2', 'totalColor2', pred.totalColor2Pred.status === 'ACTIVE'
+        ? pred.totalColor2Pred.top2.map(color => `${cEm[color] || '⚪'} <b>${color.toUpperCase()}</b>`).join(' + ') : '');
+    const hlFormat = pickBlock('📊 HIGH / LOW', 'hilo', 'sum', hlPickText);
 
     let candidateGames = [];
     if (pred.betzeroStatus === 'ACTIVE' && mlBz.recommendation === 'ENTER') {
@@ -2152,16 +2154,11 @@ async function sendPrediction(drawId, drawDate, pred) {
         let best = candidateGames[0];
         pred.unifiedPick = best;
         const unifiedNames = { u4: 'BetZero', color: 'Rainbow', sum: 'High / Low', totalColor: 'Total Color 3-way' };
-        const unifiedPicks = {
-            u4: () => pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' '),
-            color: () => `${cEm[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`,
-            sum: () => pred.sumRange,
-            totalColor: () => getTotalColorTargets(pred.totalColorPred).map(color => `${cEm[color] || '⚪'} ${totalColorName(color)}`).join(' + ')
-        };
-        unifiedFormat = `Selected market: <b>${unifiedNames[best.key]}</b>\nPick: <b>${unifiedPicks[best.key]()}</b>${summaryLabelFor(best.key)}`;
+        const unifiedPicks = { u4: betzeroPickText, color: rainbowPickText, sum: hlPickText, totalColor: tcPickText };
+        unifiedFormat = pickBlock(`🔗 UNIFIED · ${unifiedNames[best.key]}`, 'unified', 'unified', unifiedPicks[best.key], best.key, best.key);
     } else {
         pred.unifiedPick = null;
-        unifiedFormat = '⏳ No pick this draw';
+        unifiedFormat = pickBlock('🔗 UNIFIED', 'unified', 'unified', '');
     }
 
     const publicSummaryModel = buildPublicSummaryModel(mlShadow, pred.unifiedPick?.key);
@@ -2170,27 +2167,12 @@ async function sendPrediction(drawId, drawDate, pred) {
         saveJSON(LAST_PRED_FILE, lastPrediction);
     }
 
-    const strategyStats = calculateStrategyStats(predictionLog, getMarketStatsResetAt());
-    const strategyLine = market => formatStrategyStats(pred.adaptiveStrategies, strategyStats, market, pred.unifiedPick?.key);
     var lines = [
         `🎯 <b>PICKS · DRAW #${drawId}</b>`,
         `<i>${String(drawDate).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</i>`,
-        '',
-        `<b>BetZero</b>\n${u4Format}${strategyLine('betzero') ? '\n' + strategyLine('betzero') : ''}`,
-        '',
-        `<b>Bet49</b>\n${bet49Format}`,
-        '',
-        `<b>Rainbow</b>\n${rainbowFormat}${strategyLine('rainbow') ? '\n' + strategyLine('rainbow') : ''}`,
-        '',
-        `<b>Total Color · 3-way</b>\n${tcFormat}`,
-        '',
-        `<b>Total Color · 2-way</b>\n${tc2Format}`,
-        '',
-        `<b>High / Low</b>\n${hlFormat}`,
-        '',
-        `<b>Unified pick</b>\n${unifiedFormat}${strategyLine('unified') ? '\n' + strategyLine('unified') : ''}`
+        '', u4Format, '', bet49Format, '', rainbowFormat, '', tcFormat,
+        '', tc2Format, '', hlFormat, '', unifiedFormat
     ];
-    if (pred.adaptiveStrategies) lines.push('', 'Strategy max losses include unselected candidate picks in this tracking period. — = no settled data.');
 
     const predictionRecord = {
         drawId, drawDate,
@@ -2725,17 +2707,15 @@ function processUpdates(pred, actualDraw) {
         unified: 'unified'
     };
     const resultLine = (name, active, won, pick, trackerKey) => {
-        const outcome = !active ? '⚪ SKIPPED' : won ? '✅ WIN' : '❌ LOSS';
-        const stepLabel = active ? 'Next tracking step' : 'Tracking step';
         const marketKey = trackerToPublicMarket[trackerKey];
-        const lines = [
-            `<b>${name}</b> — ${outcome}`,
-            active && pick ? `Pick: ${pick}` : '',
-            `${stepLabel}: <b>${getTrackingStep(marketKey, globalTracker[trackerKey].step)}</b> · Max losses: <b>${periodMaxLosses[marketKey] || 0}</b>`,
-            active ? formatTelegramSummaryStats(settledSummaryLabels, summaryLossStats, marketKey) : '',
-            formatStrategyStats(targetItem?.adaptiveStrategies, strategyStats, marketKey, pred.unifiedPick?.key)
-        ];
-        return lines.filter(Boolean).join('\n');
+        return resultBlock({
+            name, active, won, pick,
+            step: getTrackingStep(marketKey, globalTracker[trackerKey].step),
+            maxLosses: periodMaxLosses[marketKey] || 0,
+            strategy: getSelectedStrategy(targetItem?.adaptiveStrategies, marketKey, pred.unifiedPick?.key),
+            summary: settledSummaryLabels[marketKey],
+            summaryStats: summaryLossStats[marketKey], strategyStats: strategyStats[marketKey]
+        });
     };
 
     const betzeroPick = pred.betzeroStatus === 'ACTIVE'
@@ -2786,10 +2766,9 @@ function processUpdates(pred, actualDraw) {
         '',
         resultLine(`🔗 Unified${unifiedName ? ` · ${unifiedName}` : ''}`, unifiedStatus === 'ACTIVE', unifiedWin, unifiedPickText, 'unified')
     ];
-    if (groupReportLines.some(line => line.includes('Summary max losses:'))) {
-        groupReportLines.push('', 'Summary streaks track each label separately. — = no settled summary data.');
-    }
-    if (targetItem?.adaptiveStrategies) groupReportLines.push('', 'Strategy max losses include unselected candidate picks in this tracking period. — = no settled data.');
+    const strategyMarkets = ['betzero', 'rainbow'].filter(market =>
+        getSelectedStrategy(targetItem?.adaptiveStrategies, market));
+    groupReportLines.push('', resultLegend(strategyMarkets, groupReportLines.some(line => line.includes('Summary max:'))));
     sendTelegram(groupReportLines.join('\n')).catch(() => {});
 }
 
@@ -3330,6 +3309,7 @@ async function tick() {
                     }
 
                     if (globalPick && !passesSummaryModelGate(session, globalPick.key)) continue;
+                    if (globalPick && !passesStrategyFilter(session, globalPick.key)) continue;
                     
                     let isUnifiedCoolingDown = false;
                     if (session.cooldowns.unified >= Number(nextId)) {
@@ -3403,6 +3383,7 @@ async function tick() {
 
                     ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].forEach(key => {
                         if (session.config.enabledGames[key]) {
+                            if (!passesStrategyFilter(session, key)) return;
                             const state = session.martingaleState[key];
                             if (state.inShadowMode) return;
                             
@@ -4472,7 +4453,17 @@ async function handleHttpRequest(req, res) {
         } else if (session.pendingBetPayload) {
             decisionReason = `Bet queued for draw #${session.pendingBetPayload.drawId}.`;
         } else if (livePred) {
-            const enabledKeys = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].filter(key => session.config.enabledGames[key]);
+            let enabledKeys = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2'].filter(key => session.config.enabledGames[key]);
+            if (session.config.unifiedMode) {
+                let selected = livePred.unifiedPick?.key;
+                if (!selected && session.config.mlOverrideMode) {
+                    selected = livePred.betzeroStatus === 'ACTIVE' ? 'u4'
+                        : livePred.rainbowStatus === 'ACTIVE' ? 'color'
+                        : livePred.hiloStatus === 'ACTIVE' ? 'sum'
+                        : livePred.totalColorPred?.status === 'ACTIVE' ? 'totalColor' : null;
+                }
+                enabledKeys = enabledKeys.length && selected ? [selected] : [];
+            }
             const predictionByKey = {
                 u4: livePred.betzeroStatus,
                 bet49: Number.isInteger(livePred.bet49Pick) && livePred.bet49Pick >= 1 && livePred.bet49Pick <= 49 ? 'ACTIVE' : 'SKIP',
@@ -4489,13 +4480,18 @@ async function handleHttpRequest(req, res) {
                 && predictionByKey[key] === 'ACTIVE'
                 && !passesSummaryModelGate(session, key, lastPredData));
             const thresholdKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE' && !session.config.mlOverrideMode && mlScores[key] < decisionThresholds[key]);
+            const strategyBlockedKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE'
+                && !passesStrategyFilter(session, key, lastPredData));
             const readyKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE'
                 && (session.config.mlOverrideMode || mlScores[key] >= decisionThresholds[key])
-                && passesSummaryModelGate(session, key, lastPredData));
+                && passesSummaryModelGate(session, key, lastPredData)
+                && passesStrategyFilter(session, key, lastPredData));
             if (!enabledKeys.length) {
                 decisionReason = 'No prediction market is enabled.';
             } else if (blockedKey) {
                 decisionReason = `${decisionLabels[blockedKey]} is skipped${skipReasons[blockedKey] ? `: ${skipReasons[blockedKey]}` : '.'}`;
+            } else if (strategyBlockedKey) {
+                decisionReason = `${decisionLabels[strategyBlockedKey]} is waiting for the ${session.config.strategyFilters[strategyBlockedKey]} strategy. Progression is held.${readyKey ? ` ${decisionLabels[readyKey]} meets its prediction gates.` : ''}`;
             } else if (summaryBlockedKey) {
                 decisionReason = `${decisionLabels[summaryBlockedKey]} is waiting for Summary ${getSummaryGateTarget(session.config, summaryBlockedKey)} on this draw.`;
             } else if (thresholdKey) {
@@ -4786,6 +4782,14 @@ async function handleHttpRequest(req, res) {
                 if (cfg.cbCooldown !== undefined) session.config.cbCooldown = validateNumber(cfg.cbCooldown, 0, 300, 0); 
                 if (cfg.mlOverrideMode !== undefined) session.config.mlOverrideMode = Boolean(cfg.mlOverrideMode);
                 applySummaryGateConfig(session.config, cfg);
+                if (cfg.strategyFilters && typeof cfg.strategyFilters === 'object' && !Array.isArray(cfg.strategyFilters)) {
+                    session.config.strategyFilters ||= { u4: 'follow', color: 'follow' };
+                    for (const key of ['u4', 'color']) {
+                        if (['follow', 'current', 'alternative'].includes(cfg.strategyFilters[key])) {
+                            session.config.strategyFilters[key] = cfg.strategyFilters[key];
+                        }
+                    }
+                }
                 if (cfg.unifiedMode !== undefined) session.config.unifiedMode = Boolean(cfg.unifiedMode);
                 if (cfg.bzRbRollover !== undefined) session.config.bzRbRollover = Boolean(cfg.bzRbRollover);
                 if (cfg.hiloRollover !== undefined) session.config.hiloRollover = Boolean(cfg.hiloRollover);

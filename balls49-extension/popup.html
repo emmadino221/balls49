@@ -213,6 +213,15 @@
             </div>
 
             <div class="sniper-settings-heading">
+                <span>Live strategy filter</span>
+                <span>Follow live by default</span>
+            </div>
+            <div class="grid-2" style="margin-bottom: 4px;">
+                <label class="summary-market-select">BetZero<select id="strategy-filter-u4"><option value="follow">Follow live selection</option><option value="current">Current: Weighted frequency + absence</option><option value="alternative">Alternative: Least frequent 100</option></select></label>
+                <label class="summary-market-select">Rainbow<select id="strategy-filter-color"><option value="follow">Follow live selection</option><option value="current">Current: Weighted color frequency</option><option value="alternative">Alternative: Most 2+ ball outcomes</option></select></label>
+            </div>
+            <p class="sniper-help">Trade only when the published strategy matches your choice. Otherwise wait, preserving martingale progression and sniper state. Unified uses its selected game's filter. ML Override does not bypass this filter. Missing strategy labels wait when a specific strategy is required. Save settings to apply; already queued bets are not recalled.</p>
+            <div class="sniper-settings-heading">
                 <span>Summary model entry gate</span>
                 <span>Off by default</span>
             </div>

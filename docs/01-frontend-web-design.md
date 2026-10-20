@@ -32,3 +32,23 @@ The React site calls the account, prediction, history, and clock APIs via `web/s
 ## Validation
 
 Run `npm run build` from `web/` after website changes. Run `node --check` on changed extension JavaScript files and load the unpacked extension against the intended game page to validate live DOM selectors; a build cannot verify third-party page selectors.
+# Prediction card layout: clean card (option 1)
+
+The Predictions page uses this order within the selected market card:
+
+1. Game, draw ID/countdown and prominent colored prediction.
+2. Personal stake plan directly underneath, with the recommended amount first
+   for a locked plan, followed by base amount, personal step and editing controls.
+3. Compact selected strategy, summary label and global tracking step.
+4. Previous draw pick and outcome.
+5. **Maximum losing streaks**, collapsed by default and expandable by keyboard
+   or pointer. Game, summary and candidate-strategy statistics remain available.
+
+Desktop keeps the market navigation on the left. At 900px and below it becomes
+a horizontally scrollable row with horizontal tab semantics. At 480px and below,
+stake form controls and expanded statistics use one column. Long labels and
+amounts wrap within the card. Styles are scoped to `.prediction-clean-layout`.
+
+Personal stake steps and global tracking steps retain their separate meanings.
+Account/plan checks, polling, stake saving and prediction reveal logic are
+unchanged. This layout has not yet had browser viewport testing.
