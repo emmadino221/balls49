@@ -18,6 +18,8 @@ cookies.txt
 site_users.json
 site_users.sqlite*
 session_state.json
+extension-users.json
+extension-users.json.*
 draws.json
 predictions.json
 last_prediction.json

@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { readStore, hashKey } = require('./extension-key-store');
 const ROUTES = new Set([
     'GET /stats', 'GET /stream', 'GET /backtest',
     'POST /config', 'POST /ack', 'POST /reset', 'POST /update-balance'
@@ -15,19 +16,28 @@ function authorizeExtensionRequest(req, url, env = process.env) {
         return { status: 404, error: 'Not found.' };
     }
     const key = env.EXTENSION_ACCESS_KEY || '';
-    const clientId = env.EXTENSION_CLIENT_ID || '';
-    if (!/^[A-Za-z0-9_-]{32,256}$/.test(key)
-        || !/^user_[A-Za-z0-9_-]{1,80}$/.test(clientId)) {
-        return { status: 503, error: 'Remote extension access is not configured.' };
-    }
+    let clientId = env.EXTENSION_CLIENT_ID || '';
     const supplied = String(req.headers.authorization || '');
     const expectedHash = crypto.createHash('sha256').update(`Bearer ${key}`).digest();
     const receivedHash = crypto.createHash('sha256').update(supplied).digest();
-    if (!crypto.timingSafeEqual(expectedHash, receivedHash)) {
-        return { status: 401, error: 'Invalid extension access key.' };
+    const owner = /^[A-Za-z0-9_-]{32,256}$/.test(key)
+        && /^user_[A-Za-z0-9_-]{1,80}$/.test(clientId)
+        && crypto.timingSafeEqual(expectedHash, receivedHash);
+    if (!owner) {
+        const bearer = /^Bearer ([A-Za-z0-9_-]{32,256})$/.exec(supplied);
+        if (!bearer) return { status: 401, error: 'Invalid extension access key.' };
+        let users;
+        try { users = readStore(env).users; }
+        catch { return { status: 503, error: 'Extension access is temporarily unavailable.' }; }
+        const digest = Buffer.from(hashKey(bearer[1]), 'hex');
+        const user = users.find(record => crypto.timingSafeEqual(Buffer.from(record.keyHash, 'hex'), digest));
+        if (!user || user.revokedAt) return { status: 401, error: 'Invalid or revoked extension access key.' };
+        clientId = user.clientId;
+        // Backtests consume the shared worker; only the owner may run them remotely.
+        if (route === '/backtest') return { status: 403, error: 'Backtesting is available to the owner only.' };
     }
-    // Bind the credential to the owner's existing automation state, even when
-    // the extension is installed in a new browser. Never trust a remote ID.
+    req.extensionAccess = { role: owner ? 'owner' : 'member', clientId };
+    // Always derive the session from the credential, never from browser input.
     url.pathname = route;
     url.searchParams.set('clientId', clientId);
     url.searchParams.delete('key');

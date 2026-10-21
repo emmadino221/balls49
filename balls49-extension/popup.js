@@ -47,6 +47,22 @@ async function verifyBotConnection() {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.error || `Bot connection failed (HTTP ${response.status}).`);
     }
+    const data = await response.json();
+    const access = data.extensionAccess;
+    const label = document.getElementById('connected-account');
+    if (label) label.textContent = access
+        ? `Connected: ${access.role} | Session: ${access.clientId}` : 'Connected: local session';
+    const member = access?.role === 'member';
+    const telegram = document.getElementById('telegram-chat-id');
+    if (telegram) {
+        telegram.disabled = member;
+        telegram.title = member ? 'Telegram delivery is managed by the owner.' : '';
+    }
+    const backtest = document.getElementById('btn-run-backtest');
+    if (backtest) {
+        backtest.disabled = member;
+        backtest.title = member ? 'Backtesting is available to the owner only.' : '';
+    }
 }
 
 function showLoginScreen(errorMsg = "") {

@@ -7,6 +7,7 @@ const path = require('path');
 const childProcess = require('child_process');
 const crypto = require('crypto');
 const { authorizeExtensionRequest } = require('./extension-access');
+const { disabledManagedSessions } = require('./extension-key-store');
 const { DatabaseSync } = require('node:sqlite');
 const {
     getPublicSummaryLabel, buildPublicSummaryModel, getPublicSummaryLabelForMarket,
@@ -3050,6 +3051,10 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
 async function tick() {
     try {
+        for (const id of disabledManagedSessions(Object.keys(userSessions))) {
+            userSessions[id].stats.isHalted = true;
+            userSessions[id].stats.haltReason = 'Extension access revoked or unavailable';
+        }
         flushTelegramPredictionOutbox().catch(error => {
             console.error('[Telegram] Prediction outbox could not be flushed:', error.message || error);
         });
@@ -4508,6 +4513,7 @@ async function handleHttpRequest(req, res) {
 
         return res.end(JSON.stringify({
             ...session.stats, status: statusDisplay,
+            extensionAccess: req.extensionAccess || null,
             cbStatus: activeCb,
             retryStatus,
             currentStep: session.config.unifiedMode 
@@ -4690,6 +4696,10 @@ async function handleHttpRequest(req, res) {
                     return num;
                 };
 
+                if (req.extensionAccess?.role === 'member') {
+                    delete cfg.telegramChatId;
+                    session.config.telegramChatId = null;
+                }
                 session.stats.isHalted = false;
                 session.stats.haltReason = "";
                 

@@ -1,9 +1,46 @@
 # Extension access without an SSH tunnel
 
-This is a single-owner gateway at https://159.65.25.30. It is not a
-multi-customer licensing system. A copy of the extension folder alone does not
-grant access: each browser needs the owner's access key entered privately.
-The key controls the owner's automation session, including configuration and reset.
+The HTTPS gateway at https://159.65.25.30 supports an owner key and separate,
+revocable member keys. A copy of the extension folder alone does not grant access.
+Each member key maps to its own server-side automation session. This is manual
+access management, not website subscription or payment integration.
+Never share the owner's environment key: it controls the owner's session.
+
+## Create, list and revoke member access
+
+After deploying the updated bot, run these as the bot service account (`balls49`)
+in `~/balls49`. Do not use sudo to create a root-owned registry that the bot cannot read.
+
+```bash
+node extension-users.js create "John"
+node extension-users.js list
+node extension-users.js revoke user_ext_REPLACE_WITH_ID_FROM_LIST
+```
+
+`create` prints a new key once. Send it privately to that person. The registry
+stores only its SHA-256 hash; `list` does not disclose keys. To replace a lost key,
+revoke it and create a new account (this starts a new session).
+Names containing spaces must be quoted. Revoked entries remain as an audit record.
+
+Members choose VPS HTTPS and enter their own key. They can manage their own games,
+stakes, sniper settings, start/stop and reset their own session. The server derives
+their session from their key, ignoring IDs supplied by the browser. Member access
+does not permit owner/admin routes, Telegram recipient changes, or server backtests.
+Owner environment settings and saved martingale/sniper state are retained.
+
+Changes take effect without restarting the bot. Revoked keys fail subsequent API
+requests and the next bot tick halts their session. Already delivered/executed bets
+cannot be recalled; existing settlement history and progression are retained.
+The key is a bearer credential: anyone who receives a member key can use that
+member's session. Use one active automation browser per key.
+
+The registry defaults to `extension-users.json` beside the bot and is gitignored.
+Back it up privately alongside `session_state.json`. `EXTENSION_KEYS_FILE` can
+override the path, but must match for both service and CLI. Missing/unreadable
+records block member access; owner authentication remains independent.
+Writes use a lock and atomic replacement. If a crashed CLI leaves a `.lock`, ensure
+no CLI writer is running before removing that lock. Never delete the registry to
+resolve a lock problem.
 
 ## Prepare the existing session
 
@@ -16,7 +53,7 @@ The bot restores that session from session_state.json; keep that file.
 
 ## Server requirements
 
-- The updated bot.js and extension-access.js must be deployed together.
+- Deploy bot.js, extension-access.js, extension-key-store.js and extension-users.js together.
 - The bot must continue listening on 127.0.0.1:3001 in local mode.
 - Nginx, Certbot 5.4+, ports 80/443, and a trusted IP certificate are required.
 - /var/www/balls49-acme must serve /.well-known/acme-challenge/ over HTTP.
@@ -85,8 +122,8 @@ The popup checks the bot's response before unlocking. Refresh the game tab after
 changing connections. Resume automation only after confirming the expected
 existing session state. No automation state is reset by selecting this connection.
 
-New browsers use the same server-bound owner session regardless of their new
-local ID. Use one active automation browser at a time. The folder does not contain
+New browsers use the session bound to their key regardless of their new
+local ID. Use one active automation browser per key. The folder does not contain
 the access key; Chrome local storage contains the entered key.
 
 ## Troubleshooting / verification after deployment
