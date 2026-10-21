@@ -14,7 +14,7 @@ export default function LoginPage() {
     setEmail(submittedEmail);
     try {
       await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email: submittedEmail, password: form.get('password') }) });
-      window.location.href = 'predictions.html';
+      window.location.href = 'account.html';
     } catch (error) { setMessage(error.message); }
     finally { setBusy(false); }
   }

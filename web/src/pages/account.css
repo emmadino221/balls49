@@ -1,0 +1,36 @@
+.account-page { max-width: 1160px; }
+.account-page .account-intro { max-width: 820px; }
+.account-page h1, .account-page dd { overflow-wrap: anywhere; }
+.account-page .content-card { min-width: 0; padding: clamp(22px, 3vw, 36px); }
+.account-page h2 { margin: 10px 0 16px; font-size: clamp(22px, 2.5vw, 28px); line-height: 1.25; }
+.account-page p { color: var(--muted); line-height: 1.75; }
+.account-overview { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; margin-bottom: 24px; }
+.account-page .account-plan { display: flex; flex-direction: column; align-items: flex-start; border-color: var(--green); background: linear-gradient(135deg, var(--green-soft), var(--surface)); }
+.account-page .account-plan h2 { font-size: clamp(36px, 5vw, 58px); letter-spacing: -1.5px; margin-top: 26px; }
+.account-card-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; width: 100%; }
+.account-status { display: inline-flex; padding: 6px 11px; border: 1px solid var(--line); border-radius: 30px; color: var(--muted); background: var(--surface); font-size: 12px; font-weight: 700; }
+.account-status.is-approved { color: var(--green); background: var(--green-soft); }
+.account-actions { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 14px; }
+.account-plan .account-actions { margin-top: auto; }
+.account-details dl { margin: 0 0 18px; }
+.account-details dl > div { padding: 13px 0; border-bottom: 1px solid var(--line); }
+.account-details dt { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+.account-details dd { margin: 0; font-weight: 600; font-size: 15px; }
+.account-details small { display: block; margin-top: 8px; color: var(--muted); }
+.account-refresh { border: 0; padding: 8px 0; background: transparent; color: var(--green); cursor: pointer; font-weight: 700; }
+.account-text-link { color: var(--green); font-weight: 700; }
+.account-page a:focus-visible, .account-page button:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; }
+.account-market-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 18px 0 0; }
+.account-market-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); font-weight: 600; }
+.account-next-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 24px; }
+.account-help-links { display: grid; gap: 6px; }
+.account-help-links a { padding: 10px 0; color: var(--green); font-weight: 600; }
+@media (max-width: 800px) {
+  .account-overview, .account-next-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .account-market-list { grid-template-columns: 1fr; }
+  .account-actions { width: 100%; }
+  .account-actions .btn { width: 100%; }
+  .account-market-list li { font-size: 14px; }
+}

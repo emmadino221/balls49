@@ -489,8 +489,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const unifiedMode = getToggleValue('unified-mode'); 
     const bzRbRollover = getToggleValue('bzrb-rollover');
     const mlOverrideMode = getToggleValue('ml-override');
-    const strategyFilters = Object.fromEntries(['u4', 'color'].map(key => [key,
-        document.getElementById(`strategy-filter-${key}`)?.value || 'follow']));
+    const strategyFilters = { u4: 'follow', color: 'follow' };
     const summaryModelMarkets = Object.fromEntries(SUMMARY_MODEL_MARKETS.map(({ id, key }) => ([
         key,
         ['ENTER', 'HOLD'].includes(document.getElementById(`summary-model-${id}`)?.value)
@@ -657,10 +656,7 @@ function loadParameters() {
         setCheckState('unified-mode', data.unifiedMode);
         setCheckState('bzrb-rollover', data.bzRbRollover);
         setCheckState('ml-override', data.mlOverrideMode);
-        ['u4', 'color'].forEach(key => {
-            const select = document.getElementById(`strategy-filter-${key}`);
-            if (select) select.value = ['current', 'alternative'].includes(data.strategyFilters?.[key]) ? data.strategyFilters[key] : 'follow';
-        });
+
         SUMMARY_MODEL_MARKETS.forEach(({ id, key }) => {
             const select = document.getElementById(`summary-model-${id}`);
             if (select) select.value = data.summaryModelMarkets?.[key]

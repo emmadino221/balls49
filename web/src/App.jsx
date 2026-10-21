@@ -91,7 +91,7 @@ export default function App() {
           {session.user || session.admin
             ? <button className="mobile-login mobile-logout" type="button" onClick={signOut}>{session.admin ? 'Exit owner session' : 'Sign out'}</button>
             : <a className="mobile-login" href="login.html" onClick={() => setMenuOpen(false)}>Log in</a>}
-          <a className="mobile-trial" href="free-trial.html" onClick={() => setMenuOpen(false)}>Start free trial</a>
+          <a className="mobile-trial" href={session.user || session.admin ? 'account.html' : 'free-trial.html'} onClick={() => setMenuOpen(false)} aria-current={page === 'account' ? 'page' : undefined}>{session.user || session.admin ? 'My account' : 'Start free trial'}</a>
         </nav>
 
         <div className="header-actions">
@@ -107,7 +107,7 @@ export default function App() {
           {session.user || session.admin
             ? <button className="header-login header-logout" type="button" onClick={signOut}>{session.admin ? 'Exit owner session' : 'Sign out'}</button>
             : <a className="header-login" href="login.html">{session.checking ? '…' : 'Log in'}</a>}
-          <a className="btn btn-primary header-cta" href="free-trial.html">Start free trial</a>
+          <a className="btn btn-primary header-cta" href={session.user || session.admin ? 'account.html' : 'free-trial.html'} aria-current={page === 'account' ? 'page' : undefined}>{session.user || session.admin ? 'My account' : 'Start free trial'}</a>
         </div>
       </header>
 
@@ -135,6 +135,7 @@ export default function App() {
           </div>
           <div className="footer-col">
             <h2>Get started</h2>
+            <a href="account.html">My account</a>
             <a href="free-trial.html">Free trial</a>
             {session.user || session.admin
               ? <button className="footer-logout" type="button" onClick={signOut}>{session.admin ? 'Exit owner session' : 'Sign out'}</button>

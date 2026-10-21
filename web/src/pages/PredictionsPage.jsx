@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
 import PredictionMarketStats from '../components/PredictionMarketStats.jsx';
-import StrategyBadge from '../components/StrategyBadge.jsx';
 import TotalColorPick from '../components/TotalColorPick.jsx';
 
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
@@ -438,7 +437,7 @@ export default function PredictionsPage() {
             </section>
             <div className="prediction-card-meta">
             {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
-            {activeMarketReveal && <StrategyBadge strategy={activeMarketPrediction.strategy} />}
+            
             {activeMarketReveal && activeMarketPrediction.marketStats?.step > 0 && <span className="prediction-tracking-step">Tracking step {activeMarketPrediction.marketStats.step}</span>}
             </div>
             <div className="game-last-result">

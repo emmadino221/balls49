@@ -441,12 +441,37 @@ function injectLiveOverlay() {
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 14px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
-            overflow: hidden;
+            overflow: auto;
             transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             resize: both;
             min-width: 250px;
             min-height: 200px;
-            transform-origin: top left;
+        }
+
+        #balls49-overlay-root .b49-panel {
+            scrollbar-width: thin;
+            scrollbar-color: #52525b #111114;
+            color-scheme: dark;
+        }
+
+        #balls49-overlay-root .b49-panel::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        #balls49-overlay-root .b49-panel::-webkit-scrollbar-track,
+        #balls49-overlay-root .b49-panel::-webkit-scrollbar-corner,
+        #balls49-overlay-root .b49-panel::-webkit-resizer {
+            background: #111114;
+        }
+
+        #balls49-overlay-root .b49-panel::-webkit-scrollbar-thumb {
+            background: #52525b;
+            border-radius: 8px;
+        }
+
+        #balls49-overlay-root .b49-panel::-webkit-scrollbar-thumb:hover {
+            background: #71717a;
         }
 
         .b49-header {
@@ -566,6 +591,7 @@ function injectLiveOverlay() {
 
     const overlayRoot = document.createElement('div');
     overlayRoot.id = 'balls49-overlay-root';
+    let positionInteracted = false;
     
     // Use extension storage for the saved overlay position instead of page storage.
     // That avoids dragging the overlay back to an old coordinate on a different page context.
@@ -576,6 +602,7 @@ function injectLiveOverlay() {
     overlayRoot.style.bottom = defaultPos.bottom;
 
     chrome.storage.local.get(OVERLAY_POS_KEY, (result) => {
+        if (positionInteracted) return;
         const raw = result?.[OVERLAY_POS_KEY];
         if (!raw) return;
 
@@ -667,6 +694,17 @@ function injectLiveOverlay() {
     const panel = document.getElementById('b49Panel');
     const header = document.getElementById('b49Header');
 
+    // Anchor the top-left before native resizing starts. A right-anchored
+    // container moves its left edge as its width changes under the pointer.
+    panel.addEventListener('pointerdown', () => {
+        positionInteracted = true;
+        const rect = overlayRoot.getBoundingClientRect();
+        overlayRoot.style.left = `${rect.left}px`;
+        overlayRoot.style.top = `${rect.top}px`;
+        overlayRoot.style.right = 'auto';
+        overlayRoot.style.bottom = 'auto';
+    }, { capture: true });
+
     // --- DRAG & DROP LOGIC: pointer-friendly for mouse and touch/mobile browsers ---
     let dragStartX = 0;
     let dragStartY = 0;
@@ -683,10 +721,9 @@ function injectLiveOverlay() {
         dragStartX = e.clientX;
         dragStartY = e.clientY;
 
-        const computedTop = parseFloat(overlayRoot.style.top || '20');
-        const computedLeft = parseFloat(overlayRoot.style.left || '20');
-        dragStartTop = Number.isFinite(computedTop) ? computedTop : 20;
-        dragStartLeft = Number.isFinite(computedLeft) ? computedLeft : 20;
+        const rect = overlayRoot.getBoundingClientRect();
+        dragStartTop = rect.top;
+        dragStartLeft = rect.left;
 
         header.style.cursor = 'grabbing';
         header.setPointerCapture?.(e.pointerId);
@@ -721,22 +758,8 @@ function injectLiveOverlay() {
         } catch (e) {}
     });
 
-    // --- FIX: TEXT RESIZE OBSERVER LOGIC ---
-    // Detects when the user pulls the resize corner and automatically scales the text using CSS zoom
-    const resizeObserver = new ResizeObserver(entries => {
-        for (let entry of entries) {
-            const width = entry.contentRect.width;
-            const scaleFactor = width / 310; // Base width is 310px
-            
-            // Adjust the CSS zoom property for perfectly proportional scaling
-            if (panel.style.zoom !== undefined) {
-                panel.style.zoom = scaleFactor;
-            } else {
-                panel.style.transform = `scale(${scaleFactor})`;
-            }
-        }
-    });
-    resizeObserver.observe(panel);
+    // Native CSS resizing controls the outer dimensions. Keep text at its
+    // normal size and let content reflow/scroll; never zoom the resize handle.
 
     const runtimeResetBtn = document.getElementById('b49ResetRuntimeBtn');
     runtimeResetBtn.addEventListener('click', () => {
@@ -1292,6 +1315,8 @@ async function startApp() {
             'mlOverrideMode', 'unifiedMode', 'hiloMultiplier', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
         ], (data) => {
             if (data) {
+                // Strategy selection is automatic; retire any saved specific-strategy gate.
+                data.strategyFilters = { u4: 'follow', color: 'follow' };
                 setSelectedGameFromSettings(data);
                 
                 extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {

@@ -81,50 +81,22 @@ The change has not been deployed or tested by this implementation step. Before
 public release, validate candidate persistence, restart recovery, selection
 thresholds and preserved automation state without placing real bets.
 
-## Extension live strategy filter
+## Automatic selection and simplified displays
 
-Under **Expert Settings > Live strategy filter**, BetZero and Rainbow each offer:
+Live adaptive selection, saved candidate records, comparisons and strategy streak
+tracking continue internally. Strategy labels and strategy-specific maximum-loss
+rows are no longer rendered in Telegram predictions/results or website prediction
+cards (including Free Trial). Game streaks and Summary ENTER/HOLD remain visible.
+Existing strategy metadata in API responses is retained; this is a display change,
+not a restriction on inspecting strategy metadata in the browser network tab.
 
-- **Follow live selection** (default): accept either published strategy.
-- **Current**: accept only the original weighted strategy.
-- **Alternative**: accept only the candidate alternative for that game.
+The extension no longer offers Live strategy filter controls. Save Settings and
+startup configuration explicitly use follow for BetZero and Rainbow, overriding
+older saved current/alternative filters so hidden filters cannot block entries.
+Existing summary, confidence, sniper and stake controls still apply. Martingale
+and sniper progression are not reset by this change. Already queued bets are not
+recalled. Unrelated stake presets and backtesting controls remain available.
 
-Click Save Settings. The filter is stored in Chrome sync storage, sent to the
-private bot and restored with its session configuration. Reload the updated
-extension, refresh the game tab and restart the updated private bot to install
-this feature. A Render website rebuild is not needed for this extension setting.
-
-The filter does not choose a different candidate pick or alter public predictions.
-It holds new entries if the published strategy is different or its label is
-missing. Follow live selection keeps legacy predictions usable. Matching draws
-still need to pass the existing summary, confidence, sniper and stake controls.
-ML Override does not bypass the strategy filter. Unified applies the filter of
-the market it selected.
-
-The mismatch check occurs before sniper entry checks and stake calculation.
-Waiting does not reset or advance martingale or sniper state. Already placed
-bets settle normally; already queued/retry payloads are not recalled by changing
-the setting. Existing session-wide stop conditions still apply. Public global
-steps and strategy statistics continue following actual draw results.
-
-## Strategy labels and losing streaks
-
-Telegram predictions/results and website live cards show the strategy selected
-for that draw. Unified inherits the label when it selects BetZero or Rainbow.
-Free Trial shows the label only after its normal reveal gate opens.
-
-Each candidate strategy has its own current and worst losing streak, rebuilt
-from saved pre-result candidates and actual settled balls. Unselected candidates
-are scored too. A strategy's win resets its own current streak; a skip does not
-increase or reset it. Missing historical candidates are not invented. The website
-shows settled candidate counts alongside the maxima; no settled data displays a dash.
-
-These statistics use the existing owner reporting reset cutoff. Resetting the
-reporting period restarts their displayed streaks but preserves records and does
-not reset adaptive comparison windows or martingale. The existing game streak
-still tracks the published picks across strategy switches.
-
-Deploy the worker, Render API and website together for these displays. The worker
-republishes sanitized historical outcomes, allowing the API to reconstruct counts
-for existing adaptive records. No strategy candidate numbers are exposed by this
-addition to the public current-prediction endpoint.
+Deploy the Telegram worker and rebuild the website to update their displays.
+Reload the extension and refresh the game tab while automation is paused, then
+save settings before resuming. Strategy history and comparisons are retained.

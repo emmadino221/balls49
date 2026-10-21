@@ -376,7 +376,12 @@ function publicAccount(session) {
     if (!session || session.admin) return null;
     const user = getSiteUser(session.email);
     const plan = user?.expiresAt > Date.now() ? user.plan : { tier: 'trial', games: [], expiresAt: null, telegram: false };
-    return { email: session.email, approvalStatus: user?.expiresAt > Date.now() ? 'approved' : 'pending', plan };
+    return {
+        email: session.email, name: user?.name || '',
+        expiresAt: Number(user?.expiresAt) || null,
+        approvalStatus: user?.expiresAt > Date.now() ? 'approved' : user?.expiresAt > 0 ? 'expired' : 'pending',
+        plan
+    };
 }
 function latestSettledPredictionDrawId() {
     return predictionLog.reduce((latestId, record) => {

@@ -19,18 +19,8 @@ export default function PredictionMarketStats({ stats, marketName, showStep = tr
             </div>
           );
         })}
-        {['current', 'alternative'].map(key => {
-          const strategy = stats.strategyStats?.[key];
-          if (!strategy) return null;
-          return <div key={key}>
-            <span>{strategy.label} · worst losing streak</span>
-            <strong>{strategy.settled > 0 ? losses(strategy.maxLosingStreak) : '—'}</strong>
-            <small>{strategy.settled > 0 ? `${strategy.settled} settled candidate picks` : 'Collecting strategy results'}</small>
-          </div>;
-        })}
       </div>
       <p className="prediction-summary-stats-note">Within the current tracking period. Each summary is tracked separately; only a win with the same label resets its losing streak.</p>
-      {stats.strategyStats && <p className="prediction-summary-stats-note">Strategy streaks include saved candidate picks even when not selected. Each strategy tracks its own wins and losses; skipped picks do not change its streak.</p>}
     </div>
   );
 }
