@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TotalColorPick from '../components/TotalColorPick.jsx';
+import { apiRequest } from '../auth.js';
 
 const PAGE_SIZE = 200;
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
@@ -104,6 +105,15 @@ export default function HistoryPage() {
   const [total, setTotal] = useState(0);
   const [rangeStreaks, setRangeStreaks] = useState({});
   const [streakDrawCount, setStreakDrawCount] = useState(0);
+  const [streakResetAt, setStreakResetAt] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [resettingStreaks, setResettingStreaks] = useState(false);
+  const [resetNotice, setResetNotice] = useState('');
+  useEffect(() => {
+    let active = true;
+    apiRequest('/admin/preview').then(() => { if (active) setIsOwner(true); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   const [generatedAt, setGeneratedAt] = useState(null);
   const [marketFilter, setMarketFilter] = useState('all');
   const [drawRange, setDrawRange] = useState('100');
@@ -143,6 +153,7 @@ export default function HistoryPage() {
       setTotal(Number(payload.total) || 0);
       setRangeStreaks(payload.worstLosingStreaks || {});
       setStreakDrawCount(Number(payload.streakDrawCount) || 0);
+      setStreakResetAt(payload.historyStreakResetAt || null);
       setGeneratedAt(payload.generatedAt || null);
     } catch (err) {
       if (!silent && requestId === historyRequestId.current) setError('The history service could not be reached. Start the Balls49 bot and collector, then try again.');
@@ -156,7 +167,7 @@ export default function HistoryPage() {
   }, [drawRange]);
 
   useEffect(() => {
-    setRangeStreaks({});
+    setRangeStreaks(Object.fromEntries(markets.map(market => [market.id, 0])));
     setStreakDrawCount(0);
     loadHistory();
     return () => { historyRequestId.current++; };
@@ -197,8 +208,24 @@ export default function HistoryPage() {
     };
   }), [visiblePredictions, visibleMarkets]);
 
+  async function resetHistoryStreaks() {
+    if (!window.confirm('Restart only the history worst losing streak from the next validated draw? Saved results, global steps and extension progression will be kept.')) return;
+    setResettingStreaks(true);
+    setResetNotice('');
+    try {
+      const result = await apiRequest('/admin/reset-history-streaks', { method: 'POST' });
+      setStreakResetAt(result.resetAt);
+      setRangeStreaks(Object.fromEntries(markets.map(market => [market.id, 0])));
+      setStreakDrawCount(0);
+      setResetNotice('History streak tracking restarted. Counting begins with the next validated draw result.');
+      await loadHistory();
+    } catch (err) { setResetNotice(err.message); }
+    finally { setResettingStreaks(false); }
+  }
+
   return (
     <main className="page-wrap history-page">
+      {isOwner && <section className="content-card owner-tools" aria-label="Owner history controls"><div className="owner-stats-reset"><div><span className="overline">OWNER CONTROL</span><h2>History streak tracking</h2><p>Restart only the worst losing streak statistic. All draw records, win rates and automation progression are preserved.</p></div><button className="btn btn-secondary" type="button" disabled={resettingStreaks} onClick={resetHistoryStreaks}>{resettingStreaks ? 'Restarting...' : 'Restart history streak tracking'}</button></div>{resetNotice && <p role="status">{resetNotice}</p>}</section>}
       <section className="history-hero">
         <div>
           <span className="overline">BALLS49 · TRANSPARENT TRACK RECORD</span>
@@ -223,6 +250,7 @@ export default function HistoryPage() {
       </section>
 
       <section className="market-analytics" aria-labelledby="market-analytics-title">
+        {streakResetAt && <p role="status">Worst losing streak tracking restarted {new Date(streakResetAt).toLocaleString()}. Only newer draws validated after this reset count toward streaks. Earlier results remain in history.</p>}
         <div className="analytics-heading">
           <div><span className="overline">RESULTS BY MARKET</span><h2 id="market-analytics-title">Market performance</h2></div>
           <p>{drawRange === 'all' ? `All time · ${predictions.length.toLocaleString()} of ${total.toLocaleString()} loaded` : `Last ${drawRange} draws`}{query.trim() ? ' · Search applied' : ''}{marketFilter !== 'all' ? ' · Market filter applied' : ''}</p>
@@ -239,8 +267,8 @@ export default function HistoryPage() {
                 </div>
                 <div className="analytics-counts"><span><i className="analytics-dot win" />{market.wins} wins</span><span><i className="analytics-dot loss" />{market.losses} losses</span><span>{market.skipped} skipped</span>{market.pending > 0 && <span>{market.pending} pending</span>}</div>
                 <small>{market.settled.toLocaleString()} settled picks</small>
-                <p><strong>Worst losing streak: {rangeStreaks[market.id] ?? '—'}</strong></p>
-                <small>Across {streakDrawCount.toLocaleString()} draws in the selected range. Skips do not reset a streak. Draw ID search does not change this statistic.</small>
+                <p><strong>Worst losing streak{streakResetAt ? ' since reset' : ''}: {rangeStreaks[market.id] ?? '—'}</strong></p>
+                <small>Across {streakDrawCount.toLocaleString()} draws{streakResetAt ? ' since reset' : ''} in the selected range. Skips do not reset a streak. Draw ID search does not change this statistic.</small>
               </article>
             );
           })}

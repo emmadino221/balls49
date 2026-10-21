@@ -213,7 +213,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan',
     'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
-    'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout'
+    'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
 function isAllowedApiOrigin(origin) {
@@ -927,6 +927,11 @@ function resetMarketStatsTracking() {
     const resetAt = Date.now();
     setSiteSettingStatement.run('market_stats_reset_at', String(resetAt));
     return resetAt;
+}
+
+function getHistoryStreakCutoff() {
+    const raw = getSiteSettingStatement.get('history_streak_cutoff')?.setting_value;
+    return raw ? JSON.parse(raw) : null;
 }
 
 function syncMarketStatsReset(value) {
@@ -3945,6 +3950,13 @@ async function handleHttpRequest(req, res) {
         return sendJson(res, 200, { users });
     }
 
+    if (parsedUrl.pathname === '/admin/reset-history-streaks' && req.method === 'POST') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        const cutoff = { resetAt: Date.now(), lastDrawId: latestSettledPredictionDrawId() };
+        setSiteSettingStatement.run('history_streak_cutoff', JSON.stringify(cutoff));
+        return sendJson(res, 200, { ok: true, resetAt: new Date(cutoff.resetAt).toISOString() });
+    }
+
     if (parsedUrl.pathname === '/admin/reset-market-stats' && req.method === 'POST') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
         const resetAt = resetMarketStatsTracking();
@@ -4075,7 +4087,14 @@ async function handleHttpRequest(req, res) {
         const limit = Math.min(1000, Math.max(1, parseInt(parsedUrl.searchParams.get('limit'), 10) || 100));
         const offset = Math.max(0, parseInt(parsedUrl.searchParams.get('offset'), 10) || 0);
         const records = predictionLog.filter(p => p && p.drawId !== undefined && p.drawId !== null && p.result && typeof p.result === 'object');
-        const statsRecords = parsedUrl.searchParams.get('range') === 'all' ? records : records.slice(0, limit);
+        const selectedRecords = parsedUrl.searchParams.get('range') === 'all' ? records : records.slice(0, limit);
+        const historyCutoff = getHistoryStreakCutoff();
+        // Keep every historical row; only streak calculations use this cutoff.
+        // A strict settlement timestamp also excludes old backfilled results.
+        const statsRecords = historyCutoff ? selectedRecords.filter(record =>
+            Number(record.drawId) > historyCutoff.lastDrawId
+            && Date.parse(record.settledAt || '') > historyCutoff.resetAt
+        ) : selectedRecords;
         const worstLosingStreaks = {};
         for (const market of Object.keys(PUBLIC_MARKET_RESULT_KEYS)) {
             let current = 0, maximum = 0;
@@ -4134,6 +4153,7 @@ async function handleHttpRequest(req, res) {
             offset,
             predictions: publicPredictions,
             worstLosingStreaks,
+            historyStreakResetAt: historyCutoff ? new Date(historyCutoff.resetAt).toISOString() : null,
             streakDrawCount: statsRecords.length
         }));
     }
