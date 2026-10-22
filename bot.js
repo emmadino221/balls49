@@ -856,6 +856,7 @@ if (!SITE_PUBLIC_MODE && !(persistedState.globalTracker && persistedState.global
 
 const lastPublishedHistoryHashes = new Map();
 let predictionPublishInFlight = false;
+let lastHistoryReconciliationAt = 0;
 
 function buildPublicFeedHistory() {
     const seenDrawIds = new Set();
@@ -1002,6 +1003,7 @@ function buildPublicFeedCurrent() {
     const currentRecord = predictionLog.find(record => String(record.drawId) === String(lastPrediction.drawId));
     return {
         drawId: String(lastPrediction.drawId),
+        marketStatsResetAt: getMarketStatsResetAt(),
         marketStats: buildPublicMarketStats(currentRecord),
         strategies: getStrategyResults(currentRecord || { adaptiveStrategies: pred.adaptiveStrategies }),
         summaryModel: currentRecord ? getRecordSummaryModel(currentRecord) : buildPublicSummaryModel(lastPrediction.summaryModel, pred.unifiedPick?.key),
@@ -1031,6 +1033,12 @@ async function publishPredictionSnapshot() {
     if (SITE_PUBLIC_MODE || !PREDICTION_INGEST_URL || predictionPublishInFlight) return;
     predictionPublishInFlight = true;
     try {
+        // Re-send saved records periodically so a restored or replaced website
+        // database can recover even when the VPS has not restarted.
+        if (Date.now() - lastHistoryReconciliationAt >= 15 * 60 * 1000) {
+            lastPublishedHistoryHashes.clear();
+            lastHistoryReconciliationAt = Date.now();
+        }
         const history = buildPublicFeedHistory();
         const historyUpdates = [];
         const batchHistoryHashes = [];
@@ -1040,7 +1048,9 @@ async function publishPredictionSnapshot() {
             if (lastPublishedHistoryHashes.get(record.drawId) !== recordHash) {
                 historyUpdates.push(record);
                 batchHistoryHashes.push([record.drawId, recordHash]);
-                if (historyUpdates.length >= 1000) break;
+                // Small batches leave room for the current prediction under the
+                // receiver's request-size limit. Failed batches remain pending.
+                if (historyUpdates.length >= 100) break;
             }
         }
         const timestamp = String(Date.now());
@@ -4282,12 +4292,19 @@ async function handleHttpRequest(req, res) {
         }
         const suppliedMarketStats = lastPrediction.marketStats?.[market] || {};
         const calculatedMarketStats = buildPublicMarketStats(logged);
+        // The VPS has the authoritative history. Do not replace its statistics
+        // with calculations over a partially synchronized website database.
+        // After an owner reset, use local reset-aware values until the VPS
+        // acknowledges that same tracking period in its next snapshot.
+        const useSuppliedStats = SITE_PUBLIC_MODE
+            && Number(lastPrediction.marketStatsResetAt) === getMarketStatsResetAt();
+        const selectedMarketStats = useSuppliedStats ? suppliedMarketStats : {};
         publicPrediction.strategy = getSelectedStrategy(logged?.adaptiveStrategies || lastPrediction.strategies, market, live.unifiedPick?.key);
         publicPrediction.marketStats = {
-            step: getTrackingStep(market, safePublicCount(suppliedMarketStats.step ?? calculatedMarketStats[market].step)),
-            maxLosingStreak: calculatedMarketStats[market].maxLosingStreak,
-            summaryStats: calculatedMarketStats[market].summaryStats,
-            strategyStats: calculatedMarketStats[market].strategyStats
+            step: selectedMarketStats.step ?? calculatedMarketStats[market].step,
+            maxLosingStreak: selectedMarketStats.maxLosingStreak ?? calculatedMarketStats[market].maxLosingStreak,
+            summaryStats: selectedMarketStats.summaryStats ?? calculatedMarketStats[market].summaryStats,
+            strategyStats: selectedMarketStats.strategyStats ?? calculatedMarketStats[market].strategyStats
         };
         const selectedPicks = {
             betzero: [], bet49: null, rainbow: 'SKIP',
