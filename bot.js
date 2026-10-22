@@ -8,6 +8,7 @@ const childProcess = require('child_process');
 const crypto = require('crypto');
 const { authorizeExtensionRequest } = require('./extension-access');
 const { analyzeMarket } = require('./prediction-analysis');
+const { createSiteStaticHandler } = require('./site-static');
 const { disabledManagedSessions } = require('./extension-key-store');
 const { DatabaseSync } = require('node:sqlite');
 const {
@@ -172,6 +173,9 @@ const siteAuthRateLimits = new Map();
 const siteMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'hilo', 'unified'];
 // Public hosting should expose only the account and read-only website API routes.
 const SITE_PUBLIC_MODE = process.env.SITE_PUBLIC_MODE === 'true';
+const SITE_SERVE_WEB = process.env.SITE_SERVE_WEB === 'true';
+if (SITE_SERVE_WEB && !SITE_PUBLIC_MODE) throw new Error('SITE_SERVE_WEB requires SITE_PUBLIC_MODE=true.');
+const serveWebsite = SITE_SERVE_WEB ? createSiteStaticHandler(path.join(__dirname, 'web', 'dist')) : null;
 const PORT = Number.parseInt(process.env.PORT || '3001', 10) || 3001;
 const PREDICTION_INGEST_URL = process.env.PREDICTION_INGEST_URL || '';
 const PREDICTION_INGEST_SECRET = process.env.PREDICTION_INGEST_SECRET || '';
@@ -3521,6 +3525,11 @@ async function tick() {
 async function handleHttpRequest(req, res) {
     const origin = req.headers.origin;
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+    if (serveWebsite) {
+        if (await serveWebsite(req, res, parsedUrl)) return;
+        // Same-address browser API requests retain the normal public route/auth checks.
+        if (parsedUrl.pathname.startsWith('/api/')) parsedUrl.pathname = parsedUrl.pathname.slice(4);
+    }
     const extensionError = authorizeExtensionRequest(req, parsedUrl);
     if (extensionError) return sendJson(res, extensionError.status, { error: extensionError.error });
     const isPredictionIngest = req.method === 'POST' && parsedUrl.pathname === '/internal/prediction-snapshot';

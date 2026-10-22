@@ -14,6 +14,14 @@ export default function LoginPage() {
     setEmail(submittedEmail);
     try {
       await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email: submittedEmail, password: form.get('password') }) });
+      try {
+        await apiRequest('/auth/me');
+      } catch (sessionError) {
+        if (sessionError.status === 401) {
+          throw new Error('Sign-in succeeded, but your browser did not retain the session. Open the current website address directly in your browser and try again.');
+        }
+        throw sessionError;
+      }
       window.location.href = 'account.html';
     } catch (error) { setMessage(error.message); }
     finally { setBusy(false); }
