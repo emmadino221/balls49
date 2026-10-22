@@ -1,4 +1,5 @@
 import React from 'react';
+import './home-light.css';
 
 const featureCards = [
   {

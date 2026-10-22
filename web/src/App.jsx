@@ -8,6 +8,7 @@ const navLinks = [
   { path: 'pricing.html', page: 'pricing', label: 'Pricing' },
   { path: 'predictions.html', page: 'predictions', label: 'Predictions' },
   { path: 'history.html', page: 'history', label: 'History' },
+  { path: 'analysis.html', page: 'analysis', label: 'Analysis' },
   { path: 'guide.html', page: 'guide', label: 'Guide' },
   { path: 'calculator.html', page: 'calculator', label: 'Calculator' },
   { path: 'testimonials.html', page: 'testimonials', label: 'Testimonials' },
@@ -129,6 +130,7 @@ export default function App() {
             <a href="pricing.html">Pricing</a>
             <a href="predictions.html">Predictions</a>
             <a href="history.html">Prediction history</a>
+            <a href="analysis.html">Prediction analysis</a>
             <a href="guide.html">Prediction guide</a>
             <a href="calculator.html">Martingale calculator</a>
             <a href="testimonials.html">Member stories</a>

@@ -12,6 +12,7 @@ import GuidePage from './pages/GuidePage.jsx';
 import PredictionsPage from './pages/PredictionsPage.jsx';
 import CalculatorPage from './pages/CalculatorPage.jsx';
 import AccountPage from './pages/AccountPage.jsx';
+import AnalysisPage from './pages/AnalysisPage.jsx';
 
 export function getPageName() {
   const route = window.location.pathname.replace(/^\/|\/index.html$/g, '').replace(/^\/|\/$/, '');
@@ -28,10 +29,12 @@ export function getPageName() {
   if (route === 'login.html') return 'login';
   if (route === 'signup.html') return 'signup';
   if (route === 'account.html') return 'account';
+  if (route === 'analysis.html') return 'analysis';
   return 'home';
 }
 
 export function PageRenderer({ page }) {
+  if (page === 'analysis') return <AnalysisPage />;
   if (page === 'account') return <AccountPage />;
   if (page === 'about') return <AboutPage />;
   if (page === 'pricing') return <PricingPage />;

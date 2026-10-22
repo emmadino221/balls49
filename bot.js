@@ -7,6 +7,7 @@ const path = require('path');
 const childProcess = require('child_process');
 const crypto = require('crypto');
 const { authorizeExtensionRequest } = require('./extension-access');
+const { analyzeMarket } = require('./prediction-analysis');
 const { disabledManagedSessions } = require('./extension-key-store');
 const { DatabaseSync } = require('node:sqlite');
 const {
@@ -211,7 +212,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
-    'GET /account/stake-plans', 'POST /account/stake-plan',
+    'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
     'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
     'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
@@ -4156,6 +4157,29 @@ async function handleHttpRequest(req, res) {
             historyStreakResetAt: historyCutoff ? new Date(historyCutoff.resetAt).toISOString() : null,
             streakDrawCount: statsRecords.length
         }));
+    }
+
+    if (parsedUrl.pathname === '/account/analysis' && req.method === 'GET') {
+        const session = siteSession(req);
+        if (!session) return sendJson(res, 401, { error: 'Sign in to view prediction analysis.' });
+        const plan = session.admin ? { tier: session.previewTier, games: session.previewGames }
+            : publicAccount(session)?.plan;
+        if (!['premium', 'elite'].includes(plan?.tier)) {
+            return sendJson(res, 403, { error: 'Analysis is included with approved Premium and Elite plans.' });
+        }
+        const permitted = plan.tier === 'elite' ? [...siteMarkets] : siteMarkets.filter(market => plan.games?.includes(market));
+        const requested = parsedUrl.searchParams.get('market');
+        if (requested && !permitted.includes(requested)) return sendJson(res, 403, { error: 'This market is not included in your plan.' });
+        const fresh = publicClock.observedAt && Date.now() - publicClock.observedAt <= POLL_SEC * 3000;
+        const seconds = fresh ? Math.max(0, publicClock.timeLeftSeconds - Math.floor((Date.now() - publicClock.observedAt) / 1000)) : null;
+        const ready = fresh && seconds > 0 && lastPrediction?.pred
+            && String(lastPrediction.drawId) === String(publicClock.drawId);
+        const analysis = ready ? (requested ? [requested] : permitted).map(market =>
+            analyzeMarket(lastPrediction.pred, market, predictionLog, lastPrediction.drawId)) : [];
+        return sendJson(res, 200, { tier: plan.tier, games: permitted, analysis,
+            drawId: ready ? String(lastPrediction.drawId) : null,
+            secondsRemaining: seconds, generatedAt: new Date().toISOString(),
+            status: ready ? 'LIVE' : 'WAITING' });
     }
 
     if (parsedUrl.pathname === '/public-current-prediction' && req.method === 'GET') {
