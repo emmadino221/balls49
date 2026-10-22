@@ -13,22 +13,55 @@ export default function AnalysisPage() {
   const [now, setNow] = useState(Date.now());
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    let active = true, timeout;
-    const controller = new AbortController();
+    let active = true, timeout, controller;
+    let inFlight = false;
     setPayload(null); setError(null);
     async function load() {
+      if (!active || document.hidden || inFlight) return;
+      clearTimeout(timeout);
+      inFlight = true;
+      controller = new AbortController();
+      let nextDelay = 10000;
+      let timedOut = false;
+      const requestTimeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 15000);
       try {
         const result = await apiRequest('/account/analysis', { signal: controller.signal });
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
         setPayload({ ...result, receivedAt: Date.now() }); setError(null);
         setMarket(current => result.games.includes(current) ? current : result.games[0] || '');
+        nextDelay = result.status === 'LIVE' && result.secondsRemaining > 0
+          ? Math.min(5000, Math.max(1000, result.secondsRemaining * 1000)) : 2000;
       } catch (err) {
         if (!active) return;
-        setPayload(null); setError({ status: err.status, message: err.message });
-      } finally { if (active) timeout = setTimeout(load, 10000); }
+        if (controller.signal.aborted && !timedOut) {
+          nextDelay = 0;
+          return;
+        }
+        setPayload(null); setError({ status: err.status, message: timedOut ? 'Analysis request timed out. Retrying shortly...' : err.message });
+      } finally {
+        clearTimeout(requestTimeout);
+        inFlight = false;
+        if (active && !document.hidden) timeout = setTimeout(load, nextDelay);
+      }
     }
+    function refreshWhenVisible() {
+      clearTimeout(timeout);
+      if (document.hidden) controller?.abort();
+      else load();
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
     load();
-    return () => { active = false; clearTimeout(timeout); controller.abort(); };
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      controller?.abort();
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
+    };
   }, [retry]);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const remaining = payload?.secondsRemaining == null ? 0 : Math.max(0, payload.secondsRemaining - Math.floor((now - payload.receivedAt) / 1000));
