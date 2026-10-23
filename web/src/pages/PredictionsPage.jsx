@@ -1,3 +1,4 @@
+import '../../../balls49-extension/tc1-staking.js';
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
 import PredictionMarketStats from '../components/PredictionMarketStats.jsx';
@@ -12,6 +13,7 @@ const games = [
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },
+  { id: 'totalColor1', name: 'Winning Color', detail: 'One outcome: the selection excluded from Total Color 3-way.' },
   { id: 'hilo', name: 'High / Low', detail: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', detail: 'One selected pick from the available markets.' },
 ];
@@ -111,6 +113,7 @@ function getRecommendedStake(marketId, baseAmount, step, prediction) {
     totalColor: { odds: 3.8, costFactor: 3 },
     totalColor2: { odds: 3.8, costFactor: 2 },
   };
+  if (market === 'totalColor1') return globalThis.TC1Staking.stakeAtStep(Number(baseAmount), Math.max(1, Number(step) || 1), 'fixed');
   const strategy = marketStrategies[market];
   if (!strategy) return null;
 
@@ -180,6 +183,12 @@ function LiveMarketPick({ record, marketId }) {
     const colors = predicted.totalColor2?.top2 || [];
     return predicted.totalColor2?.status === 'ACTIVE' && colors.length
       ? <span className="pick-colors">{colors.map((color) => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i aria-hidden="true" />{color}</span>)}</span>
+      : <span className="no-pick">Waiting</span>;
+  }
+  if (marketId === 'totalColor1') {
+    const colors = predicted.totalColor1?.top1 || [];
+    return predicted.totalColor1?.status === 'ACTIVE' && colors.length
+      ? <span className="pick-colors">{colors.map((color) => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i aria-hidden="true" />{color === 'black' ? 'No winning color' : color}</span>)}</span>
       : <span className="no-pick">Waiting</span>;
   }
   if (marketId === 'hilo') {
@@ -370,7 +379,7 @@ export default function PredictionsPage() {
 
       <section className="prediction-access-state" aria-label="Current access status">
         <span className="access-state-icon" aria-hidden="true">◉</span>
-        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'All seven markets are available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
+        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'All eight markets are available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
         <a className="btn btn-secondary" href="pricing.html">Compare plans</a>
       </section>
 
@@ -380,7 +389,7 @@ export default function PredictionsPage() {
 
       <section className="prediction-games-section" aria-labelledby="available-games-title">
         <div className="prediction-section-heading">
-          <div><span className="overline">SEVEN MARKETS</span><h2 id="available-games-title">Current prediction{currentPrediction ? ` · Draw #${currentPrediction.drawId}` : ''}</h2></div>
+          <div><span className="overline">EIGHT MARKETS</span><h2 id="available-games-title">Current prediction{currentPrediction ? ` · Draw #${currentPrediction.drawId}` : ''}</h2></div>
           <a className="text-link" href="guide.html">Read the market guide <span aria-hidden="true">→</span></a>
         </div>
         <div className="prediction-market-browser">
@@ -431,6 +440,7 @@ export default function PredictionsPage() {
                         <input id={`stake-base-${activeGame.id}`} type="number" min="0.01" max="1000000000" step="0.01" inputMode="decimal" value={stakeDrafts[activeGame.id] ?? stakePlans[activeGame.id]?.baseAmount ?? ''} onChange={event => setStakeDrafts(current => ({ ...current, [activeGame.id]: event.target.value }))} placeholder="Enter your base stake" required />
                         <button className="btn btn-primary" type="submit" disabled={savingStakePlan}>{savingStakePlan ? 'Saving…' : 'Lock base stake'}</button>
                       </form>}
+              {activeGame.id === 'totalColor1' && <p className="stake-plan-disclaimer">Fixed-profit estimate at 3.80 odds, rounded up to whole naira. Both recovery modes are available in the calculator and extension settings.</p>}
               {stakePlanError && sessionKind === 'account' && <p className="stake-plan-error" role="alert">{stakePlanError}</p>}
               {stakePlanNotice && <p className="stake-plan-notice" role="status">{stakePlanNotice}</p>}
               <p className="stake-plan-disclaimer">A loss advances this market’s step; a win returns it to Step 1. Skips do not change the step. Stakes are estimates only and do not place bets.</p>

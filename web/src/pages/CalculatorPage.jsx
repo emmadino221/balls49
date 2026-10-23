@@ -1,3 +1,4 @@
+import '../../../balls49-extension/tc1-staking.js';
 import React, { useMemo, useState } from 'react';
 
 const strategies = [
@@ -8,6 +9,8 @@ const strategies = [
   { id: 'hilo140', label: 'High / Low · 1.4× progression', odds: 2, multiplier: 1.4, type: 'multiplier' },
   { id: 'totalColor', label: 'Total Color · 3-way', odds: 3.8, costFactor: 3, type: 'totalColor' },
   { id: 'totalColor2', label: 'Total Color · 2-way', odds: 3.8, costFactor: 2, type: 'totalColor2' },
+  { id: 'totalColor1', label: 'Winning Color - same profit', odds: 3.8, type: 'totalColor1', mode: 'fixed' },
+  { id: 'totalColor1Accumulating', label: 'Winning Color - accumulating profit', odds: 3.8, type: 'totalColor1', mode: 'accumulating' },
   { id: 'custom', label: 'Custom odds', odds: 2, type: 'custom' },
 ];
 
@@ -42,7 +45,12 @@ function buildSequence(strategy, baseStake, steps, customOdds) {
     let profit;
     let exposure;
 
-    if (strategy.type === 'multiplier') {
+    if (strategy.type === 'totalColor1') {
+      bet = globalThis.TC1Staking.nextStake(baseStake, totalCost, step - 1, strategy.mode);
+      if (!bet) { overflow = true; overflowAtStep = step; break; }
+      exposure = bet;
+      profit = roundMoney(bet * 2.8 - totalCost);
+    } else if (strategy.type === 'multiplier') {
       bet = roundMoney(nextBet);
       profit = roundMoney((bet * 2) - (totalCost + bet));
       exposure = bet;

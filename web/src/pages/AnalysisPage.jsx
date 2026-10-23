@@ -3,7 +3,7 @@ import { apiRequest } from '../auth.js';
 import './analysis.css';
 
 const markets = [ ['betzero', 'BetZero'], ['bet49', 'Bet49'], ['rainbow', 'Rainbow'],
-  ['totalColor', 'Total Color 3-way'], ['totalColor2', 'Total Color 2-way'], ['hilo', 'High / Low'], ['unified', 'Unified'] ];
+  ['totalColor', 'Total Color 3-way'], ['totalColor2', 'Total Color 2-way'], ['totalColor1', 'Winning Color'], ['hilo', 'High / Low'], ['unified', 'Unified'] ];
 const percent = value => value === null || value === undefined ? '—' : `${value}%`;
 
 export default function AnalysisPage() {

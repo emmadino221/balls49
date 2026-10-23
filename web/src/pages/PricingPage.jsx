@@ -5,7 +5,7 @@ const gameOptions = [
   ['bet49', 'Bet49'],
   ['rainbow', 'Rainbow Color'],
   ['totalColor', 'Total Color (3-way)'],
-  ['totalColor2', 'Total Color (2-way)'],
+  ['totalColor2', 'Total Color (2-way)'], ['totalColor1', 'Winning Color'],
   ['hilo', 'High / Low'],
   ['unified', 'Unified'],
 ];
@@ -24,7 +24,7 @@ export default function PricingPage() {
       <section className="page-intro pricing-intro">
         <span className="overline">PLANS &amp; PRICING</span>
         <h1>Choose the access that fits you.</h1>
-        <p>Start with one free market, select Premium games individually, or get all seven predictions with Elite.</p>
+        <p>Start with one free market, select Premium games individually, or get all eight predictions with Elite.</p>
       </section>
 
       <section className="pricing-grid pricing-plan-grid" aria-label="Subscription plans">
@@ -52,7 +52,7 @@ export default function PricingPage() {
           <div className="section-kicker">ELITE · ALL ACCESS</div>
           <div className="price">{naira(40000)}<small>/ month</small></div>
           <p className="plan-card-summary">The complete package for members who want every market.</p>
-          <ul><li>All seven prediction markets included</li><li>Predictions available as soon as they are generated</li><li>Elite Telegram access entitlement</li><li>Save {naira(30000)} vs. seven separate Premium games</li></ul>
+          <ul><li>All eight prediction markets included</li><li>Predictions available as soon as they are generated</li><li>Elite Telegram access entitlement</li><li>Save {naira(40000)} vs. eight separate Premium games</li></ul>
           <a className="btn btn-primary" href="signup.html">Create account to request Elite</a>
         </article>
       </section>

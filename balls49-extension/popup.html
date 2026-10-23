@@ -165,6 +165,7 @@
             <div class="grid-2">
                 <div id="btn-totalColor" class="game-btn">TC (3-Way)</div>
                 <div id="btn-totalColor2" class="game-btn">TC (2-Way)</div>
+                <div id="btn-totalColor1" class="game-btn">Winning Color</div>
                 <div id="btn-bet49" class="game-btn">Bet49</div>
             </div>
         </div>
@@ -180,6 +181,10 @@
             <div class="grid-2" style="margin-bottom: 10px;">
                 <input type="number" id="stake-totalColor" placeholder="TC 3-Way Stake">
                 <input type="number" id="stake-totalColor2" placeholder="TC 2-Way Stake">
+                <input type="number" id="stake-totalColor1" placeholder="Winning Color Stake">
+                <label for="tc1-profit-mode">Winning Color recovery target</label>
+                <select id="tc1-profit-mode"><option value="fixed">Same profit as base bet</option><option value="accumulating">Accumulating profit</option></select>
+                <small>3.80 odds, including No Winning Color. Mode/base changes apply after the current sequence wins. Use individual mode; Winning Color has its own progression.</small>
             </div>
             
             <div class="section-label" style="color: var(--accent-red);">🛡️ Risk Limits</div>
@@ -191,6 +196,7 @@
                 <input type="number" id="step-hilo" placeholder="HL" title="Hi/Lo Max Step">
                 <input type="number" id="step-totalColor" placeholder="TC3" title="Total Color (3W) Max Step">
                 <input type="number" id="step-totalColor2" placeholder="TC2" title="Total Color (2W) Max Step">
+                <input type="number" id="step-totalColor1" placeholder="Winning Color" title="Winning Color Max Step">
                 <input type="number" id="step-bet49" placeholder="B49" title="Bet49 Max Step">
             </div>
             
@@ -249,6 +255,7 @@
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-hilo"> High/Low</label><input type="number" id="sniper-step-hilo" min="1" max="10" placeholder="Step" title="High/Low sniper target step"><input type="number" id="sniper-losses-hilo" min="1" max="50" placeholder="Losses" title="High/Low reset after losses"></div>
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor"> TC (3-Way)</label><input type="number" id="sniper-step-totalColor" min="1" max="10" placeholder="Step" title="Total Color 3-way sniper target step"><input type="number" id="sniper-losses-totalColor" min="1" max="50" placeholder="Losses" title="Total Color 3-way reset after losses"></div>
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor2"> TC (2-Way)</label><input type="number" id="sniper-step-totalColor2" min="1" max="10" placeholder="Step" title="Total Color 2-way sniper target step"><input type="number" id="sniper-losses-totalColor2" min="1" max="50" placeholder="Losses" title="Total Color 2-way reset after losses"></div>
+                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor1"> Winning Color</label><input type="number" id="sniper-step-totalColor1" min="1" max="10" placeholder="Step" title="Winning Color sniper target step"><input type="number" id="sniper-losses-totalColor1" min="1" max="50" placeholder="Losses" title="Winning Color reset after losses"></div>
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-unified"> Unified</label><input type="number" id="sniper-step-unified" min="1" max="10" placeholder="Step" title="Unified sniper target step"><input type="number" id="sniper-losses-unified" min="1" max="50" placeholder="Losses" title="Unified reset after losses"></div>
             </div>
             <p class="sniper-help">Each market waits for its target global step. After the loss limit, it pauses until the global step reaches that target again. Its Martingale progress is kept.</p>
@@ -299,6 +306,7 @@
 </div>
 
 <script src="api.js"></script>
+<script src="tc1-staking.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

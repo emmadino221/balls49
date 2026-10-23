@@ -1,5 +1,5 @@
-const GAMES = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'hilo'];
-const SNIPER_MARKETS = ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'unified'];
+const GAMES = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'totalColor1', 'hilo'];
+const SNIPER_MARKETS = ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
 const SUMMARY_MODEL_MARKETS = [
     { id: 'betzero', key: 'u4' },
     { id: 'rainbow', key: 'color' },
@@ -150,6 +150,7 @@ document.getElementById('sound-btn')?.addEventListener('click', () => {
 });
 
 function calculateStakeForStep(key, base, step, odds, hiloMultiplier = 2.0) {
+    if (key === 'totalColor1') return TC1Staking.stakeAtStep(base, step, document.getElementById('tc1-profit-mode')?.value);
     if (step <= 1) return base;
     if (key === 'sum') {
         const multiplier = parseFloat(hiloMultiplier) || 2.0;
@@ -338,7 +339,7 @@ async function applyHistoricalPreset() {
     }
 
     const clearMarkets = () => {
-        ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2'].forEach(k => {
+        ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1'].forEach(k => {
             document.getElementById(`stake-${k}`).value = '';
             document.getElementById(`step-${k}`).value = '';
             document.getElementById(`btn-${k}`).classList.remove('active');
@@ -454,6 +455,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         rainbow: parseInt(document.getElementById('stake-rainbow').value) || 0,
         totalColor: parseInt(document.getElementById('stake-totalColor').value) || 0,
         totalColor2: parseInt(document.getElementById('stake-totalColor2').value) || 0,
+        totalColor1: parseInt(document.getElementById('stake-totalColor1').value) || 0,
         hilo:    parseInt(document.getElementById('stake-hilo').value)    || 0,
     };
     
@@ -463,6 +465,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         rainbow: parseInt(document.getElementById('step-rainbow').value) || 0,
         totalColor: parseInt(document.getElementById('step-totalColor').value) || 0,
         totalColor2: parseInt(document.getElementById('step-totalColor2').value) || 0,
+        totalColor1: parseInt(document.getElementById('step-totalColor1').value) || 0,
         hilo: parseInt(document.getElementById('step-hilo').value) || 0,
     };
 
@@ -476,6 +479,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         rainbow: document.getElementById('btn-rainbow').classList.contains('active'),
         totalColor: document.getElementById('btn-totalColor').classList.contains('active'),
         totalColor2: document.getElementById('btn-totalColor2').classList.contains('active'),
+        totalColor1: document.getElementById('btn-totalColor1').classList.contains('active'),
         hilo:    document.getElementById('btn-hilo').classList.contains('active')
     };
 
@@ -486,7 +490,12 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
 
     const telegramChatId = (document.getElementById('telegram-chat-id')?.value || '').trim();
     const flatBetting = getToggleValue('flat-betting');
-    const unifiedMode = getToggleValue('unified-mode'); 
+    const unifiedMode = getToggleValue('unified-mode');
+    if (unifiedMode && currentGames.totalColor1) {
+        btn.textContent = originalText;
+        alert('Turn off Unified mode to use Winning Color with its separate progression.');
+        return;
+    } 
     const bzRbRollover = getToggleValue('bzrb-rollover');
     const mlOverrideMode = getToggleValue('ml-override');
     const strategyFilters = { u4: 'follow', color: 'follow' };
@@ -507,6 +516,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         ? 3
         : Math.min(10, Math.max(2, requestedTc3Target));
     if (tc3TargetInput) tc3TargetInput.value = String(tc3RolloverTarget);
+    const tc1ProfitMode = TC1Staking.mode(document.getElementById('tc1-profit-mode')?.value);
     const hiloMultiplier = parseFloat(document.getElementById('hilo-multiplier')?.value) || 2.0;
     const baseStakePercent = Math.min(100, Math.max(0.01, parseFloat(document.getElementById('base-stake-percent')?.value) || 0.5));
     const backtestDraws = parseInt(document.getElementById('backtest-draws')?.value, 10) || 1000;
@@ -516,7 +526,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         step: Math.min(10, Math.max(0, parseInt(document.getElementById(`sniper-step-${market}`)?.value, 10) || 0)),
         resetLosses: Math.min(50, Math.max(0, parseInt(document.getElementById(`sniper-losses-${market}`)?.value, 10) || 0))
     }])));
-    const marketLabels = { betzero: 'BetZero', rainbow: 'Rainbow', hilo: 'High/Low', totalColor: 'Total Color 3-Way', totalColor2: 'Total Color 2-Way', unified: 'Unified' };
+    const marketLabels = { betzero: 'BetZero', rainbow: 'Rainbow', hilo: 'High/Low', totalColor: 'Total Color 3-Way', totalColor2: 'Total Color 2-Way', totalColor1: 'Winning Color', unified: 'Unified' };
     const invalidSniperMarket = SNIPER_MARKETS.find(market => sniperSettings[market].enabled
         && (sniperSettings[market].step < 1 || sniperSettings[market].resetLosses < 1));
     const sniperError = document.getElementById('sniper-settings-error');
@@ -534,7 +544,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloMultiplier, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets, summaryModelTargets, strategyFilters,
+        unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets, summaryModelTargets, strategyFilters,
         shadowMode, weightedStaking 
     };
 
@@ -617,7 +627,7 @@ function loadParameters() {
     chrome.storage.sync.get([
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
-        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'baseStakePercent', 'backtestDraws',
+        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'tc1ProfitMode', 'baseStakePercent', 'backtestDraws',
         'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking'
     ], (data) => {
         let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
@@ -634,6 +644,7 @@ function loadParameters() {
         if (document.getElementById('stake-rainbow')) document.getElementById('stake-rainbow').value = stakes.rainbow || '';
         if (document.getElementById('stake-totalColor')) document.getElementById('stake-totalColor').value = stakes.totalColor || '';
         if (document.getElementById('stake-totalColor2')) document.getElementById('stake-totalColor2').value = stakes.totalColor2 || '';
+        if (document.getElementById('stake-totalColor1')) document.getElementById('stake-totalColor1').value = stakes.totalColor1 || '';
         if (document.getElementById('stake-hilo')) document.getElementById('stake-hilo').value    = stakes.hilo    || '';
         
         if (document.getElementById('step-betzero')) document.getElementById('step-betzero').value = gameSteps.betzero || '';
@@ -641,6 +652,7 @@ function loadParameters() {
         if (document.getElementById('step-rainbow')) document.getElementById('step-rainbow').value = gameSteps.rainbow || '';
         if (document.getElementById('step-totalColor')) document.getElementById('step-totalColor').value = gameSteps.totalColor || '';
         if (document.getElementById('step-totalColor2')) document.getElementById('step-totalColor2').value = gameSteps.totalColor2 || '';
+        if (document.getElementById('step-totalColor1')) document.getElementById('step-totalColor1').value = gameSteps.totalColor1 || '';
         if (document.getElementById('step-hilo')) document.getElementById('step-hilo').value = gameSteps.hilo || '';
         
         if (document.getElementById('take-profit')) document.getElementById('take-profit').value   = data.takeProfit || '';
@@ -665,6 +677,7 @@ function loadParameters() {
         setCheckState('shadowMode', data.shadowMode);
         setCheckState('weightedStaking', data.weightedStaking);
         setCheckState('tc3-rollover', data.tc3Rollover);
+        document.getElementById('tc1-profit-mode').value = TC1Staking.mode(data.tc1ProfitMode);
         if (document.getElementById('hilo-multiplier')) document.getElementById('hilo-multiplier').value = data.hiloMultiplier || '2.00';
         if (document.getElementById('base-stake-percent')) document.getElementById('base-stake-percent').value = data.baseStakePercent || '0.5';
         if (document.getElementById('backtest-draws')) document.getElementById('backtest-draws').value = data.backtestDraws || '1000';

@@ -11,7 +11,7 @@ const featureCards = [
   {
     number: '02',
     icon: '⌁',
-    title: 'Seven ways to explore',
+    title: 'Eight ways to explore',
     description: 'Compare signals across number, color, total-color, and high / low markets.',
   },
   {

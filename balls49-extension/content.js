@@ -414,6 +414,36 @@ async function runTotalColor2(top2Colors, stake) {
     } catch (e) { return false; }
 }
 
+async function runTotalColor1(top1Colors, stake) {
+    try {
+        if (!Array.isArray(top1Colors) || top1Colors.length !== 1
+            || !['red', 'blue', 'green', 'black'].includes(top1Colors[0])
+            || !Number.isFinite(stake) || stake <= 0) return false;
+        const tabIcon = document.querySelector('.total-colour');
+        if (tabIcon) { const tab = tabIcon.closest('a'); if (tab) safeClick(tab); }
+        await sleep(300);
+
+        const targets = top1Colors;
+        let allSuccess = true;
+        for (let colorClass of targets) {
+            const btn = document.querySelector(`.g-total__btn.${colorClass}`);
+            if (!btn) return false;
+            if (btn) {
+                safeClick(btn); await sleep(150);
+                const input = document.querySelector('input[type="number"]');
+                if (!input) return false;
+                if (input) { input.value = stake; input.dispatchEvent(new Event('input', { bubbles: true })); }
+                await sleep(200);
+                
+                const placed = await placeBet();
+                if (!placed) allSuccess = false;
+                await sleep(200); 
+            }
+        }
+        return allSuccess;
+    } catch (e) { return false; }
+}
+
 function injectLiveOverlay() {
     if (document.getElementById('balls49-overlay-root')) return;
 
@@ -875,6 +905,7 @@ function updateLiveOverlay(data) {
         else if (SELECTED_GAME === 'rainbow') targetText = '🌈 Rainbow';
         else if (SELECTED_GAME === 'totalcolor') targetText = '🎨 Total Color 3W';
         else if (SELECTED_GAME === 'totalcolor2') targetText = '🎭 Total Color 2W';
+        else if (SELECTED_GAME === 'totalcolor1') targetText = '🎭 Winning Color';
         else if (SELECTED_GAME === 'hilo') targetText = '📊 High/Low';
         targetEl.innerText = targetText;
     }
@@ -921,6 +952,7 @@ function updateLiveOverlay(data) {
         else if (SELECTED_GAME === 'rainbow') currentStep = data.currentStep.color || 1;
         else if (SELECTED_GAME === 'totalcolor') currentStep = data.currentStep.totalColor || 1;
         else if (SELECTED_GAME === 'totalcolor2') currentStep = data.currentStep.totalColor2 || 1;
+        else if (SELECTED_GAME === 'totalcolor1') currentStep = data.currentStep.totalColor1 || 1;
         else if (SELECTED_GAME === 'hilo') currentStep = data.currentStep.sum || 1;
         
         stepEl.innerText = `Step ${currentStep}`;
@@ -980,6 +1012,7 @@ function setSelectedGameFromSettings(settings) {
     const enabledGames = settings.enabledGames;
     if (enabledGames.bet49) SELECTED_GAME = 'bet49';
     else if (enabledGames.totalColor2) SELECTED_GAME = 'totalcolor2';
+    else if (enabledGames.totalColor1) SELECTED_GAME = 'totalcolor1';
     else if (enabledGames.totalColor) SELECTED_GAME = 'totalcolor';
     else if (enabledGames.rainbow || enabledGames.color) SELECTED_GAME = 'rainbow';
     else if (enabledGames.hilo || enabledGames.sum) SELECTED_GAME = 'hilo';
@@ -1122,6 +1155,7 @@ async function listen() {
                         ? 0
                         : calcLocalStake('sum', serverSteps.hilo, userStakes, gameStepsLimits, hiloMult);
                 const tcStake  = m.tcStake || calcLocalStake('totalColor', serverSteps.totalColor, userStakes, gameStepsLimits, hiloMult);
+                const tc1Stake = Number(m.tc1Stake) || 0;
                 const tc2Stake = m.tc2Stake || calcLocalStake('totalColor2', serverSteps.totalColor2, userStakes, gameStepsLimits, hiloMult);
 
                 try {
@@ -1154,6 +1188,12 @@ async function listen() {
                         if (!res) betSuccess = false;
                         playedAny = true;
                     }
+                    if (m.totalColor1 && m.tc1Stake > 0) {
+                        SELECTED_GAME = 'totalcolor1';
+                        let res = await runTotalColor1(m.totalColor1, tc1Stake);
+                        if (!res) betSuccess = false;
+                        playedAny = true;
+                    } 
                     if (m.totalColor2 && m.tc2Stake > 0) {
                         SELECTED_GAME = 'totalcolor2';
                         let res = await runTotalColor2(m.totalColor2, tc2Stake);
@@ -1312,7 +1352,7 @@ async function startApp() {
             'enabledGames', 'schedule', 'telegramChatId', 'step1Only', 
             'hiloStrategy', 'flatBetting', 'sniperMode', 'sniperStep', 'sniperResetLosses',
             'dynamicStakePercent', 'cbMaxLosses', 'cbCooldown',
-            'mlOverrideMode', 'unifiedMode', 'hiloMultiplier', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
+            'mlOverrideMode', 'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
         ], (data) => {
             if (data) {
                 // Strategy selection is automatic; retire any saved specific-strategy gate.

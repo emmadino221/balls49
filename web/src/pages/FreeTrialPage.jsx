@@ -10,6 +10,7 @@ const markets = [
   { id: 'rainbow', name: 'Rainbow Color', help: 'One color prediction.' },
   { id: 'totalColor', name: 'Total Color (3-way)', help: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', help: 'Two selected colors.' },
+  { id: 'totalColor1', name: 'Winning Color', help: 'One outcome: the selection excluded from Total Color 3-way.' },
   { id: 'hilo', name: 'High / Low', help: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', help: 'The single pick chosen from the available markets.' },
 ];
@@ -36,6 +37,7 @@ function Pick({ record, market }) {
     return <TotalColorPick pick={pick.totalColor} />;
   }
   if (market === 'totalColor2') return pick.totalColor2?.status === 'ACTIVE' ? <span className="pick-colors">{pick.totalColor2.top2.map(color => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i />{color}</span>)}</span> : <span className="no-pick">No active pick this draw</span>;
+  if (market === 'totalColor1') return pick.totalColor1?.status === 'ACTIVE' ? <span className="pick-colors">{pick.totalColor1.top1.map(color => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i />{color === 'black' ? 'No winning color' : color}</span>)}</span> : <span className="no-pick">No active pick this draw</span>;
   if (market === 'unified') {
     const key = pick.unified?.key;
     if (!key) return <span className="no-pick">No unified pick this draw</span>;
@@ -111,6 +113,6 @@ export default function FreeTrialPage() {
     <section className="content-card free-trial-panel"><div className="prediction-section-heading"><div><span className="overline">ONE MARKET PER DRAW</span><h2>Choose your trial market</h2></div><a className="text-link" href="predictions.html#plans">Compare paid plans →</a></div><label className="free-trial-select-label" htmlFor="free-trial-market">Market</label><select id="free-trial-market" value={selectedMarket} onChange={event => changeMarket(event.target.value)} disabled={revealOpen}>{markets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><p className="free-trial-help">{markets.find(item => item.id === selectedMarket)?.help} {revealOpen ? 'Your selection is locked for this draw.' : 'Selection locks at 00:10.'}</p>
       <article className="prediction-game-card free-trial-result-card"><div className="prediction-game-heading"><span className="prediction-game-icon" aria-hidden="true">✦</span><span className={`locked-label${activePrediction && revealOpen ? ' prediction-active-label' : ''}`}>{activePrediction && revealOpen ? 'FREE PICK REVEALED' : 'YOUR FREE TRIAL PICK'}</span></div><h3>{markets.find(item => item.id === selectedMarket)?.name}</h3><div className={`live-prediction-value${activePrediction && revealOpen ? ' is-revealed' : ' is-hidden'}`}>{activePrediction && revealOpen ? <Pick key={activePredictionKey} record={activePrediction} market={selectedMarket} /> : <span className="trial-pick-message">{secondsLeft === null ? 'Waiting for the live countdown' : secondsLeft === 0 ? 'Draw closing · waiting for the next prediction' : `Prediction appears at 00:10 · ${countdown(secondsLeft)} remaining`}</span>}</div>{activePrediction && revealOpen && <SummaryModelBadge label={activePrediction.summaryLabel} />}<div className="game-last-result"><div className="game-last-result-label"><span>LAST DRAW{previous ? ` · #${previous.drawId}` : ''}</span><small>Previous pick</small></div><div className="game-last-pick"><Pick record={previous} market={selectedMarket} /></div><span className={`outcome-badge ${String(previous?.result?.[selectedMarket] || 'pending').toLowerCase()}`}>{previous?.result?.[selectedMarket] || 'WAITING'}</span></div></article>
     </section>
-    <section className="free-trial-upgrade"><div><span className="overline">WANT EARLIER PICKS?</span><h2>Unlock predictions before the reveal window.</h2><p>Premium covers selected games. Elite includes all seven markets and Telegram access.</p></div><a className="btn btn-primary" href="predictions.html#plans">View plans</a></section>
+    <section className="free-trial-upgrade"><div><span className="overline">WANT EARLIER PICKS?</span><h2>Unlock predictions before the reveal window.</h2><p>Premium covers selected games. Elite includes all eight markets and Telegram access.</p></div><a className="btn btn-primary" href="predictions.html#plans">View plans</a></section>
   </main>;
 }

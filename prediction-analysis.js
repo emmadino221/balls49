@@ -14,10 +14,10 @@ function marketItems(pred, market) {
         ? [{ value: pred.bet49Pick, type: 'number', rule: 'present' }] : [];
     if (market === 'rainbow') return pred.rainbowStatus === 'ACTIVE'
         ? [{ value: pred.topColor?.name, type: 'color', rule: 'twoPlus' }] : [];
-    if (market === 'totalColor' || market === 'totalColor2') {
-        const prediction = market === 'totalColor' ? pred.totalColorPred : pred.totalColor2Pred;
+    if (market === 'totalColor' || market === 'totalColor2' || market === 'totalColor1') {
+        const prediction = market === 'totalColor' ? pred.totalColorPred : market === 'totalColor1' ? pred.totalColor1Pred : pred.totalColor2Pred;
         return prediction?.status === 'ACTIVE'
-            ? (prediction.topColors || prediction.top2 || []).map(value => ({ value, type: 'color', rule: 'winner' })) : [];
+            ? (prediction.topColors || prediction.top2 || prediction.top1 || []).map(value => ({ value, type: 'color', rule: 'winner' })) : [];
     }
     return market === 'hilo' && pred.hiloStatus === 'ACTIVE'
         ? [{ value: pred.sumRange, type: 'range', rule: 'range' }] : [];

@@ -2,7 +2,7 @@ import React from 'react';
 
 const principles = [
   { number: '01', title: 'Signals with context', text: 'Market, timing, and prediction status stay together, so a pick is easier to understand.' },
-  { number: '02', title: 'A space to review', text: 'Explore seven markets and review recorded picks alongside the actual draw history.' },
+  { number: '02', title: 'A space to review', text: 'Explore eight markets and review recorded picks alongside the actual draw history.' },
   { number: '03', title: 'Room to decide', text: 'Predictions are uncertain information—not guarantees or instructions to place a bet.' },
 ];
 

@@ -11,6 +11,7 @@ const markets = [
   { id: 'rainbow', label: 'Rainbow', resultKey: 'rainbow' },
   { id: 'totalColor', label: 'Total Color 3-way', resultKey: 'totalColor' },
   { id: 'totalColor2', label: 'Total Color 2-way', resultKey: 'totalColor2' },
+  { id: 'totalColor1', label: 'Winning Color', resultKey: 'totalColor1' },
   { id: 'hilo', label: 'High / Low', resultKey: 'hilo' },
   { id: 'unified', label: 'Unified', resultKey: 'unified' },
 ];
@@ -33,7 +34,7 @@ function ColorTag({ color }) {
   const safeColor = ['red', 'blue', 'green', 'yellow', 'black'].includes(String(color).toLowerCase())
     ? String(color).toLowerCase()
     : 'neutral';
-  return <span className={`color-name color-${safeColor}`}><i aria-hidden="true" />{color}</span>;
+  return <span className={`color-name color-${safeColor}`}><i aria-hidden="true" />{safeColor === 'black' ? 'No winning color' : color}</span>;
 }
 
 function MarketPick({ record, market }) {
@@ -58,6 +59,12 @@ function MarketPick({ record, market }) {
   if (market.id === 'totalColor2') {
     const colors = predicted.totalColor2?.top2 || [];
     return predicted.totalColor2?.status === 'ACTIVE' && colors.length
+      ? <span className="pick-colors">{colors.map((color) => <ColorTag key={color} color={color} />)}</span>
+      : <NoPick />;
+  }
+  if (market.id === 'totalColor1') {
+    const colors = predicted.totalColor1?.top1 || [];
+    return predicted.totalColor1?.status === 'ACTIVE' && colors.length
       ? <span className="pick-colors">{colors.map((color) => <ColorTag key={color} color={color} />)}</span>
       : <NoPick />;
   }
