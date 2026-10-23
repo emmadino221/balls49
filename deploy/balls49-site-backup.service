@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up Balls49 website database
+
+[Service]
+Type=oneshot
+User=balls49
+Group=balls49
+UMask=0077
+ExecStart=/usr/bin/python3 /home/balls49/balls49-site/deploy/backup-site.py
