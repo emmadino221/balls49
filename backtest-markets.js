@@ -50,7 +50,7 @@ if (start < 0 || end <= start) throw new Error('Cannot locate the current predic
 const generator = source.slice(start, end);
 const replayPredictions = [];
 const context = vm.createContext({ getBallColor: color, applyPreviousDrawRule, singleColorPrediction,
-    predictHighLow, predictBetZero, predictionLog: replayPredictions,
+    predictHighLow, predictBetZero, predictionLog: replayPredictions, getDailyHistoryResetAt: () => 0,
     getBet49Prediction: () => null }); // Bet49 is outside this comparison; no persistent target state.
 vm.runInContext(generator, context, { timeout: 1000 });
 

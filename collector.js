@@ -8,6 +8,8 @@ const http  = require('http');
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
+const { nigeriaMidnightBoundary } = require('./daily-reset');
+const RESET_FILE = path.join(__dirname, 'collector_daily_reset.json');
 
 const PROXY_PORT  = 3000;
 const STATIC_PORT = 8080;
@@ -20,6 +22,28 @@ const TARGET  = 'logigames.bet9ja.com';
 const GAME_ID = 11000;
 
 let storedDraws = [];
+let recentResults = [];
+let collecting = false;
+let resetState = fs.existsSync(RESET_FILE)
+  ? JSON.parse(fs.readFileSync(RESET_FILE, 'utf8'))
+  : { checkedBoundary: nigeriaMidnightBoundary(), resetAt: 0, baselinePending: false, floorId: 0 };
+function saveResetState() {
+  const temp = `${RESET_FILE}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(resetState));
+  fs.renameSync(temp, RESET_FILE);
+}
+function checkDailyReset() {
+  const boundary = nigeriaMidnightBoundary();
+  if (boundary <= resetState.checkedBoundary && !resetState.clearing) return;
+  resetState = { checkedBoundary: boundary, resetAt: boundary, baselinePending: true, floorId: 0, clearing: true };
+  saveResetState();
+  storedDraws = [];
+  recentResults = [];
+  fs.writeFileSync(DRAWS_FILE, '[]');
+  resetState.clearing = false;
+  saveResetState();
+  console.log('[DailyReset] Collector history cleared for Nigeria midnight. Waiting for fresh draws.');
+}
 
 function loadDraws() {
   try { return JSON.parse(fs.readFileSync(DRAWS_FILE, 'utf8')); }
@@ -51,6 +75,9 @@ function getCookies() {
 
 ensureCookiesFile();
 storedDraws = loadDraws();
+saveResetState();
+checkDailyReset();
+setInterval(checkDailyReset, 1000);
 console.log(`[Collector] Loaded ${storedDraws.length} draws.`);
 
 // ── FAST COLLECTOR ───────────────────────────────────────────────────────────
@@ -87,20 +114,38 @@ function fetchDrawHistory(callback) {
     callback(err);
   });
 
+  req.setTimeout(15000, () => req.destroy(new Error('Draw collection timed out')));
   req.write(body);
   req.end();
 }
 
 function collectDraws() {
+  checkDailyReset();
+  if (collecting) return;
+  collecting = true;
+  const requestedEpoch = resetState.resetAt;
   fetchDrawHistory((err, result) => {
+    collecting = false;
+    checkDailyReset();
+    if (requestedEpoch !== resetState.resetAt) return;
     if (err) return;
     if (!result || !result.data || !Array.isArray(result.data.draws)) return;
 
     const incoming = result.data.draws;
+    recentResults = incoming;
+    if (resetState.baselinePending) {
+      const ids = incoming.map(draw => Number(draw.id)).filter(id => Number.isSafeInteger(id) && id > 0);
+      if (!ids.length) return;
+      // Do not reload pre-reset history from the upstream history response.
+      resetState.floorId = Math.max(...ids);
+      resetState.baselinePending = false;
+      saveResetState();
+    }
     const knownIds = new Set(storedDraws.map(d => d.id));
     let newCount = 0;
 
     incoming.forEach(draw => {
+      if (Number(draw.id) <= resetState.floorId) return;
       if (!knownIds.has(draw.id)) {
         const nums = (draw.dr || '').split(',').map(Number).filter(n => n >= 1 && n <= 49);
         const sum = draw.total ? parseInt(draw.total, 10) : nums.reduce((a, b) => a + b, 0);
@@ -125,7 +170,7 @@ function collectDraws() {
     });
 
     if (newCount > 0) {
-      storedDraws = storedDraws.slice(0, MAX_DRAWS);
+      storedDraws = storedDraws.sort((a, b) => Number(b.id) - Number(a.id)).slice(0, MAX_DRAWS);
       saveDraws(storedDraws);
       console.log(`[Collector] ✅ Saved ${newCount} new draw(s). Total: ${storedDraws.length}`);
     }
@@ -194,9 +239,13 @@ const proxyServer = http.createServer(function(req, res) {
   }
 
   // Local draws endpoint
-  if (req.url === '/draws' || req.url === '/draws/') {
+  const localUrl = new URL(req.url, 'http://localhost');
+  if (localUrl.pathname === '/draws' || localUrl.pathname === '/draws/') {
+    checkDailyReset();
+    const settlementIds = new Set((localUrl.searchParams.get('settle') || '').split(',').filter(id => /^\d+$/.test(id)));
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ draws: storedDraws, total: storedDraws.length }));
+    res.end(JSON.stringify({ draws: storedDraws, total: storedDraws.length, resetAt: resetState.resetAt,
+      settlementDraws: recentResults.filter(draw => settlementIds.has(String(draw.id))) }));
     return;
   }
 

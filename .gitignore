@@ -33,3 +33,7 @@ telegram_prediction_outbox.json
 *.log
 .DS_Store
 Thumbs.db
+
+# Daily reset checkpoints (runtime only)
+collector_daily_reset.json
+daily_pending_settlements.json

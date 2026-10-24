@@ -22,6 +22,7 @@ const {
 const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
 const { predictHighLow } = require('./high-low');
 const { predictBetZero } = require('./betzero');
+const { nigeriaMidnightBoundary } = require('./daily-reset');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
 const { applyAdaptiveStrategies, getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
 
@@ -597,6 +598,7 @@ function isTimeUp(schedule) {
     return currentMins >= (tH * 60 + tM);
 }
 
+const DAILY_PENDING_FILE = path.join(__dirname, 'daily_pending_settlements.json');
 const PREDICTIONS_FILE = path.join(__dirname, 'predictions.json');
 const LAST_PRED_FILE = path.join(__dirname, 'last_prediction.json');
 const TELEGRAM_PREDICTION_OUTBOX_FILE = path.join(__dirname, 'telegram_prediction_outbox.json');
@@ -781,6 +783,8 @@ function getBallEmoji(n) {
     return c === 'red' ? '🔴' : c === 'blue' ? '🔵' : c === 'green' ? '🟢' : '🟡';
 }
 
+let dailyPendingSettlements = SITE_PUBLIC_MODE ? [] : loadJSON(DAILY_PENDING_FILE, []);
+if (!Array.isArray(dailyPendingSettlements)) throw new Error('Invalid daily settlement checkpoint; refusing to discard pending bets.');
 let predictionLog = SITE_PUBLIC_MODE ? [] : loadJSON(PREDICTIONS_FILE, []);
 if (!Array.isArray(predictionLog)) {
     throw new Error(`[Persistence] Prediction history "${PREDICTIONS_FILE}" must contain a JSON array.`);
@@ -958,6 +962,65 @@ function resetMarketStatsTracking() {
     return resetAt;
 }
 
+function getDailyHistoryResetAt() {
+    return Number(getSiteSettingStatement.get('daily_history_reset_at')?.setting_value) || 0;
+}
+
+function applyDailyHistoryReset(resetAt) {
+    if (!SITE_PUBLIC_MODE) {
+        setSiteSettingStatement.run('daily_reset_pending', String(resetAt));
+        for (const clientId of Object.keys(persistedSessions)) getSession(clientId);
+        const needed = new Set(Object.values(userSessions).flatMap(session => [
+            session.lastBetDrawId, session.betExecutionClaim?.drawId
+        ]).filter(Boolean).map(String));
+        dailyPendingSettlements = [...new Map([...dailyPendingSettlements,
+            ...predictionLog.filter(record => needed.has(String(record.drawId)))
+        ].map(record => [String(record.drawId), record])).values()];
+        saveJSON(DAILY_PENDING_FILE, dailyPendingSettlements);
+        saveJSON(PREDICTIONS_FILE, []);
+        saveJSON(LAST_PRED_FILE, null);
+        telegramPredictionOutbox = [];
+        saveJSON(TELEGRAM_PREDICTION_OUTBOX_FILE, []);
+        saveJSON(STREAKS_FILE, {});
+        saveJSON(WIN_STEPS_FILE, { u4: {}, color: {}, sum: {}, totalColor: {} });
+        saveJSON(ML_STREAKS_FILE, Object.fromEntries(['u4', 'color', 'sum', 'totalColor'].map(key => [key, { current: 0, worst: 0, w: 0, l: 0 }])));
+        saveJSON(ML_RETRAIN_FILE, { version: 1, updatedAt: null, marketModels: {} });
+        modelRefreshMarkers = { 10: 0, 50: 0, 100: 0 };
+        globalTracker.bet49.target = null;
+        globalTracker.bet49.targetSinceDrawId = null;
+        for (const session of Object.values(userSessions)) {
+            if (!session.betExecutionClaim) session.pendingBetPayload = null;
+        }
+        lastPublishedHistoryHashes.clear();
+        persistSessions();
+    }
+    siteDb.exec('BEGIN IMMEDIATE');
+    try {
+        siteDb.exec('DELETE FROM public_prediction_history; DELETE FROM public_prediction_feed;');
+        setSiteSettingStatement.run('daily_history_reset_at', String(resetAt));
+        setSiteSettingStatement.run('daily_reset_checked_boundary', String(resetAt));
+        setSiteSettingStatement.run('daily_reset_pending', '0');
+        setSiteSettingStatement.run('market_stats_reset_at', String(resetAt));
+        setSiteSettingStatement.run('history_streak_cutoff', JSON.stringify({ resetAt, lastDrawId: null }));
+        siteDb.exec('COMMIT');
+    } catch (error) { siteDb.exec('ROLLBACK'); throw error; }
+    predictionLog = [];
+    lastPrediction = null;
+    console.log(`[DailyReset] Prediction history cleared for ${new Date(resetAt).toISOString()} (Nigeria midnight).`);
+}
+
+function checkDailyHistoryReset() {
+    const boundary = nigeriaMidnightBoundary();
+    const checked = getSiteSettingStatement.get('daily_reset_checked_boundary');
+    // First installation arms the next midnight; it does not erase history immediately.
+    if (!checked) {
+        setSiteSettingStatement.run('daily_reset_checked_boundary', String(boundary));
+        return;
+    }
+    const pending = Number(getSiteSettingStatement.get('daily_reset_pending')?.setting_value) || 0;
+    if (pending || boundary > Number(checked.setting_value)) applyDailyHistoryReset(Math.max(pending, boundary));
+}
+
 function getHistoryStreakCutoff() {
     const raw = getSiteSettingStatement.get('history_streak_cutoff')?.setting_value;
     return raw ? JSON.parse(raw) : null;
@@ -1057,6 +1120,7 @@ function buildPublicFeedCurrent() {
 }
 
 async function publishPredictionSnapshot() {
+    checkDailyHistoryReset();
     if (SITE_PUBLIC_MODE || !PREDICTION_INGEST_URL || predictionPublishInFlight) return;
     predictionPublishInFlight = true;
     try {
@@ -1084,6 +1148,7 @@ async function publishPredictionSnapshot() {
         const snapshot = {
             version: 1,
             snapshotAt: Number(timestamp),
+            dailyHistoryResetAt: getDailyHistoryResetAt(),
             marketStatsResetAt: getMarketStatsResetAt(),
             current: buildPublicFeedCurrent(),
             clock: publicClock,
@@ -1503,7 +1568,7 @@ function evaluateMLEntryConfidence(key, currentStep, predData, liveStreaks) {
 }
 
 function updateOneStreakByMode(s, key, mode, won) {
-    if (!s[key]) s[key] = { worst: 0, current: 0, winCurrent: 0, played: 0, won: 0 };
+    s[key] = { worst: 0, current: 0, winCurrent: 0, played: 0, won: 0, ...s[key] };
     if (!s[key][mode]) s[key][mode] = { worst: 0, current: 0, winCurrent: 0, played: 0, won: 0 };
     s[key].played++; s[key][mode].played++;
     if (won) {
@@ -2341,6 +2406,10 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     // Bet49 retains its existing history requirement and selection logic.
     var bet49Pick = histRaw?.data?.draws?.length >= 100 ? getBet49Prediction(histRaw.data.draws) : null;
 
+    if (getDailyHistoryResetAt()) {
+        stats100TC = null;
+        stats24HiLo = null;
+    }
     var tc4 = [
         { name: 'green', count: 0 },
         { name: 'red', count: 0 },
@@ -2649,14 +2718,14 @@ function processUpdates(pred, actualDraw) {
     applySniperReset('sum', pred.hiloStatus, sumWin);
     applySniperReset('unified', unifiedStatus, unifiedWin);
 
-    if (!s.u4) s.u4 = {}; if ((globalTracker.u4.step - 1) > (s.u4.worst || 0)) s.u4.worst = globalTracker.u4.step - 1;
-    if (!s.bet49) s.bet49 = {}; if ((globalTracker.bet49.step - 1) > (s.bet49.worst || 0)) s.bet49.worst = globalTracker.bet49.step - 1;
-    if (!s.color) s.color = {}; if ((globalTracker.color.step - 1) > (s.color.worst || 0)) s.color.worst = globalTracker.color.step - 1;
-    if (!s.totalColor) s.totalColor = {}; if ((globalTracker.totalColor.step - 1) > (s.totalColor.worst || 0)) s.totalColor.worst = globalTracker.totalColor.step - 1;
-    if (!s.totalColor2) s.totalColor2 = {}; if ((globalTracker.totalColor2.step - 1) > (s.totalColor2.worst || 0)) s.totalColor2.worst = globalTracker.totalColor2.step - 1;
-    if (!s.totalColor1) s.totalColor1 = {}; if ((globalTracker.totalColor1.step - 1) > (s.totalColor1.worst || 0)) s.totalColor1.worst = globalTracker.totalColor1.step - 1;
-    if (!s.sum) s.sum = {}; if ((globalTracker.sum.step - 1) > (s.sum.worst || 0)) s.sum.worst = globalTracker.sum.step - 1;
-    if (!s.unified) s.unified = {}; if ((globalTracker.unified.step - 1) > (s.unified.worst || 0)) s.unified.worst = globalTracker.unified.step - 1;
+    if (!s.u4) s.u4 = {}; s.u4.worst = Math.max(s.u4.worst || 0, getTrackingStep('betzero', globalTracker.u4.step) - 1);
+    if (!s.bet49) s.bet49 = {}; s.bet49.worst = Math.max(s.bet49.worst || 0, getTrackingStep('bet49', globalTracker.bet49.step) - 1);
+    if (!s.color) s.color = {}; s.color.worst = Math.max(s.color.worst || 0, getTrackingStep('rainbow', globalTracker.color.step) - 1);
+    if (!s.totalColor) s.totalColor = {}; s.totalColor.worst = Math.max(s.totalColor.worst || 0, getTrackingStep('totalColor', globalTracker.totalColor.step) - 1);
+    if (!s.totalColor2) s.totalColor2 = {}; s.totalColor2.worst = Math.max(s.totalColor2.worst || 0, getTrackingStep('totalColor2', globalTracker.totalColor2.step) - 1);
+    if (!s.totalColor1) s.totalColor1 = {}; s.totalColor1.worst = Math.max(s.totalColor1.worst || 0, getTrackingStep('totalColor1', globalTracker.totalColor1.step) - 1);
+    if (!s.sum) s.sum = {}; s.sum.worst = Math.max(s.sum.worst || 0, getTrackingStep('hilo', globalTracker.sum.step) - 1);
+    if (!s.unified) s.unified = {}; s.unified.worst = Math.max(s.unified.worst || 0, getTrackingStep('unified', globalTracker.unified.step) - 1);
 
     saveJSON(STREAKS_FILE, s);
 
@@ -2812,6 +2881,28 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     const details = session.lastBetDetails;
     const r = pLogItem.result;
     if (!r) return;
+
+    // Pre-midnight bets settle outside processUpdates after their public history is
+    // cleared. Still apply their actual outcome to this session's sniper cycle.
+    if (dailyPendingSettlements.includes(pLogItem)) {
+        const markets = { u4: 'betzero', bet49: 'bet49', color: 'rainbow', sum: 'hilo',
+            totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1', unified: 'unified' };
+        const trackers = session.config.unifiedMode ? ['unified'] : (details.games || []);
+        for (const tracker of trackers) {
+            const market = markets[tracker];
+            const sniper = getSniperSettings(session.config, tracker);
+            if (!market || !sniper.enabled || sniper.step < 1 || sniper.resetLosses < 1) continue;
+            const state = session.sniperState[tracker] ||= { losses: 0, waitingForTarget: false };
+            if (r[market] === 'WIN') state.losses = 0;
+            else if (r[market] === 'LOSS' && Number(pLogItem.steps?.[market]) >= sniper.step) {
+                state.losses++;
+                if (state.losses >= sniper.resetLosses) {
+                    state.losses = 0;
+                    state.waitingForTarget = true;
+                }
+            }
+        }
+    }
 
     session.lastBetDrawId = null;
     session.lastBetDetails = null;
@@ -3091,8 +3182,12 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     }
 }
 
+let tickInProgress = false;
 async function tick() {
+    if (tickInProgress) return;
+    tickInProgress = true;
     try {
+        checkDailyHistoryReset();
         for (const id of disabledManagedSessions(Object.keys(userSessions))) {
             userSessions[id].stats.isHalted = true;
             userSessions[id].stats.haltReason = 'Extension access revoked or unavailable';
@@ -3125,6 +3220,7 @@ async function tick() {
         for (const clientId in userSessions) {
             const session = userSessions[clientId];
             if (enforceSessionLimits(session)) continue;
+            if (session.betExecutionClaim && dailyPendingSettlements.some(record => String(record.drawId) === String(session.betExecutionClaim.drawId))) continue;
             // 🛡️ SHADOW MODE LOGIC (Updated for Deficit Recovery)
             if (session.config.shadowMode) {
                 ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].forEach(k => {
@@ -3178,8 +3274,10 @@ async function tick() {
             }
         }
 
-        var drawsData = await apiGet('/draws');
-        var draws = drawsData.draws || [];
+        const settlementIds = dailyPendingSettlements.map(record => record.drawId).join(',');
+        var drawsData = await apiGet('/draws?settle=' + encodeURIComponent(settlementIds));
+        checkDailyHistoryReset();
+        var draws = [...(drawsData.draws || []), ...(drawsData.settlementDraws || [])];
 
         if (lastPrediction && lastPrediction.telegramPredictionQueued !== true) {
             const hasLegacyPredictionRecord = lastPrediction.telegramPredictionQueued === undefined
@@ -3192,14 +3290,14 @@ async function tick() {
             }
         }
 
-        if (draws.length > 0 && predictionLog.length > 0) {
+        if (draws.length > 0 && (predictionLog.length || dailyPendingSettlements.length)) {
             let updatedLog = false;
-            predictionLog.forEach(p => {
+            [...predictionLog, ...dailyPendingSettlements].forEach(p => {
                 if (!p.result) {
                     const m = draws.find(d => String(d.id) === String(p.drawId));
                     if (m) {
                         var actualNums = (m.dr || '').split(',').map(Number).filter(n => n >= 1 && n <= 49);
-                        var actualSum = parseInt(m.total, 10) || 0;
+                        var actualSum = actualNums.reduce((sum, number) => sum + number, 0);
                         var actualRange = getSumRange(actualSum);
 
                         var actualColorCounts = { red: 0, blue: 0, green: 0 };
@@ -3251,7 +3349,10 @@ async function tick() {
                     }
                 }
             });
-            if (updatedLog) saveJSON(PREDICTIONS_FILE, predictionLog);
+            if (updatedLog) {
+                saveJSON(PREDICTIONS_FILE, predictionLog);
+                saveJSON(DAILY_PENDING_FILE, dailyPendingSettlements);
+            }
         }
 
         if (lastPrediction && draws.length > 0) {
@@ -3262,7 +3363,7 @@ async function tick() {
         for (const clientId in userSessions) {
             const session = userSessions[clientId];
             if (session.lastBetDetails && session.lastBetDrawId) {
-                const pLogItem = predictionLog.find(p => String(p.drawId) === String(session.lastBetDrawId));
+                const pLogItem = [...predictionLog, ...dailyPendingSettlements].find(p => String(p.drawId) === String(session.lastBetDrawId));
                 if (pLogItem && pLogItem.result) {
                     evaluateSessionBets(clientId, session, pLogItem);
                 }
@@ -3271,6 +3372,14 @@ async function tick() {
 
         if (lastPrediction && nextId && Number(nextId) >= Number(lastPrediction.drawId) + 2) { lastPrediction = null; try { fs.unlinkSync(LAST_PRED_FILE); } catch (e) {} }
 
+        const stillNeeded = new Set(Object.values(userSessions).flatMap(session => [session.lastBetDrawId, session.betExecutionClaim?.drawId]).filter(Boolean).map(String));
+        const remainingSettlements = dailyPendingSettlements.filter(record => stillNeeded.has(String(record.drawId)));
+        if (remainingSettlements.length !== dailyPendingSettlements.length) {
+            persistSessions();
+            dailyPendingSettlements = remainingSettlements;
+            saveJSON(DAILY_PENDING_FILE, dailyPendingSettlements);
+        }
+
         if (nextId && nextId !== lastGlobalDrawId && !lastPrediction) {
             var stats24Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '24HRS' }).catch(() => null);
             var stats100Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '100' }).catch(() => null);
@@ -3278,6 +3387,9 @@ async function tick() {
             var stats100HiLo = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: 11050, period: '100' }).catch(() => null);
             var stats100TC = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_TC, period: '100' }).catch(() => null);
             var drawsForPred = await apiGet('/draws');
+            checkDailyHistoryReset();
+            if (getDailyHistoryResetAt() && Number(drawsForPred.resetAt) !== getDailyHistoryResetAt()) return;
+            if (!(drawsForPred.draws || []).length) return;
 
             var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId);
             pred = applyAdaptiveStrategies(pred, drawsForPred.draws || [], predictionLog, nextId);
@@ -3322,6 +3434,7 @@ async function tick() {
                 const session = userSessions[clientId];
                 
                 if (enforceSessionLimits(session) || session.pendingBetPayload || session.balanceVerification.pendingWinSync) continue;
+                if (session.lastBetDetails && dailyPendingSettlements.some(record => String(record.drawId) === String(session.lastBetDrawId))) continue;
                 if (session.lastBetDrawId === String(nextId) || session.balanceVerification.skippedDraw === String(nextId)) continue;
                 if (session.failedBetRecovery && String(session.failedBetRecovery.payload?.drawId) === String(nextId)) continue;
                 if (timeLeft <= 15) continue;
@@ -3536,10 +3649,11 @@ async function tick() {
         }
     } catch (error) {
         console.error('[ERROR] Tick failed:', error.stack || error.message || error);
-    }
+    } finally { tickInProgress = false; }
 }
 
 async function handleHttpRequest(req, res) {
+    checkDailyHistoryReset();
     const origin = req.headers.origin;
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
     if (serveWebsite) {
@@ -3606,6 +3720,12 @@ async function handleHttpRequest(req, res) {
         if (!Array.isArray(snapshot.historyUpdates) || snapshot.historyUpdates.length > 1000) {
             return sendJson(res, 400, { error: 'Invalid prediction history updates.' });
         }
+        const incomingEpoch = Number(snapshot.dailyHistoryResetAt || 0);
+        if (!Number.isSafeInteger(incomingEpoch) || incomingEpoch < 0 || incomingEpoch > nigeriaMidnightBoundary()
+            || (incomingEpoch && incomingEpoch !== nigeriaMidnightBoundary(incomingEpoch))) {
+            return sendJson(res, 400, { error: 'Invalid daily reset boundary.' });
+        }
+        if (incomingEpoch < getDailyHistoryResetAt()) return sendJson(res, 409, { error: 'Prediction snapshot predates the daily reset.' });
         const updatedDrawIds = new Set();
         const normalizedHistoryUpdates = [];
         for (const record of snapshot.historyUpdates) {
@@ -3665,6 +3785,7 @@ async function handleHttpRequest(req, res) {
             });
         }
         try {
+            if (incomingEpoch > getDailyHistoryResetAt()) applyDailyHistoryReset(incomingEpoch);
             const currentJson = snapshot.current === null ? null : JSON.stringify(snapshot.current);
             const clockJson = JSON.stringify(snapshot.clock);
             siteDb.exec('BEGIN IMMEDIATE');
@@ -4468,7 +4589,7 @@ async function handleHttpRequest(req, res) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         if (enforceSessionLimits(session)) return res.end(JSON.stringify({ action: 'WAIT' }));
         const payload = session.pendingBetPayload;
-        if (!payload) return res.end(JSON.stringify({ action: 'WAIT' }));
+        if (!payload || dailyPendingSettlements.some(record => String(record.drawId) === String(payload.drawId))) return res.end(JSON.stringify({ action: 'WAIT' }));
         if (payload.action !== 'EXECUTE_BET') return res.end(JSON.stringify(payload));
 
         const drawId = String(payload.drawId);
@@ -5386,6 +5507,11 @@ function handleTelegramCommand(chatId, text) {
         }
     }
 }
+
+checkDailyHistoryReset();
+setInterval(() => {
+    try { checkDailyHistoryReset(); } catch (error) { console.error('[DailyReset]', error.message); }
+}, 1000);
 
 if (SITE_PUBLIC_MODE) {
     console.log('[PredictionFeed] Public API ready; waiting for authenticated worker snapshots.');
