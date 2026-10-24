@@ -80,12 +80,14 @@ export default function AnalysisPage() {
           return <button key={id} disabled={!allowed} aria-pressed={market === id} className={market === id ? 'selected' : ''} onClick={() => setMarket(id)}>{name}<small>{allowed ? 'Included' : 'Not in your plan'}</small></button>;
         })}<a href="pricing.html">Compare plans →</a></nav>
         <section className="analysis-content" aria-label={`${marketName || 'Market'} analysis`}>
-          <article className="content-card analysis-main"><span className="overline">{marketName || 'YOUR MARKETS'}</span><h2>Current pick analysis</h2>
+          <article className="content-card analysis-main"><span className="overline">{marketName || 'YOUR MARKETS'}</span><h2>{market === 'rainbow' ? 'Compare all three colors' : 'Current pick analysis'}</h2>
             {!live ? <p role="status">Live data is updating. Analysis will appear when the next current prediction is available.</p>
               : !selected?.items.length ? <p>No active pick is available for this market on this draw.</p>
               : <><p className="analysis-explanation">Historical support describes past outcomes, not the probability of winning the next draw. Values use up to 100 completed draws before this prediction.</p>
-                <div className="analysis-picks">{selected.items.map((item, index) => <article className="analysis-pick" key={`${item.value}-${index}`}>
+                {market === 'rainbow' && <p className="analysis-explanation">Each color is measured by draws containing at least two balls of that color. {selected.items.some(item => item.selected) ? 'The badge marks the live prediction.' : 'There is no active Rainbow prediction for this draw.'}</p>}
+                <div className="analysis-picks">{selected.items.map((item, index) => <article className={`analysis-pick${item.selected ? ' analysis-pick-selected' : ''}`} key={`${item.value}-${index}`}>
                   <span className={item.type === 'number' ? `ball-number ball-${item.color}` : `color-name color-${item.color || 'neutral'}`}>{item.type === 'color' && <i aria-hidden="true" />}{item.value === 'black' ? 'No winning color' : item.value}</span>
+                  {item.selected && <span className="analysis-selected-badge">Selected prediction</span>}
                   <strong>{percent(item.support)}</strong><span>Historical support</span>
                   {item.support !== null && <meter min="0" max="100" value={item.support} aria-label={`${item.value}: ${item.description}`} />}
                   <p>{item.description}</p><small>{item.count} of {item.sampleSize} valid draws</small>

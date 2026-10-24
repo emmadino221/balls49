@@ -3,7 +3,7 @@ const { getTotalColorOutcome } = require('./total-color');
 const aliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
 const colorOf = n => n === 49 ? 'yellow' : n % 3 === 1 ? 'red' : n % 3 === 2 ? 'blue' : 'green';
 
-function marketItems(pred, market) {
+function marketItems(pred, market, compareRainbow = false) {
     if (market === 'unified') {
         const source = aliases[pred.unifiedPick?.key] || pred.unifiedPick?.key;
         return source && source !== 'unified' ? marketItems(pred, source) : [];
@@ -12,6 +12,10 @@ function marketItems(pred, market) {
         ? (pred.unlikely4 || []).map(item => ({ value: Number(item.number), type: 'number', rule: 'absent' })) : [];
     if (market === 'bet49') return Number.isInteger(pred.bet49Pick) && pred.bet49Pick > 0 && pred.bet49Pick <= 49
         ? [{ value: pred.bet49Pick, type: 'number', rule: 'present' }] : [];
+    if (market === 'rainbow' && compareRainbow) return ['red', 'blue', 'green'].map(value => ({
+        value, type: 'color', rule: 'twoPlus',
+        selected: pred.rainbowStatus === 'ACTIVE' && pred.topColor?.name === value,
+    }));
     if (market === 'rainbow') return pred.rainbowStatus === 'ACTIVE'
         ? [{ value: pred.topColor?.name, type: 'color', rule: 'twoPlus' }] : [];
     if (market === 'totalColor' || market === 'totalColor2' || market === 'totalColor1') {
@@ -36,7 +40,7 @@ function analyzeMarket(pred, market, records, drawId) {
         && balls.every(n => Number.isInteger(n) && n >= 1 && n <= 49));
     const descriptions = { absent: 'Draws without this number', present: 'Draws containing this number',
         twoPlus: 'Draws with at least two balls of this color', winner: 'Draws with this winning color outcome', range: 'Draws in this total range' };
-    const items = marketItems(pred, market).filter(item => item.type === 'number'
+    const items = marketItems(pred, market, market === 'rainbow').filter(item => item.type === 'number'
         ? Number.isInteger(item.value) && item.value >= 1 && item.value <= 49
         : item.type === 'color' ? ['red', 'blue', 'green', 'black'].includes(item.value)
             : ['HIGH', 'LOW'].includes(item.value)).map(item => {
@@ -49,6 +53,7 @@ function analyzeMarket(pred, market, records, drawId) {
             return item.value === 'HIGH' ? sum >= 152 : sum <= 148;
         }).length;
         return { value: item.value, type: item.type, color: item.type === 'number' ? colorOf(item.value) : item.type === 'color' ? item.value : null,
+            ...(market === 'rainbow' ? { selected: item.selected === true } : {}),
             description: descriptions[item.rule], count, sampleSize: validBalls.length,
             support: validBalls.length ? Math.round(count / validBalls.length * 100) : null };
     });
