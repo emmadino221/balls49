@@ -21,6 +21,8 @@
         return stake;
     }
     const api = { ODDS, mode, nextStake, stakeAtStep };
+    // Website pages import this file for its browser API. Bundlers can supply a
+    // CommonJS module too, so exporting must not skip the global registration.
+    root.TC1Staking = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
-    else root.TC1Staking = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

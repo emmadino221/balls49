@@ -423,24 +423,31 @@ async function runTotalColor1(top1Colors, stake) {
         if (tabIcon) { const tab = tabIcon.closest('a'); if (tab) safeClick(tab); }
         await sleep(300);
 
-        const targets = top1Colors;
-        let allSuccess = true;
-        for (let colorClass of targets) {
-            const btn = document.querySelector(`.g-total__btn.${colorClass}`);
-            if (!btn) return false;
-            if (btn) {
-                safeClick(btn); await sleep(150);
-                const input = document.querySelector('input[type="number"]');
-                if (!input) return false;
-                if (input) { input.value = stake; input.dispatchEvent(new Event('input', { bubbles: true })); }
+        const selector = `.g-total__btn.${top1Colors[0]}`;
+        const btn = document.querySelector(selector);
+        const input = document.querySelector('input[type="number"]');
+        if (!btn || !input) return false;
+
+        safeClick(btn);
+        try {
+            await sleep(150);
+            input.value = stake;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(200);
+            return await placeBet();
+        } finally {
+            // Toggle the color off before the next market or draw is processed.
+            // Fetch it again because submitting the bet can replace the DOM node.
+            try {
                 await sleep(200);
-                
-                const placed = await placeBet();
-                if (!placed) allSuccess = false;
-                await sleep(200); 
+                const selectedButton = document.querySelector(selector);
+                if (selectedButton) safeClick(selectedButton);
+                else console.warn('[Balls49] Winning Color selection could not be cleared: color button missing.');
+            } catch (error) {
+                // Cleanup failure must not turn a submitted bet into a retry.
+                console.warn('[Balls49] Winning Color selection cleanup failed:', error);
             }
         }
-        return allSuccess;
     } catch (e) { return false; }
 }
 
