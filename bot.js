@@ -1559,6 +1559,32 @@ function exceedsStopLossWithPayload(session, payload) {
     return nextExposure > 0 && currentLoss + nextExposure > Math.abs(session.config.stopLoss);
 }
 
+function enforceSessionLimits(session) {
+    // Debited stakes are not settled losses: wait for the placed bet's result.
+    if (!session.stats.isHalted && !session.lastBetDetails) {
+        if (session.config.takeProfit > 0 && session.stats.totalReturned >= session.config.takeProfit) {
+            session.stats.isHalted = true;
+            session.stats.haltReason = `Target Met (N${session.config.takeProfit})`;
+        } else if (session.config.stopLoss < 0 && session.stats.totalReturned <= session.config.stopLoss) {
+            session.stats.isHalted = true;
+            session.stats.haltReason = `Stop Loss Hit (N${session.config.stopLoss})`;
+        }
+    }
+    if (!session.stats.isHalted) return false;
+    // Keep claimed payloads available to /ack: the browser may already have
+    // submitted a bet. They must still be accounted for, but never resent.
+    if (!session.betExecutionClaim) session.pendingBetPayload = null;
+    session.failedBetRecovery = null;
+    session.balanceVerification.pendingWinSync = false;
+    session.balanceVerification.refreshClicked = false;
+    return true;
+}
+
+function sendSessionDM(session, text) {
+    if (enforceSessionLimits(session)) return Promise.resolve();
+    return sendPersonalDM(session.config.telegramChatId, text);
+}
+
 function haltForPayloadRisk(session, clientId, payload) {
     const currentLoss = Math.max(0, -Number(session.stats.totalReturned || 0));
     const nextExposure = getBetPayloadExposure(payload);
@@ -1570,8 +1596,7 @@ function haltForPayloadRisk(session, clientId, payload) {
     session.stats.haltReason = `Stop Loss Protection: next exposure exceeds limit (N${stopLossLimit.toLocaleString()})`;
 
     if (session.config.telegramChatId) {
-        sendPersonalDM(
-            session.config.telegramChatId,
+        sendSessionDM(session,
             `Stop Loss Protection activated. Bet blocked before placement.\n` +
             `Current loss: N${currentLoss.toLocaleString()} | Next exposure: N${nextExposure.toLocaleString()} | Limit: N${stopLossLimit.toLocaleString()}\n` +
             `Automation paused for user ${clientId}.`
@@ -2832,6 +2857,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
     session.balanceVerification.pendingWinSync = false;
     session.balanceVerification.refreshClicked = false;
+    enforceSessionLimits(session);
 
     let progBar = '';
     if (session.config.takeProfit > 0) {
@@ -2870,7 +2896,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                 state.rolloverStake = Math.round(currentStake * playedOdds);
                 
                 if (session.config.telegramChatId) {
-                    sendPersonalDM(session.config.telegramChatId, `🔥 <b>UNIFIED WIN! PREPARING ROLLOVER!</b> — ${gLabel}\n💰 Base Stake Won: <b>₦${currentStake.toLocaleString()}</b>\n⏩ Next Stake (Rollover): <b>₦${state.rolloverStake.toLocaleString()}</b>${balString}`).catch(() => {});
+                    sendSessionDM(session, `🔥 <b>UNIFIED WIN! PREPARING ROLLOVER!</b> — ${gLabel}\n💰 Base Stake Won: <b>₦${currentStake.toLocaleString()}</b>\n⏩ Next Stake (Rollover): <b>₦${state.rolloverStake.toLocaleString()}</b>${balString}`).catch(() => {});
                 }
             } 
             else if (isWin && playedKey === 'totalColor' && session.config.tc3Rollover) {
@@ -2886,7 +2912,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                     session.userTracker.unified = { step: 1 };
 
                     if (session.config.telegramChatId) {
-                        sendPersonalDM(session.config.telegramChatId, `🔥 <b>UNIFIED TC3 WIN! COMPOUND HELD (Stage ${state.rolloverStage}/${session.config.tc3RolloverTarget})</b> — ${gLabel}\n💰 Payout Won: <b>₦${Math.round(currentStake * playedOdds).toLocaleString()}</b>\n⏩ Next Rollover Risk (On Next TC3 Trigger): <b>₦${totalCompoundCost.toLocaleString()}</b>${balString}`).catch(() => {});
+                        sendSessionDM(session, `🔥 <b>UNIFIED TC3 WIN! COMPOUND HELD (Stage ${state.rolloverStage}/${session.config.tc3RolloverTarget})</b> — ${gLabel}\n💰 Payout Won: <b>₦${Math.round(currentStake * playedOdds).toLocaleString()}</b>\n⏩ Next Rollover Risk (On Next TC3 Trigger): <b>₦${totalCompoundCost.toLocaleString()}</b>${balString}`).catch(() => {});
                     }
                 } else {
                     session.stats.wins++; session.stats.lastResult = 'win';
@@ -2895,7 +2921,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                     session.userTracker.unified = { step: 1 };
                     
                     if (session.config.telegramChatId) {
-                        sendPersonalDM(session.config.telegramChatId, `✅ <b>UNIFIED TC3 TARGET SECURED! (Stage ${session.config.tc3RolloverTarget} Hit)</b> — ${gLabel}\n💰 Payout Banked: <b>₦${Math.round(currentStake * playedOdds).toLocaleString()}</b>\n🔄 Resetting to Base Risk!${balString}`).catch(() => {});
+                        sendSessionDM(session, `✅ <b>UNIFIED TC3 TARGET SECURED! (Stage ${session.config.tc3RolloverTarget} Hit)</b> — ${gLabel}\n💰 Payout Banked: <b>₦${Math.round(currentStake * playedOdds).toLocaleString()}</b>\n🔄 Resetting to Base Risk!${balString}`).catch(() => {});
                     }
                 }
             }
@@ -2912,7 +2938,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                 const winMsg = wasRollover ? `✅ <b>UNIFIED ROLLOVER COMPOUND SECURED!</b>` : `✅ <b>UNIFIED WIN!</b>`;
 
                 if (session.config.telegramChatId) {
-                    sendPersonalDM(session.config.telegramChatId, `${winMsg} — ${gLabel}\n💰 Stake: <b>₦${displayStake.toLocaleString()}</b>\n🔄 Master Deficit Reset to <b>₦0</b>${balString}`).catch(() => {});
+                    sendSessionDM(session, `${winMsg} — ${gLabel}\n💰 Stake: <b>₦${displayStake.toLocaleString()}</b>\n🔄 Master Deficit Reset to <b>₦0</b>${balString}`).catch(() => {});
                 }
             } else {
                 const wasRolloverFailure = (state && state.isRollover);
@@ -2929,13 +2955,12 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                     if (session.config.shadowMode) {
                         mState.inShadowMode = true;
                         if (session.config.telegramChatId) {
-                            sendPersonalDM(session.config.telegramChatId, `🛡️ <b>SHADOW MODE ACTIVATED!</b>\n\n⚠️ Reached <b>${session.config.cbMaxLosses} consecutive losses</b> in Unified Master.\n👻 Live betting suspended. Bot is tracking virtual setups and will resume on the next confirmed win.` + balString).catch(() => {});
+                            sendSessionDM(session, `🛡️ <b>SHADOW MODE ACTIVATED!</b>\n\n⚠️ Reached <b>${session.config.cbMaxLosses} consecutive losses</b> in Unified Master.\n👻 Live betting suspended. Bot is tracking virtual setups and will resume on the next confirmed win.` + balString).catch(() => {});
                         }
                     } else {
                         session.cooldowns.unified = Number(pLogItem.drawId) + session.config.cbCooldown;
                         if (session.config.telegramChatId) {
-                            sendPersonalDM(
-                                session.config.telegramChatId,
+                            sendSessionDM(session,
                                 `🛡️ <b>CIRCUIT BREAKER TRIGGERED!</b>\n\n` +
                                 `⚠️ Reached <b>${session.config.cbMaxLosses} consecutive losses</b> in Unified Master mode.\n` +
                                 `⏳ Automation is skipping the next <b>${session.config.cbCooldown} draws</b> to protect your bankroll.\n` +
@@ -2948,7 +2973,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
                 if (session.config.telegramChatId) {
                     const lossType = wasRolloverFailure ? '❌ <b>UNIFIED ROLLOVER FAILED</b>' : '❌ <b>UNIFIED LOSS</b>';
-                    sendPersonalDM(session.config.telegramChatId, `${lossType} — ${gLabel}\n💸 Stake: <b>₦${displayStake.toLocaleString()}</b>\n📉 Current Master Deficit: <b>₦${mState.deficit.toLocaleString()}</b> | Next Master Step: <b>Step ${mState.step}</b>${balString}`).catch(() => {});
+                    sendSessionDM(session, `${lossType} — ${gLabel}\n💸 Stake: <b>₦${displayStake.toLocaleString()}</b>\n📉 Current Master Deficit: <b>₦${mState.deficit.toLocaleString()}</b> | Next Master Step: <b>Step ${mState.step}</b>${balString}`).catch(() => {});
                 }
             }
             session.stats.betsPlaced++; session.stats.lastStake = displayStake; session.stats.lastOdds = playedOdds;
@@ -2987,7 +3012,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                         state.rolloverStake = Math.round(calc.stake * calc.odds);
                         
                         if (session.config.telegramChatId) {
-                            sendPersonalDM(session.config.telegramChatId, `🔥 <b>WIN! PREPARING ROLLOVER!</b> — ${gLabel}\n💰 Base Stake Won: <b>₦${displayStake.toLocaleString()}</b>\n⏩ Next Stake (Rollover): <b>₦${state.rolloverStake.toLocaleString()}</b>${balString}`).catch(() => {});
+                            sendSessionDM(session, `🔥 <b>WIN! PREPARING ROLLOVER!</b> — ${gLabel}\n💰 Base Stake Won: <b>₦${displayStake.toLocaleString()}</b>\n⏩ Next Stake (Rollover): <b>₦${state.rolloverStake.toLocaleString()}</b>${balString}`).catch(() => {});
                         }
                     } 
                     else if (key === 'totalColor' && session.config.tc3Rollover) {
@@ -2999,7 +3024,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                             let totalCompoundCost = state.rolloverStake * 3;
                             
                             if (session.config.telegramChatId) {
-                                sendPersonalDM(session.config.telegramChatId, `🔥 <b>TC3 WIN! FULL COMPOUNDING (Stage ${state.rolloverStage}/${session.config.tc3RolloverTarget})</b> — ${gLabel}\n💰 Payout Won: <b>₦${Math.round(calc.stake * calc.odds).toLocaleString()}</b>\n⏩ Next Total Risk: <b>₦${totalCompoundCost.toLocaleString()}</b>${balString}`).catch(() => {});
+                                sendSessionDM(session, `🔥 <b>TC3 WIN! FULL COMPOUNDING (Stage ${state.rolloverStage}/${session.config.tc3RolloverTarget})</b> — ${gLabel}\n💰 Payout Won: <b>₦${Math.round(calc.stake * calc.odds).toLocaleString()}</b>\n⏩ Next Total Risk: <b>₦${totalCompoundCost.toLocaleString()}</b>${balString}`).catch(() => {});
                             }
                         } else {
                             session.stats.wins++; session.stats.lastResult = 'win';
@@ -3007,7 +3032,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                             session.userTracker[key].step = 1;
                             
                             if (session.config.telegramChatId) {
-                                sendPersonalDM(session.config.telegramChatId, `✅ <b>TC3 TARGET SECURED! (Stage ${session.config.tc3RolloverTarget} Hit)</b> — ${gLabel}\n💰 Payout Banked: <b>₦${Math.round(calc.stake * calc.odds).toLocaleString()}</b>\n🔄 Resetting to Base Risk!${balString}`).catch(() => {});
+                                sendSessionDM(session, `✅ <b>TC3 TARGET SECURED! (Stage ${session.config.tc3RolloverTarget} Hit)</b> — ${gLabel}\n💰 Payout Banked: <b>₦${Math.round(calc.stake * calc.odds).toLocaleString()}</b>\n🔄 Resetting to Base Risk!${balString}`).catch(() => {});
                             }
                         }
                     } else {
@@ -3019,7 +3044,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                         const winMsg = wasRollover ? `✅ <b>ROLLOVER COMPOUND SECURED!</b>` : `✅ <b>WIN! TARGET SECURED!</b>`;
 
                         if (session.config.telegramChatId) {
-                            sendPersonalDM(session.config.telegramChatId, `${winMsg} — ${gLabel}\n💰 Stake Executed: <b>₦${displayStake.toLocaleString()}</b>\n🔄 Sequence Reset to Step 1!${balString}`).catch(() => {});
+                            sendSessionDM(session, `${winMsg} — ${gLabel}\n💰 Stake Executed: <b>₦${displayStake.toLocaleString()}</b>\n🔄 Sequence Reset to Step 1!${balString}`).catch(() => {});
                         }
                     }
                 } else {
@@ -3039,13 +3064,12 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                         if (session.config.shadowMode) {
                             state.inShadowMode = true;
                             if (session.config.telegramChatId) {
-                                sendPersonalDM(session.config.telegramChatId, `🛡️ <b>SHADOW MODE ACTIVATED!</b> (${gLabel})\n\n⚠️ Reached <b>${session.config.cbMaxLosses} consecutive losses</b>.\n👻 Live betting suspended. Resuming upon next virtual win.` + balString).catch(() => {});
+                                sendSessionDM(session, `🛡️ <b>SHADOW MODE ACTIVATED!</b> (${gLabel})\n\n⚠️ Reached <b>${session.config.cbMaxLosses} consecutive losses</b>.\n👻 Live betting suspended. Resuming upon next virtual win.` + balString).catch(() => {});
                             }
                         } else {
                             session.cooldowns[key] = Number(pLogItem.drawId) + session.config.cbCooldown;
                             if (session.config.telegramChatId) {
-                                sendPersonalDM(
-                                    session.config.telegramChatId,
+                                sendSessionDM(session,
                                     `🛡️ <b>CIRCUIT BREAKER TRIGGERED!</b> (${gLabel})\n\n` +
                                     `⚠️ Reached <b>${session.config.cbMaxLosses} consecutive losses</b>.\n` +
                                     `⏳ Automation is skipping the next <b>${session.config.cbCooldown} draws</b> on this market.\n` +
@@ -3058,7 +3082,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
                     if (session.config.telegramChatId) {
                         const lossType = wasRolloverFailure ? '❌ <b>ROLLOVER FAILED</b>' : '❌ <b>LOSS</b>';
-                        sendPersonalDM(session.config.telegramChatId, `${lossType} — ${gLabel}\n💸 Failed Stake: <b>₦${displayStake.toLocaleString()}</b> | Next Local Step: <b>${state.localStep}</b>${balString}`).catch(() => {});
+                        sendSessionDM(session, `${lossType} — ${gLabel}\n💸 Failed Stake: <b>₦${displayStake.toLocaleString()}</b> | Next Local Step: <b>${state.localStep}</b>${balString}`).catch(() => {});
                     }
                 }
                 session.stats.betsPlaced++; session.stats.lastStake = displayStake; session.stats.lastOdds = calc.odds;
@@ -3100,6 +3124,7 @@ async function tick() {
         
         for (const clientId in userSessions) {
             const session = userSessions[clientId];
+            if (enforceSessionLimits(session)) continue;
             // 🛡️ SHADOW MODE LOGIC (Updated for Deficit Recovery)
             if (session.config.shadowMode) {
                 ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].forEach(k => {
@@ -3107,8 +3132,7 @@ async function tick() {
                         session.martingaleState[k].inShadowMode = false;
                         
                         if (session.config.telegramChatId) {
-                            sendPersonalDM(
-                                session.config.telegramChatId, 
+                            sendSessionDM(session, 
                                 `✅ <b>SHADOW MODE LIFTED!</b> (${k.toUpperCase()})\n\n` +
                                 `🚀 Virtual win confirmed. Resuming live execution at <b>Local Step ${session.martingaleState[k].localStep}</b> to recover prior deficit.`
                             ).catch(() => {});
@@ -3120,8 +3144,7 @@ async function tick() {
                     session.masterState.inShadowMode = false;
                     
                     if (session.config.telegramChatId) {
-                        sendPersonalDM(
-                            session.config.telegramChatId, 
+                        sendSessionDM(session, 
                             `✅ <b>SHADOW MODE LIFTED!</b> (Unified Master)\n\n` +
                             `🚀 Virtual win confirmed. Resuming live execution at <b>Unified Step ${session.masterState.step}</b> with a live deficit of <b>₦${session.masterState.deficit.toLocaleString()}</b> pending recovery.`
                         ).catch(() => {});
@@ -3135,7 +3158,7 @@ async function tick() {
                     session.betExecutionClaim = null;
                     session.failedBetRecovery = null;
                     if (session.config.telegramChatId) {
-                        sendPersonalDM(session.config.telegramChatId, `🚨 <b>Bet Placement Timeout!</b>\n\nFailed to place bet for Draw #${nextId}. Time dropped below 15 seconds. Bet cancelled to protect sequence.`).catch(()=>{});
+                        sendSessionDM(session, `🚨 <b>Bet Placement Timeout!</b>\n\nFailed to place bet for Draw #${nextId}. Time dropped below 15 seconds. Bet cancelled to protect sequence.`).catch(()=>{});
                     }
                 }
             }
@@ -3148,7 +3171,7 @@ async function tick() {
                     session.pendingBetPayload = { action: "REFRESH_BALANCE", drawId: nextId };
                 } else if (timeLeft <= 15 && session.balanceVerification.skippedDraw !== nextId) {
                     if (session.config.telegramChatId) {
-                        sendPersonalDM(session.config.telegramChatId, `⏳ <b>Balance Sync Lag</b>\n\nWaiting for previous win payout. Skipping Draw #${nextId} to protect bankroll.`).catch(()=>{});
+                        sendSessionDM(session, `⏳ <b>Balance Sync Lag</b>\n\nWaiting for previous win payout. Skipping Draw #${nextId} to protect bankroll.`).catch(()=>{});
                     }
                     session.balanceVerification.skippedDraw = nextId;
                 }
@@ -3298,29 +3321,11 @@ async function tick() {
             for (const clientId in userSessions) {
                 const session = userSessions[clientId];
                 
-                if (session.stats.isHalted || session.pendingBetPayload || session.balanceVerification.pendingWinSync) continue;
+                if (enforceSessionLimits(session) || session.pendingBetPayload || session.balanceVerification.pendingWinSync) continue;
                 if (session.lastBetDrawId === String(nextId) || session.balanceVerification.skippedDraw === String(nextId)) continue;
                 if (session.failedBetRecovery && String(session.failedBetRecovery.payload?.drawId) === String(nextId)) continue;
                 if (timeLeft <= 15) continue;
 
-                const balStringHalt = session.stats.liveAccountBalance > 0
-                    ? `\n\n👤 <b>USER ID:</b> <code>${clientId}</code>\n💳 <b>LIVE BALANCE:</b> ₦${session.stats.liveAccountBalance.toLocaleString()}`
-                    : `\n\n👤 <b>USER ID:</b> <code>${clientId}</code>\n💳 <b>LIVE BALANCE:</b> Syncing...`;
-
-                if (session.config.takeProfit > 0 && session.stats.totalReturned >= session.config.takeProfit) {
-                    session.stats.isHalted = true;
-                    session.stats.haltReason = `🎯 Target Met (₦${session.config.takeProfit})`;
-                    clearStrandedStates(session);
-                    if (session.config.telegramChatId) sendPersonalDM(session.config.telegramChatId, `🎯 <b>Balls49 — Target Met!</b>\n\nProfit target reached. Automation paused.${balStringHalt}`).catch(() => {});
-                    continue;
-                }
-                if (session.config.stopLoss < 0 && session.stats.totalReturned <= session.config.stopLoss) {
-                    session.stats.isHalted = true;
-                    session.stats.haltReason = `🛑 Stop Loss Hit (₦${session.config.stopLoss})`;
-                    clearStrandedStates(session);
-                    if (session.config.telegramChatId) sendPersonalDM(session.config.telegramChatId, `🛑 <b>Balls49 — Limits Bound!</b>\n\nStop boundary hit. Automation paused.${balStringHalt}`).catch(() => {});
-                    continue;
-                }
                 if (isTimeUp(session.config.schedule)) continue;
 
                 if (session.config.unifiedMode) {
@@ -3344,8 +3349,7 @@ async function tick() {
                     } else if (session.cooldowns.unified > 0 && session.cooldowns.unified < Number(nextId)) {
                         session.cooldowns.unified = 0;
                         if (session.config.telegramChatId) {
-                            sendPersonalDM(
-                                session.config.telegramChatId,
+                            sendSessionDM(session,
                                 `✅ <b>CIRCUIT BREAKER EXPIRED!</b>\n\n` +
                                 `🚀 Unified Master mode has completed its skip sequence and resumed active market scanning.`
                             ).catch(() => {});
@@ -3365,7 +3369,7 @@ async function tick() {
                             session.stats.haltReason = `🛑 Max Step Hit (${session.config.maxSteps[bestGame]}) for ${bestGame}`;
                             clearStrandedStates(session);
                             if (session.config.telegramChatId) {
-                                sendPersonalDM(session.config.telegramChatId, `🛑 <b>Balls49 — Max Step Hit!</b>\n\nUnified sequence breached Step ${session.config.maxSteps[bestGame]} for target ${bestGame}. Automation paused.`).catch(() => {});
+                                sendSessionDM(session, `🛑 <b>Balls49 — Max Step Hit!</b>\n\nUnified sequence breached Step ${session.config.maxSteps[bestGame]} for target ${bestGame}. Automation paused.`).catch(() => {});
                             }
                             continue;
                         }
@@ -3420,8 +3424,7 @@ async function tick() {
                             } else if (session.cooldowns[key] > 0 && session.cooldowns[key] < Number(nextId)) {
                                 session.cooldowns[key] = 0;
                                 if (session.config.telegramChatId) {
-                                    sendPersonalDM(
-                                        session.config.telegramChatId,
+                                    sendSessionDM(session,
                                         `✅ <b>CIRCUIT BREAKER EXPIRED!</b> (${key.toUpperCase()})\n\n` +
                                         `🚀 Market cooldown completed. Execution resumed.`
                                     ).catch(() => {});
@@ -3435,7 +3438,7 @@ async function tick() {
                                 session.stats.haltReason = `🛑 Max Step Reached (${session.config.maxSteps[key]})`;
                                 clearStrandedStates(session);
                                 if (session.config.telegramChatId) {
-                                    sendPersonalDM(session.config.telegramChatId, `🛑 <b>Balls49 — Limits Bound!</b>\n\nMax Step (${session.config.maxSteps[key]}) hit for ${key}. Automation paused.`).catch(() => {});
+                                    sendSessionDM(session, `🛑 <b>Balls49 — Limits Bound!</b>\n\nMax Step (${session.config.maxSteps[key]}) hit for ${key}. Automation paused.`).catch(() => {});
                                 }
                                 return;
                             }
@@ -4463,6 +4466,7 @@ async function handleHttpRequest(req, res) {
 
     if (parsedUrl.pathname === '/stream') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        if (enforceSessionLimits(session)) return res.end(JSON.stringify({ action: 'WAIT' }));
         const payload = session.pendingBetPayload;
         if (!payload) return res.end(JSON.stringify({ action: 'WAIT' }));
         if (payload.action !== 'EXECUTE_BET') return res.end(JSON.stringify(payload));
