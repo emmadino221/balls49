@@ -5,8 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
-const { applyPreviousDrawRule } = require('./total-color');
+const { applyPreviousDrawRule, singleColorPrediction } = require('./total-color');
 const { predictHighLow } = require('./high-low');
+const { predictBetZero } = require('./betzero');
 
 const args = process.argv.slice(2);
 if (args.includes('--help')) {
@@ -47,7 +48,9 @@ const start = source.indexOf('function computePredictions(');
 const end = source.indexOf('\nfunction processUpdates', start);
 if (start < 0 || end <= start) throw new Error('Cannot locate the current prediction generator.');
 const generator = source.slice(start, end);
-const context = vm.createContext({ getBallColor: color, applyPreviousDrawRule, predictHighLow,
+const replayPredictions = [];
+const context = vm.createContext({ getBallColor: color, applyPreviousDrawRule, singleColorPrediction,
+    predictHighLow, predictBetZero, predictionLog: replayPredictions,
     getBet49Prediction: () => null }); // Bet49 is outside this comparison; no persistent target state.
 vm.runInContext(generator, context, { timeout: 1000 });
 
@@ -74,6 +77,9 @@ eligible.forEach((index, position) => {
     const actual = draws[index];
     const history = draws.slice(index - 100, index).reverse();
     const current = context.computePredictions({ data: { draws: history } }, null, null, null, null, null, actual.id);
+    replayPredictions.push({ drawId: actual.id, predicted: {
+        betzero: current.betzeroStatus === 'ACTIVE' ? current.unlikely4.map(n => n.number) : []
+    } });
     const counts = Array(50).fill(0);
     const successes = { red: 0, blue: 0, green: 0 };
     for (const draw of history) {

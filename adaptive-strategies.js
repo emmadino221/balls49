@@ -71,35 +71,23 @@ function applyAdaptiveStrategies(pred, draws, records, targetDrawId) {
         return [{ id, balls }];
     }).sort((a, b) => b.id - a.id).slice(0, 100);
     const complete = history.length === 100 && history.every((draw, i) => draw.id === target - i - 1);
-    let betzeroAlternative = null, rainbowAlternative = null;
+    let rainbowAlternative = null;
     if (complete) {
-        const counts = Array(50).fill(0);
         const successes = { red: 0, blue: 0, green: 0 };
         for (const draw of history) {
-            draw.balls.forEach(n => counts[n]++);
             for (const c of COLORS) if (draw.balls.filter(n => ballColor(n) === c).length >= 2) successes[c]++;
         }
-        betzeroAlternative = Array.from({ length: 49 }, (_, i) => i + 1)
-            .sort((a, b) => counts[a] - counts[b] || a - b).slice(0, 4);
         rainbowAlternative = [...COLORS].sort((a, b) => successes[b] - successes[a])[0];
     }
     const candidates = {
-        betzero: { current: pred.betzeroStatus === 'ACTIVE' ? pred.unlikely4.map(n => n.number) : null, alternative: betzeroAlternative },
         rainbow: { current: pred.rainbowStatus === 'ACTIVE' ? pred.topColor.name : null, alternative: rainbowAlternative }
     };
     const adaptiveStrategies = { version: VERSION };
-    for (const market of ['betzero', 'rainbow']) {
+    for (const market of ['rainbow']) {
         const choice = chooseStrategy(market, records, target);
         adaptiveStrategies[market] = { ...choice, candidates: candidates[market] };
     }
     const result = { ...pred, brainData: { ...pred.brainData }, adaptiveStrategies };
-    if (adaptiveStrategies.betzero.selected === 'alternative') {
-        result.betzeroStatus = betzeroAlternative ? 'ACTIVE' : 'SKIP';
-        result.unlikely4 = (betzeroAlternative || []).map(number => ({ number }));
-        result.bzSkipReason = betzeroAlternative ? '' : 'Adaptive alternative requires 100 consecutive completed draws';
-        result.brainData.betzero = { selected: betzeroAlternative || [], status: result.betzeroStatus,
-            poolSize: betzeroAlternative ? 49 : 0, strategy: 'least_frequent_100' };
-    }
     if (adaptiveStrategies.rainbow.selected === 'alternative') {
         result.rainbowStatus = rainbowAlternative ? 'ACTIVE' : 'SKIP';
         result.rbSkipReason = rainbowAlternative ? '' : 'Adaptive alternative requires 100 consecutive completed draws';

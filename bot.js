@@ -21,6 +21,7 @@ const {
 } = require('./summary-gate');
 const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
 const { predictHighLow } = require('./high-low');
+const { predictBetZero } = require('./betzero');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
 const { applyAdaptiveStrategies, getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
 
@@ -1410,6 +1411,7 @@ function passesSummaryModelGate(session, key, prediction = lastPrediction) {
 }
 
 function passesStrategyFilter(session, key, prediction = lastPrediction) {
+    if (key === 'u4') return true; // BetZero now has one strategy; old filters cannot block it.
     const market = ({ u4: 'betzero', color: 'rainbow' })[key];
     const filter = session.config.strategyFilters?.[key] || 'follow';
     if (!market || filter === 'follow') return true;
@@ -2307,84 +2309,12 @@ function apiGet(path) {
 }
 
 function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId) {
-    var validBzNumbers = [];
-    var bet49Pick = null;
-    var betzeroStatus = 'SKIP';
-    var unlikely4 = [];
-    var bzSkipReason = '';
-
-    if (histRaw && histRaw.data && histRaw.data.draws && histRaw.data.draws.length >= 100) {
-        var draws = histRaw.data.draws;
-        const lookbacks = [20, 50, 100];
-        const weights = { 20: 0.50, 50: 0.30, 100: 0.20 };
-        const localStats = {};
-
-        for (let n = 1; n <= 49; n++) {
-            localStats[n] = { strk: 0, counts: { 20: 0, 50: 0, 100: 0 }, riskScore: 0, lowRiskWindows: 0 };
-        }
-
-        // Measure appearance risk consistently across short, medium, and long windows.
-        for (let i = 0; i < 100; i++) {
-            const nums = (draws[i].dr || '').split(',').map(Number).filter(n => n >= 1 && n <= 49);
-            nums.forEach(num => {
-                if (!localStats[num]) return;
-                lookbacks.forEach(window => {
-                    if (i < window) localStats[num].counts[window]++;
-                });
-            });
-        }
-
-        for (let n = 1; n <= 49; n++) {
-            let currentStreak = 0;
-            for (let i = 0; i < 100; i++) {
-                const nums = (draws[i].dr || '').split(',').map(Number);
-                if (nums.includes(n)) break;
-                currentStreak++;
-            }
-            localStats[n].strk = currentStreak;
-        }
-
-        const medians = {};
-        lookbacks.forEach(window => {
-            const rates = Object.values(localStats)
-                .map(stat => (stat.counts[window] / window) * 100)
-                .sort((a, b) => a - b);
-            medians[window] = rates[Math.floor(rates.length / 2)];
-        });
-
-        for (let n = 1; n <= 49; n++) {
-            const stat = localStats[n];
-            lookbacks.forEach(window => {
-                const rate = (stat.counts[window] / window) * 100;
-                stat.riskScore += rate * weights[window];
-                if (rate <= medians[window]) stat.lowRiskWindows++;
-            });
-
-            // Keep the existing absence guard, then require low risk in two windows.
-            if (stat.strk >= 4 && stat.lowRiskWindows >= 2) {
-                validBzNumbers.push({ number: n, riskScore: stat.riskScore, strk: stat.strk });
-            }
-        }
-
-        const allSorted = Object.keys(localStats)
-            .map(n => ({ number: parseInt(n, 10), riskScore: localStats[n].riskScore, strk: localStats[n].strk }))
-            .sort((a, b) => a.riskScore - b.riskScore || b.strk - a.strk);
-
-        bet49Pick = getBet49Prediction(draws);
-
-        if (validBzNumbers.length >= 4) {
-            betzeroStatus = 'ACTIVE';
-            validBzNumbers.sort((a, b) => a.riskScore - b.riskScore || b.strk - a.strk);
-            unlikely4 = validBzNumbers.slice(0, 4);
-        } else {
-            betzeroStatus = 'SKIP';
-            bzSkipReason = `Only ${validBzNumbers.length}/4 numbers passed the multi-window BetZero filter`;
-            unlikely4 = allSorted.slice(0, 4);
-        }
-    } else {
-        bzSkipReason = 'Need at least 100 draws for the BetZero multi-window filter';
-        unlikely4 = [{number:1,freq:0},{number:2,freq:0},{number:3,freq:0},{number:4,freq:0}];
-    }
+    const betzero = predictBetZero(histRaw?.data?.draws, predictionLog, targetDrawId);
+    var betzeroStatus = betzero.status;
+    var unlikely4 = betzero.numbers.map(number => ({ number }));
+    var bzSkipReason = betzero.reason;
+    // Bet49 retains its existing history requirement and selection logic.
+    var bet49Pick = histRaw?.data?.draws?.length >= 100 ? getBet49Prediction(histRaw.data.draws) : null;
 
     var tc4 = [
         { name: 'green', count: 0 },
@@ -2493,7 +2423,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var oppositeStreakLimit = Math.max(0, parseInt(hiloStats.find(item => item.sel === oppositeKey)?.strk, 10) || 0);
 
     var brainData = {
-        betzero: { selected: unlikely4.map(x => x.number), status: betzeroStatus, poolSize: validBzNumbers.length },
+        betzero: { selected: unlikely4.map(x => x.number), status: betzeroStatus, poolSize: betzero.poolSize, strategy: 'rolling_ten_keep_eligible' },
         rainbow: { selected: topColor.name, freqs: colorFreqs100, maxFreq: rawColorFreq, weightedMax: maxFreq100 },
         hilo: { targetLock: sumRange, oppositeStreakLimit: oppositeStreakLimit, analysis: highLow.analysis },
         totalColor: { status: totalColorPred.status }

@@ -1,5 +1,31 @@
 # Adaptive live selection: BetZero and Rainbow
 
+## Current BetZero rule (supersedes BetZero selection below)
+
+BetZero now uses one strategy, implemented in `betzero.js`. It examines exactly
+the 10 consecutive completed draws before the target. Numbers 1-49 appearing
+zero or once are eligible. Previously published picks remain selected while
+eligible; numbers appearing twice or more are replaced randomly without
+duplicates until there are four picks. The latest saved four-number prediction
+supplies continuity across restarts and skipped draws. The first update also
+keeps eligible picks from the previous strategy.
+
+Missing, invalid or conflicting results in that window cause a skip; older draws
+are not substituted. An already issued prediction is not changed mid-draw.
+All four numbers must be absent from the result to win. A losing number can
+remain in the next prediction if its rolling count is still only one.
+
+Automatic BetZero strategy switching has been removed. Old BetZero strategy
+filters cannot block execution. Rainbow adaptive selection is unchanged.
+Existing martingale, sniper, summary gates and settlement rules remain in place;
+this change does not reset accounts, stakes, streaks or history. Historical
+strategy records are retained. The older BetZero descriptions below document
+the previous implementation, not the current selection rule.
+
+The offline backtest's Current BetZero candidate now uses this rule and retains
+picks across replayed draws. Random replacements mean repeated replays can
+produce different results. No tests or live bets were run for this change.
+
 The private worker applies `adaptive-strategies.js` after generating the base
 picks and before saving or publishing the prediction. Telegram, the website and
 the extension receive the same selected pick. Other markets keep their existing
