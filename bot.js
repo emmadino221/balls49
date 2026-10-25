@@ -4894,10 +4894,6 @@ async function handleHttpRequest(req, res) {
             lastPredDrawId: null
         };
 
-        session.config.initialStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, totalColor1: 0 };
-        session.config.enabledGames = { u4: false, bet49: false, color: false, sum: false, totalColor: false, totalColor2: false, totalColor1: false };
-        session.config.takeProfit = 0;
-        session.config.stopLoss = 0;
         
         session.balanceVerification = { pendingWinSync: false, balanceBeforeWin: 0, skippedDraw: null, refreshClicked: false };
         session.lastBetDrawId = null;
