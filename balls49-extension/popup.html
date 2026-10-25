@@ -70,6 +70,28 @@
 
         .check-wrap { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-main); margin-bottom: 6px; }
         .check-wrap input { accent-color: var(--accent-green); }
+
+        .preset-panel { background: #111c2b; border: 1px solid #304966; border-radius: 12px; padding: 14px; margin-bottom: 12px; font-size: 12px; line-height: 1.55; }
+        .preset-panel h2 { font-size: 17px; margin-bottom: 4px; }
+        .preset-panel h3 { font-size: 13px; }
+        .preset-help { color: #b8c6d8; margin: 6px 0 12px; }
+        .preset-steps { display: flex; justify-content: space-between; gap: 6px; color: #93c5fd; font-size: 11px; border-block: 1px solid #304966; padding: 10px 0; margin: 12px 0; }
+        .preset-field { display: block; margin-bottom: 12px; font-weight: 600; }
+        .preset-field input, .preset-field select { margin-top: 5px; min-height: 40px; font: 12px 'Inter', system-ui, sans-serif; background: #0c1420; }
+        .preset-panel button { min-height: 40px; font-size: 12px; text-transform: none; margin-top: 8px; }
+        .preset-panel button:disabled { opacity: .45; cursor: not-allowed; }
+        .preset-panel :focus-visible { outline: 2px solid #93c5fd; outline-offset: 3px; }
+        .preset-message { padding: 11px; margin-top: 12px; border: 1px solid #466180; border-radius: 8px; background: #14263b; overflow-wrap: anywhere; }
+        .preset-message[data-tone="error"] { background: #351c24; border-color: #995160; color: #ffd1d8; }
+        .preset-message[data-tone="success"] { background: #102f28; border-color: #327965; color: #b2f5db; }
+        .preset-card { background: #0d1622; border: 1px solid #30445c; border-radius: 9px; padding: 12px; margin-top: 12px; }
+        .preset-card h3 { color: #93c5fd; margin-bottom: 8px; }
+        .preset-facts div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #223247; }
+        .preset-facts dt { color: #b8c6d8; }
+        .preset-facts dd { text-align: right; font-weight: 700; }
+        .preset-panel details { border-top: 1px solid #304966; margin-top: 14px; padding-top: 12px; }
+        .preset-panel summary { cursor: pointer; font-weight: 600; color: #c5dcfa; }
+        #preset-preview { user-select: text; }
     </style>
 </head>
 <body>
@@ -103,66 +125,52 @@
             <button id="sound-btn" class="btn-outline">🔊 Sound ON</button>
         </div>
 
-        <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
-            <div style="font-size: 9px; color: var(--accent-blue); font-weight: 700; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
-                ⚡ Strategy Presets (Game & Profile Calibration)
-            </div>
-            
-            <div style="margin-bottom: 6px;">
-                <input type="number" id="base-stake-percent" min="0.01" max="100" step="0.01" placeholder="Base Stake %" value="0.5">
-            </div>
-            <div style="margin-bottom: 6px;">
-                <select id="backtest-draws" title="Number of recent draws to test">
-                    <option value="50">Backtest last 50 draws</option>
-                    <option value="100">Backtest last 100 draws</option>
-                    <option value="500">Backtest last 500 draws</option>
-                    <option value="1000" selected>Backtest last 1,000 draws</option>
-                    <option value="5000">Backtest last 5,000 draws</option>
-                    <option value="10000">Backtest last 10,000 draws</option>
+        <section class="preset-panel" aria-labelledby="preset-title">
+            <h2 id="preset-title">Strategy presets</h2>
+            <p class="preset-help">Build suggested settings from your recent results, then review them before saving.</p>
+            <div class="preset-steps"><span>1. Choose</span><span>2. Preview</span><span>3. Apply &amp; save</span></div>
+            <label class="preset-field" for="preset-game-select">Game
+                <select id="preset-game-select">
+                    <option value="all">All individual games</option><option value="unified">Unified (4 source games)</option>
+                    <option value="totalColor1">Winning Color</option><option value="betzero">BetZero</option>
+                    <option value="bet49">Bet49</option><option value="rainbow">Rainbow</option><option value="hilo">High/Low</option>
+                    <option value="totalColor">Total Color 3-way</option><option value="totalColor2">Total Color 2-way</option>
                 </select>
-            </div>
-
-            <div style="margin-bottom: 6px;">
-                <input type="number" id="auto-capital" placeholder="Capital (₦)" value="100000">
-            </div>
-
-            <div class="grid-2" style="margin-bottom: 8px;">
-                <select id="preset-game-select" title="Target Game">
-                    <option value="all">All individual games</option>
-                    <option value="unified">Unified</option>
-                    <option value="totalColor1">Winning Color</option>
-                    <option value="betzero">🎯 BetZero</option>
-                    <option value="bet49">🟠 Bet49</option>
-                    <option value="rainbow">🌈 Rainbow</option>
-                    <option value="hilo">📈 High/Low</option>
-                    <option value="totalColor">🎨 TC (3-Way)</option>
-                    <option value="totalColor2">🎨 TC (2-Way)</option>
+            </label>
+            <label class="preset-field" for="preset-profile-select">Play style
+                <select id="preset-profile-select" aria-describedby="preset-profile-help">
+                    <option value="conservative">History recovery</option><option value="flat">Flat stakes</option>
+                    <option value="summary">Summary + Sniper</option><option value="winning_accumulating">Winning Color: accumulating</option>
+                    <option value="unified_sniper">Unified + Sniper</option><option value="tc3_aggressive">3-way color: rollover</option>
+                    <option value="antivol_ghost">Unified: shadow mode</option><option value="highroller_scale">Unified: weighted stakes</option>
                 </select>
-                <select id="preset-profile-select" title="Strategy Profile">
-                    <option value="conservative">History recovery</option>
-                    <option value="flat">Flat stakes</option>
-                    <option value="summary">Summary + Sniper</option>
-                    <option value="winning_accumulating">Winning Color accumulating</option>
-                    <option value="unified_sniper">2. Unified Sniper (ML)</option>
-                    <option value="tc3_aggressive">3. TC3 Rollover Hunter</option>
-                    <option value="antivol_ghost">4. Anti-Volatility Ghost</option>
-                    <option value="highroller_scale">5. High-Roller Scale</option>
-                </select>
+            </label>
+            <p id="preset-profile-help" class="preset-help"></p>
+            <label class="preset-field" for="auto-capital">Capital (&#8358;)
+                <input type="number" id="auto-capital" min="1000" value="100000">
+            </label>
+            <div class="grid-2">
+                <label class="preset-field" for="base-stake-percent">Starting stake (%)<input type="number" id="base-stake-percent" min="0.01" max="100" step="0.01" value="0.5"></label>
+                <label class="preset-field" for="preset-risk-percent">Risk budget (%)<input id="preset-risk-percent" type="number" min="1" max="100" value="10"></label>
             </div>
-
-            <button id="btn-apply-preset" class="btn-primary" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: #fff;">
-                🚀 Preview from history
-            </button>
-            
-            <button id="btn-confirm-history-preset" class="btn-primary" disabled>Apply preview to settings</button>
-            <p class="sniper-help">Preview uses settled history since the latest reset. Apply only fills the form; Save Settings sends it to the bot and leaves automation paused. Active recovery sequences cannot be changed by a preset.</p>
-            <label class="check-wrap">Preset risk budget (% of capital)<input id="preset-risk-percent" type="number" min="1" max="100" value="10"></label>
-            <button id="btn-run-backtest" class="btn-primary" style="margin-top: 6px; background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); color: #fff;">
-                Run Dry-Run Backtest
-            </button>
-            <div id="preset-preview" style="display: none; margin-top: 8px; padding: 8px; border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 6px; font-size: 9px; color: var(--text-muted);"></div>
-            <div id="setup-feedback" style="font-size: 9px; margin-top: 6px; font-weight: 600; display: none; text-align: center;"></div>
-        </div>
+            <p class="preset-help">Both use your capital. The starting stake is shared across selected games and may be reduced to fit the budget. A lower existing stop-loss still applies.</p>
+            <label class="preset-field" for="backtest-draws">Recent draws to review
+                <select id="backtest-draws"><option value="50">Last 50 draws</option><option value="100">Last 100 draws</option><option value="500">Last 500 draws</option><option value="1000" selected>Last 1,000 draws</option><option value="5000">Last 5,000 draws</option><option value="10000">Last 10,000 draws</option></select>
+            </label>
+            <p class="preset-help">Uses available history since the latest reset. Each game needs at least 50 settled wins or losses.</p>
+            <button id="btn-apply-preset" class="btn-primary">Preview suggested settings</button>
+            <div id="preset-status" class="preset-message" role="status" aria-live="polite" hidden></div>
+            <div id="preset-preview" style="display: none;"></div>
+            <button id="btn-confirm-history-preset" class="btn-primary" disabled>Apply preview to form</button>
+            <p class="preset-help">After applying, review the form and press Save Settings. Saving leaves automation paused. Active recovery must finish before a preset can be applied.</p>
+            <div id="setup-feedback" class="preset-message" role="status" aria-live="polite" style="display: none;"></div>
+            <button id="preset-review-save" class="btn-outline" hidden>Go to Save Settings</button>
+            <details><summary>Optional: legacy backtest</summary>
+                <p class="preset-help">A separate simulation for supported combinations. It does not validate all settings in the history preview or change your automation.</p>
+                <button id="btn-run-backtest" class="btn-outline">Run legacy backtest</button>
+                <div id="backtest-preview" class="preset-message" style="display: none;" role="status"></div>
+            </details>
+        </section>
 
         <div class="section">
             <div class="section-label">🎯 Active Markets</div>
@@ -229,7 +237,6 @@
             </div>
             
             <div class="grid-3" style="margin-bottom: 8px;">
-                <label class="check-wrap" title="Allow active general predictions to bypass ML confidence thresholds"><input type="checkbox" id="ml-override-toggle"> ML Override</label>
                 <label class="check-wrap"><input type="checkbox" id="bzrb-rollover-toggle"> BZ/RB/HL Rollover</label>
                 <label class="check-wrap"><input type="checkbox" id="tc3-rollover-toggle"> TC3 Rollover</label>
             </div>
@@ -244,7 +251,7 @@
                 <label class="summary-market-select">High/Low<select id="summary-model-hilo"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
                 <label class="summary-market-select">Total Color (3-Way)<select id="summary-model-totalColor"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
             </div>
-            <p class="sniper-help">Choose which saved summary label permits each market to trade. Summary HOLD trades the prediction when its label is HOLD; Summary ENTER requires ENTER. LEARNING or missing summary data pauses either gate. Existing confidence, sniper, stake and stop rules still apply. ML Override only bypasses confidence thresholds. Unified uses the chosen market's gate. Save settings to apply; a bet already queued is not recalled.</p>
+            <p class="sniper-help">Choose which saved summary label permits each market to trade. Summary HOLD trades the prediction when its label is HOLD; Summary ENTER requires ENTER. LEARNING or missing summary data pauses either gate. Sniper, stake and stop rules still apply. Individual games do not require a confidence score to enter. Unified selects from eligible predictions using model scores and applies the chosen market's summary gate. Save settings to apply; a bet already queued is not recalled.</p>
             
             <div class="grid-2" style="margin-bottom: 8px;">
                 <select id="hilo-multiplier" title="High/Low Multiplier">

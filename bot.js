@@ -529,7 +529,6 @@ function getSession(clientId) {
                 summaryModelTargets: normalizeSummaryModelTargets(),
                 strategyFilters: { u4: 'follow', color: 'follow' },
                 dynamicStakePercent: 0, cbMaxLosses: 0, cbCooldown: 0,
-                mlOverrideMode: false,
                 unifiedMode: false,
                 bzRbRollover: false,
                 hiloRollover: false,
@@ -3445,14 +3444,7 @@ async function tick() {
                 if (session.config.unifiedMode) {
                     if (session.masterState.inShadowMode) continue;
 
-                    let globalPick = pred.unifiedPick; 
-
-                    if (!globalPick && session.config.mlOverrideMode) {
-                        if (pred.betzeroStatus === 'ACTIVE') globalPick = { key: 'u4' };
-                        else if (pred.rainbowStatus === 'ACTIVE') globalPick = { key: 'color' };
-                        else if (pred.hiloStatus === 'ACTIVE') globalPick = { key: 'sum' };
-                        else if (pred.totalColorPred.status === 'ACTIVE') globalPick = { key: 'totalColor' };
-                    }
+                    const globalPick = pred.unifiedPick; 
 
                     if (globalPick && !passesSummaryModelGate(session, globalPick.key)) continue;
                     if (globalPick && !passesStrategyFilter(session, globalPick.key)) continue;
@@ -3559,11 +3551,11 @@ async function tick() {
                             
                             let isActivePrediction = false;
                             let activeMlScore = 0;
-                            if (key === 'u4' && pred.betzeroStatus === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.u4 >= 0.50)) { isActivePrediction = true; activeMlScore = localMlScores.u4; }
+                            if (key === 'u4' && pred.betzeroStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.u4; }
                             if (key === 'bet49' && Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49) { isActivePrediction = true; }
                             if (key === 'color' && pred.rainbowStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.color; }
-                            if (key === 'sum' && pred.hiloStatus === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.sum >= 0.55)) { isActivePrediction = true; activeMlScore = localMlScores.sum; }
-                            if (key === 'totalColor' && pred.totalColorPred.status === 'ACTIVE' && (session.config.mlOverrideMode || localMlScores.totalColor >= 0.45)) { isActivePrediction = true; activeMlScore = localMlScores.totalColor; }
+                            if (key === 'sum' && pred.hiloStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.sum; }
+                            if (key === 'totalColor' && pred.totalColorPred.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.totalColor; }
                             if (key === 'totalColor2' && pred.totalColor2Pred.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = 0; }
                             if (key === 'totalColor1' && pred.totalColor1Pred?.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = 0; }
 
@@ -4681,7 +4673,6 @@ async function handleHttpRequest(req, res) {
             ? { active: true, retries: session.failedBetRecovery?.retries || 0 } : null;
 
         const decisionLabels = { u4: 'BetZero', bet49: 'Bet49', color: 'Rainbow', sum: 'Hi/Lo', totalColor: 'Total Color 3-Way', totalColor2: 'Total Color 2-Way', totalColor1: 'Winning Color' };
-        const decisionThresholds = { u4: 0.50, bet49: 0, color: 0, sum: 0.55, totalColor: 0.45, totalColor2: 0, totalColor1: 0 };
         let decisionReason = 'Waiting for the next draw decision.';
         if (session.stats.isHalted) {
             decisionReason = session.stats.haltReason || 'Automation is halted.';
@@ -4697,13 +4688,7 @@ async function handleHttpRequest(req, res) {
         } else if (livePred) {
             let enabledKeys = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].filter(key => session.config.enabledGames[key]);
             if (session.config.unifiedMode) {
-                let selected = livePred.unifiedPick?.key;
-                if (!selected && session.config.mlOverrideMode) {
-                    selected = livePred.betzeroStatus === 'ACTIVE' ? 'u4'
-                        : livePred.rainbowStatus === 'ACTIVE' ? 'color'
-                        : livePred.hiloStatus === 'ACTIVE' ? 'sum'
-                        : livePred.totalColorPred?.status === 'ACTIVE' ? 'totalColor' : null;
-                }
+                const selected = livePred.unifiedPick?.key;
                 enabledKeys = enabledKeys.length && selected ? [selected] : [];
             }
             const predictionByKey = {
@@ -4716,29 +4701,27 @@ async function handleHttpRequest(req, res) {
                 totalColor1: livePred.totalColor1Pred?.status
             };
             const skipReasons = { u4: livePred.bzSkipReason, color: livePred.rbSkipReason, sum: livePred.hlSkipReason };
-            const mlScores = { u4: mlBz.score, bet49: 1, color: mlRb.score, sum: mlHl.score, totalColor: mlTc.score, totalColor2: 1, totalColor1: 1 };
             const blockedKey = enabledKeys.find(key => predictionByKey[key] === 'SKIP');
             const summaryBlockedKey = enabledKeys.find(key => SUMMARY_MODEL_MARKETS.includes(key)
                 && getSummaryGateTarget(session.config, key) !== null
                 && predictionByKey[key] === 'ACTIVE'
                 && !passesSummaryModelGate(session, key, lastPredData));
-            const thresholdKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE' && !session.config.mlOverrideMode && mlScores[key] < decisionThresholds[key]);
             const strategyBlockedKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE'
                 && !passesStrategyFilter(session, key, lastPredData));
             const readyKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE'
-                && (session.config.mlOverrideMode || mlScores[key] >= decisionThresholds[key])
                 && passesSummaryModelGate(session, key, lastPredData)
                 && passesStrategyFilter(session, key, lastPredData));
             if (!enabledKeys.length) {
-                decisionReason = 'No prediction market is enabled.';
+                decisionReason = session.config.unifiedMode && Object.values(session.config.enabledGames).some(Boolean)
+                    ? 'Unified is waiting for an eligible score-selected prediction.'
+                    : 'No prediction market is enabled.';
             } else if (blockedKey) {
                 decisionReason = `${decisionLabels[blockedKey]} is skipped${skipReasons[blockedKey] ? `: ${skipReasons[blockedKey]}` : '.'}`;
             } else if (strategyBlockedKey) {
                 decisionReason = `${decisionLabels[strategyBlockedKey]} is waiting for the ${session.config.strategyFilters[strategyBlockedKey]} strategy. Progression is held.${readyKey ? ` ${decisionLabels[readyKey]} meets its prediction gates.` : ''}`;
             } else if (summaryBlockedKey) {
                 decisionReason = `${decisionLabels[summaryBlockedKey]} is waiting for Summary ${getSummaryGateTarget(session.config, summaryBlockedKey)} on this draw.`;
-            } else if (thresholdKey) {
-                decisionReason = `${decisionLabels[thresholdKey]} is held until the confidence model clears the entry gate.`;
+
             } else if (readyKey) {
                 decisionReason = `${decisionLabels[readyKey]} is eligible for the next draw.`;
             } else {
@@ -5060,7 +5043,6 @@ async function handleHttpRequest(req, res) {
                 }
                 if (cfg.cbMaxLosses !== undefined) session.config.cbMaxLosses = validateNumber(cfg.cbMaxLosses, 0, 50, 0);
                 if (cfg.cbCooldown !== undefined) session.config.cbCooldown = validateNumber(cfg.cbCooldown, 0, 300, 0); 
-                if (cfg.mlOverrideMode !== undefined) session.config.mlOverrideMode = Boolean(cfg.mlOverrideMode);
                 applySummaryGateConfig(session.config, cfg);
                 if (cfg.strategyFilters && typeof cfg.strategyFilters === 'object' && !Array.isArray(cfg.strategyFilters)) {
                     session.config.strategyFilters ||= { u4: 'follow', color: 'follow' };

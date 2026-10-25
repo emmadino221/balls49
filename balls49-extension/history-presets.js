@@ -57,8 +57,11 @@ async function previewHistoricalPreset() {
     const apply = document.getElementById('btn-confirm-history-preset');
     const preview = document.getElementById('preset-preview');
     apply.disabled = true; historyPresetPreview = null;
-    preview.style.display = 'block'; preview.style.whiteSpace = 'pre-line';
-    preview.textContent = 'Reading settled history...'; button.disabled = true;
+    preview.style.display = 'none'; preview.replaceChildren();
+    document.getElementById('setup-feedback').style.display = 'none';
+    document.getElementById('preset-review-save').hidden = true;
+    presetStatus('Reading your completed draw results...');
+    button.disabled = true; button.textContent = 'Reading history...';
     const inputs = presetInputs();
     try {
         const capital = Number(presetValue('auto-capital'));
@@ -82,9 +85,6 @@ async function previewHistoricalPreset() {
         const existingStop = Math.abs(Number(presetValue('stop-loss')) || 0);
         const budget = Math.min(capital * riskPercent / 100, existingStop || Infinity);
         const perGameBudget = unified ? budget : budget / games.length;
-        const lines = [`${history.draws} settled draws; ${history.gaps} history gaps. Skips do not count as wins/losses.`,
-            `Risk budget: ${Math.floor(budget).toLocaleString()} (existing lower stop-loss respected).`,
-            'History-based rules, not an optimized strategy or a guarantee of profit.'];
         const plans = {};
         for (const game of games) {
             const stats = history.markets[unified ? 'unified' : game];
@@ -97,27 +97,25 @@ async function previewHistoricalPreset() {
             const sniper = game !== 'bet49' && profile !== 'flat';
             plans[game] = { base, steps, gate, sniper, sniperStep: Math.min(10, Math.max(1, Math.ceil(stats.worstLosses / 2))),
                 resetLosses: Math.min(5, Math.max(1, Math.ceil(stats.worstLosses / 3))) };
-            lines.push(`${PRESET_META[game][0]}: ${history.markets[game].wins} wins / ${history.markets[game].losses} losses; worst ${history.markets[game].worstLosses}.`,
-                `Stake ${base}; max step ${steps}; summary ${gate}${sniper ? `; sniper ${plans[game].sniperStep}, reset after ${plans[game].resetLosses} losses` : '; sniper off / unsupported'}.`);
         }
-        if (excluded.length) lines.push(`Not enabled (insufficient history or unsupported mode): ${excluded.map(g => PRESET_META[g][0]).join(', ')}.`);
-        lines.push(`Mode: ${unified ? 'Unified (all four source games)' : 'Individual'}; ML override OFF; High/Low 2x; take-profit unchanged.`,
-            `Shadow CB: ${profile === 'antivol_ghost' ? 'ON' : 'OFF'}; weighted stakes: ${profile === 'highroller_scale' ? 'ON' : 'OFF'}; TC3 rollover: ${profile === 'tc3_aggressive' ? 'ON (2 stages)' : 'OFF'}.`,
-            'Summary gates require 30 labelled outcomes and a 5-point historical advantage. Unsupported gates stay off.',
-            'Sniper thresholds are conservative suggestions from observed streak length, not replay-tested entry points.',
-            'The capital estimate covers a loss sequence, not every rollover path. The bot still enforces stop-loss.',
-            history.busy ? 'An active execution/recovery sequence blocks applying this preview. Its progression will not be reset.' : 'Apply fills the form only. Review, then Save Settings.');
-        preview.textContent = lines.join('\n');
+        renderHistoryPreset({ history, plans, profile, unified, budget, excluded });
+        presetStatus(history.busy
+            ? 'Preview ready. Finish the active betting or recovery sequence before applying. Your progression is preserved.'
+            : 'Preview ready. Review the cards below, then apply to the form.', history.busy ? 'error' : 'success');
         historyPresetPreview = { inputs, history, plans, profile, unified, budget };
         apply.disabled = history.busy;
-    } catch (error) { preview.textContent = error.message; }
-    finally { button.disabled = false; }
+    } catch (error) { presetStatus(error.message, 'error'); }
+    finally { button.disabled = false; button.textContent = 'Preview suggested settings'; }
 }
 
 document.getElementById('btn-confirm-history-preset').addEventListener('click', async () => {
     const preview = historyPresetPreview;
     const feedback = document.getElementById('setup-feedback');
     feedback.style.display = 'block';
+    feedback.dataset.tone = '';
+    feedback.textContent = 'Checking that this preview can still be applied...';
+    const applyButton = document.getElementById('btn-confirm-history-preset');
+    applyButton.disabled = true;
     try {
         if (!preview || preview.inputs !== presetInputs()) throw new Error('Settings changed. Preview again first.');
         const current = await fetchPresetHistory();
@@ -140,7 +138,6 @@ document.getElementById('btn-confirm-history-preset').addEventListener('click', 
         for (const { id } of SUMMARY_MODEL_MARKETS) document.getElementById(`summary-model-${id}`).value = preview.plans[id]?.gate || 'OFF';
         toggle('unified-mode', preview.unified);
         toggle('flat-betting', preview.profile === 'flat');
-        toggle('ml-override', false);
         toggle('shadowMode', preview.profile === 'antivol_ghost');
         toggle('weightedStaking', preview.profile === 'highroller_scale');
         toggle('bzrb-rollover', false);
@@ -151,6 +148,104 @@ document.getElementById('btn-confirm-history-preset').addEventListener('click', 
         document.getElementById('stop-loss').value = Math.floor(preview.budget);
         document.getElementById('cb-max-losses').value = preview.profile === 'antivol_ghost' ? Math.max(...Object.values(preview.plans).map(p => p.resetLosses)) : 0;
         appliedHistoryPreset = { generatedAt: preview.history.generatedAt, resetAt: preview.history.resetAt };
-        feedback.textContent = 'Preview applied to form. Review settings and click Save Settings. No bets or progression were changed.';
-    } catch (error) { feedback.textContent = error.message; }
+        feedback.dataset.tone = 'success';
+        feedback.textContent = 'Applied to the form. Next: review your settings below and press Save Settings. Your changes have not been saved yet. Martingale amounts and progression are unchanged.';
+        document.getElementById('preset-review-save').hidden = false;
+    } catch (error) { feedback.dataset.tone = 'error'; feedback.textContent = error.message; }
+    finally { applyButton.disabled = !historyPresetPreview || historyPresetPreview.inputs !== presetInputs() || historyPresetPreview.history.busy; }
+});
+
+
+function presetStatus(message, tone = '') {
+    const status = document.getElementById('preset-status');
+    status.hidden = false;
+    status.dataset.tone = tone;
+    status.textContent = message;
+}
+function presetNode(tag, text, className) {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+}
+function presetFacts(rows) {
+    const list = presetNode('dl', undefined, 'preset-facts');
+    for (const [label, value] of rows) {
+        const row = presetNode('div');
+        row.append(presetNode('dt', label), presetNode('dd', value));
+        list.append(row);
+    }
+    return list;
+}
+function renderHistoryPreset({ history, plans, profile, unified, budget, excluded }) {
+    const root = document.getElementById('preset-preview');
+    root.replaceChildren(); root.style.display = 'block';
+    const money = value => '\u20a6' + Math.floor(value).toLocaleString();
+    const overview = presetNode('section', undefined, 'preset-card');
+    overview.append(presetNode('h3', 'Your preview'), presetFacts([
+        ['Draws reviewed', history.draws], ['Gaps in history', history.gaps],
+        ['Total risk budget', money(budget)], ['Mode', unified ? 'Unified' : 'Individual games']
+    ]));
+    root.append(overview);
+    for (const [game, plan] of Object.entries(plans)) {
+        const stats = history.markets[game];
+        const supportsSummary = SUMMARY_MODEL_MARKETS.some(market => market.id === game);
+        const card = presetNode('section', undefined, 'preset-card');
+        card.append(presetNode('h3', PRESET_META[game][0]), presetFacts([
+            ['Starting stake', money(plan.base) + (PRESET_META[game][3] > 1 ? ' / color' : '')],
+            ['Maximum steps', plan.steps], ['Wins / losses', `${stats.wins} / ${stats.losses}`],
+            ['Win rate', `${(presetRate(stats) * 100).toFixed(1)}%`],
+            ['Worst losing streak', `${stats.worstLosses} losses`],
+            ['Summary entry', supportsSummary ? plan.gate === 'OFF' ? 'Any summary' : plan.gate + ' only' : 'Not supported'],
+            [unified ? 'Shared sniper entry' : 'Sniper entry', plan.sniper ? 'Step ' + plan.sniperStep : 'Off'],
+            ['Pause after losses', plan.sniper ? plan.resetLosses + ' in a row' : 'Not used']
+        ]));
+        if (unified) card.append(presetNode('p', 'Step limits and sniper settings use the shared Unified history.', 'preset-help'));
+        root.append(card);
+    }
+    if (excluded.length) root.append(presetNode('p', 'Not included: ' + excluded.map(game => PRESET_META[game][0]).join(', ') + '. These games need more history or do not support this play style.', 'preset-message'));
+    const details = presetNode('details');
+    details.append(presetNode('summary', 'Expert settings & how to read this'), presetFacts([
+        ['Confidence entry filter', unified ? 'Unified selection' : 'Not used'], ['High/Low multiplier', '2x'], ['Take-profit', 'Unchanged'],
+        ['Shadow mode', profile === 'antivol_ghost' ? 'On' : 'Off'],
+        ['Weighted stakes', profile === 'highroller_scale' ? 'On' : 'Off'],
+        ['3-way color rollover', profile === 'tc3_aggressive' ? 'On / 2 stages' : 'Off']
+    ]));
+    for (const message of [
+        'Summary entry means the extension only enters when that summary label is active. A gate needs at least 30 labelled results and a win rate 5 percentage points above the game overall.',
+        'Sniper waits for the chosen global step. After the listed losses it pauses for another entry, preserving recovery progression.',
+        'Skipped picks do not count as wins or losses. History gaps break a loss run.',
+        'These are suggestions from past results, not proven optimal settings. Sniper entry points have not been replay-tested. The budget estimates a losing sequence, not every rollover path; stop-loss remains enforced.'
+    ]) details.append(presetNode('p', message, 'preset-help'));
+    root.append(details);
+}
+const presetDescriptions = {
+    conservative: 'Recovery stakes with history-based step limits, sniper settings and eligible summary gates.',
+    flat: 'Keep stakes flat. Sniper is off; eligible summary gates can still apply. Winning Color is excluded.',
+    summary: 'Recovery stakes with history-based sniper settings and eligible ENTER or HOLD gates.',
+    winning_accumulating: 'Winning Color recovery with an accumulating profit target.',
+    unified_sniper: 'Use the four Unified source games with a shared sniper entry and recovery sequence.',
+    tc3_aggressive: 'Total Color 3-way with two-stage rollover and history-based entry settings.',
+    antivol_ghost: 'Unified with shadow mode and a history-based circuit-breaker loss limit.',
+    highroller_scale: 'Unified with weighted stakes and a larger reserve in the budget estimate.'
+};
+function describePreset() {
+    document.getElementById('preset-profile-help').textContent = presetDescriptions[presetValue('preset-profile-select')] || '';
+}
+describePreset();
+for (const id of ['auto-capital', 'preset-game-select', 'preset-profile-select', 'base-stake-percent', 'backtest-draws', 'preset-risk-percent', 'stop-loss']) {
+    document.getElementById(id).addEventListener('input', () => {
+        describePreset();
+        if (historyPresetPreview && historyPresetPreview.inputs !== presetInputs()) {
+            historyPresetPreview = null;
+            document.getElementById('btn-confirm-history-preset').disabled = true;
+            document.getElementById('preset-preview').style.display = 'none';
+            presetStatus('Your inputs changed. Preview again to see updated suggestions.');
+        }
+    });
+}
+document.getElementById('preset-review-save').addEventListener('click', () => {
+    const save = document.getElementById('save-btn');
+    save.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    save.focus({ preventScroll: true });
 });

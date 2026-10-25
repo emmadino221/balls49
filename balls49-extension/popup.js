@@ -251,7 +251,7 @@ document.getElementById('btn-apply-preset')?.addEventListener('click', async () 
 
 document.getElementById('btn-run-backtest')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-run-backtest');
-    const previewEl = document.getElementById('preset-preview');
+    const previewEl = document.getElementById('backtest-preview');
     const game = document.getElementById('preset-game-select')?.value || 'hilo';
     const profile = document.getElementById('preset-profile-select')?.value || 'conservative';
     const capital = Math.max(1000, parseFloat(document.getElementById('auto-capital')?.value) || 100000);
@@ -366,7 +366,6 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         return;
     } 
     const bzRbRollover = getToggleValue('bzrb-rollover');
-    const mlOverrideMode = getToggleValue('ml-override');
     const strategyFilters = { u4: 'follow', color: 'follow' };
     const summaryModelMarkets = Object.fromEntries(SUMMARY_MODEL_MARKETS.map(({ id, key }) => ([
         key,
@@ -413,7 +412,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets, summaryModelTargets, strategyFilters,
+        unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
         shadowMode, weightedStaking 
     };
 
@@ -519,7 +518,7 @@ function loadParameters() {
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
         'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'tc1ProfitMode', 'baseStakePercent', 'backtestDraws',
-        'tc3Rollover', 'tc3RolloverTarget', 'mlOverrideMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking'
+        'tc3Rollover', 'tc3RolloverTarget', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking'
     ], (data) => {
         let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
         const stakes = data.stakes || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
@@ -558,7 +557,6 @@ function loadParameters() {
         setCheckState('flat-betting', data.flatBetting);
         setCheckState('unified-mode', data.unifiedMode);
         setCheckState('bzrb-rollover', data.bzRbRollover);
-        setCheckState('ml-override', data.mlOverrideMode);
 
         SUMMARY_MODEL_MARKETS.forEach(({ id, key }) => {
             const select = document.getElementById(`summary-model-${id}`);
