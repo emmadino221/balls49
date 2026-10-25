@@ -257,6 +257,12 @@ document.getElementById('btn-run-backtest')?.addEventListener('click', async () 
     const capital = Math.max(1000, parseFloat(document.getElementById('auto-capital')?.value) || 100000);
     const basePercent = Math.min(100, Math.max(0.01, parseFloat(document.getElementById('base-stake-percent')?.value) || 0.5));
     const drawWindow = Math.min(10000, Math.max(1, parseInt(document.getElementById('backtest-draws')?.value, 10) || 1000));
+    if (['all', 'unified', 'totalColor1', 'bet49'].includes(game) || ['flat', 'summary', 'winning_accumulating'].includes(profile)) {
+        previewEl.style.display = 'block';
+        previewEl.textContent = 'This combination is supported by the history preview. The legacy backtest does not simulate it.';
+        return;
+    }
+
     const originalText = btn.textContent;
 
     btn.disabled = true;
@@ -303,144 +309,7 @@ document.getElementById('btn-run-backtest')?.addEventListener('click', async () 
 });
 
 async function applyHistoricalPreset() {
-    const capitalInput = parseFloat(document.getElementById('auto-capital')?.value) || 100000;
-    const targetGame = document.getElementById('preset-game-select')?.value || 'betzero';
-    const presetKey = document.getElementById('preset-profile-select')?.value || 'conservative';
-    let hiloMultiplier = parseFloat(document.getElementById('hilo-multiplier')?.value) || 2.0;
-    const baseStakePercent = Math.min(100, Math.max(0.01, parseFloat(document.getElementById('base-stake-percent')?.value) || 0.5));
-    const feedbackEl = document.getElementById('setup-feedback');
-    const btn = document.getElementById('btn-apply-preset');
-    const origText = btn.textContent;
-
-    if (isNaN(capitalInput) || capitalInput < 1000) {
-        feedbackEl.style.display = 'block';
-        feedbackEl.style.color = 'var(--accent-red)';
-        feedbackEl.textContent = '⚠️ Enter valid capital (Min ₦1000)';
-        return;
-    }
-
-    btn.textContent = '⏳ Querying Risk Profile...';
-
-    const gameMeta = {
-        betzero:     { histKey: 'u4',          odds: 1.65, defaultSteps: 7 },
-        bet49:       { histKey: 'bet49',       odds: 7.80, defaultSteps: 8 },
-        rainbow:     { histKey: 'color',       odds: 1.50, defaultSteps: 9 },
-        hilo:        { histKey: 'sum',         odds: 2.00, defaultSteps: 8 },
-        totalColor:  { histKey: 'totalColor',  odds: 3.80, defaultSteps: 6 },
-        totalColor2: { histKey: 'totalColor2', odds: 3.80, defaultSteps: 12 }
-    };
-
-    const targetMeta = gameMeta[targetGame] || gameMeta.betzero;
-
-    if (targetGame === 'hilo') {
-        const recoveryProfile = presetKey === 'conservative';
-        hiloMultiplier = recoveryProfile ? 1.40 : 2.00;
-        document.getElementById('hilo-multiplier').value = recoveryProfile ? '1.40' : '2.00';
-    }
-
-    const clearMarkets = () => {
-        ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1'].forEach(k => {
-            document.getElementById(`stake-${k}`).value = '';
-            document.getElementById(`step-${k}`).value = '';
-            document.getElementById(`btn-${k}`).classList.remove('active');
-        });
-    };
-
-    const setToggle = (id, state) => {
-        const el = document.getElementById(id) || document.getElementById(id + '-toggle');
-        if (el) el.checked = !!state;
-    };
-
-    clearMarkets();
-
-    const requestedBaseStake = Math.max(50, Math.round((capitalInput * baseStakePercent / 100) / 50) * 50);
-    const stopLossTolerance = capitalInput;
-    const calculatedSteps = calculateAffordableSteps(targetMeta.histKey, requestedBaseStake, targetMeta.odds, hiloMultiplier, stopLossTolerance);
-    const originalSteps = calculatedSteps;
-    const maximumSafeBaseStake = calculateOptimalBaseUnit(targetMeta.histKey, capitalInput, calculatedSteps, targetMeta.odds, hiloMultiplier);
-    const baseStake = Math.min(requestedBaseStake, maximumSafeBaseStake);
-
-    document.getElementById(`stake-${targetGame}`).value = baseStake;
-    document.getElementById(`step-${targetGame}`).value = calculatedSteps;
-    document.getElementById(`btn-${targetGame}`).classList.add('active');
-
-    if (presetKey === 'conservative') {
-        setToggle('unified-mode', false);
-        setToggle('shadowMode', true);
-        setToggle('weightedStaking', false);
-        setToggle('bzrb-rollover', targetGame === 'betzero' || targetGame === 'rainbow');
-        setToggle('tc3-rollover', false);
-        setToggle('ml-override', false);
-        setToggle('flat-betting', false);
-
-        document.getElementById('take-profit').value = Math.floor(capitalInput * 0.10);
-        document.getElementById('stop-loss').value = Math.floor(capitalInput);
-        document.getElementById('cb-max-losses').value = '2';
-
-    } else if (presetKey === 'unified_sniper') {
-        setToggle('unified-mode', true);
-        setToggle('shadowMode', true);
-        setToggle('weightedStaking', true);
-        setToggle('bzrb-rollover', false);
-        setToggle('tc3-rollover', false);
-        setToggle('ml-override', false);
-
-        document.getElementById('take-profit').value = Math.floor(capitalInput * 0.15);
-        document.getElementById('stop-loss').value = Math.floor(capitalInput);
-        document.getElementById('cb-max-losses').value = '3';
-
-    } else if (presetKey === 'tc3_aggressive') {
-        setToggle('unified-mode', false);
-        setToggle('shadowMode', true);
-        setToggle('weightedStaking', false);
-        setToggle('bzrb-rollover', false);
-        setToggle('tc3-rollover', targetGame.startsWith('totalColor'));
-        document.getElementById('tc3-rollover-target').value = '3';
-
-        document.getElementById('take-profit').value = Math.floor(capitalInput * 0.25);
-        document.getElementById('stop-loss').value = Math.floor(capitalInput);
-        document.getElementById('cb-max-losses').value = '3';
-
-    } else if (presetKey === 'antivol_ghost') {
-        setToggle('unified-mode', true);
-        setToggle('shadowMode', true);
-        setToggle('weightedStaking', false);
-        setToggle('bzrb-rollover', false);
-        setToggle('tc3-rollover', false);
-
-        document.getElementById('take-profit').value = Math.floor(capitalInput * 0.08);
-        document.getElementById('stop-loss').value = Math.floor(capitalInput);
-        document.getElementById('cb-max-losses').value = '2';
-
-    } else if (presetKey === 'highroller_scale') {
-        setToggle('unified-mode', true);
-        setToggle('shadowMode', true);
-        setToggle('weightedStaking', true);
-        setToggle('bzrb-rollover', true);
-        setToggle('tc3-rollover', true);
-        document.getElementById('tc3-rollover-target').value = '3';
-
-        document.getElementById('take-profit').value = Math.floor(capitalInput * 0.30);
-        document.getElementById('stop-loss').value = Math.floor(capitalInput);
-        document.getElementById('cb-max-losses').value = '4';
-    }
-
-    // HiLo 1.40x needs rollover to recover the shortfall after a loss.
-    // HiLo 2.00x is profitable after a loss without rollover, so leave the
-    // unified rollover toggle at the profile's selected value.
-    if (targetGame === 'hilo') {
-        const recoveryProfile = presetKey === 'conservative';
-        if (recoveryProfile) setToggle('bzrb-rollover', true);
-    }
-
-    const rolloverEnabled = document.getElementById('bzrb-rollover-toggle')?.checked || false;
-    renderPresetPreview(targetMeta.histKey, baseStake, calculatedSteps, targetMeta.odds, hiloMultiplier, rolloverEnabled, baseStakePercent, requestedBaseStake, capitalInput, stopLossTolerance, originalSteps);
-
-    feedbackEl.style.display = 'block';
-    feedbackEl.style.color = 'var(--accent-blue)';
-    feedbackEl.textContent = `✅ Calibrated ${targetGame.toUpperCase()} with ${presetKey.toUpperCase()}`;
-    btn.textContent = '✅ Calibrated!';
-    setTimeout(() => { btn.textContent = origText; }, 2000);
+    await previewHistoricalPreset();
 }
 
 document.getElementById('save-btn')?.addEventListener('click', async () => {
@@ -547,6 +416,28 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, mlOverrideMode, summaryModelMarkets, summaryModelTargets, strategyFilters,
         shadowMode, weightedStaking 
     };
+
+    if (appliedHistoryPreset) {
+        try {
+            const guardedPayload = { ...payload, historyPreset: appliedHistoryPreset, running: false, hiloRollover: false, cbCooldown: 0 };
+            const response = await extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(guardedPayload)
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || 'Preset could not be applied.');
+            await chrome.storage.sync.set({ ...payload, running: false, hiloRollover: false, cbCooldown: 0 });
+            appliedHistoryPreset = null;
+            setToggleBtn(false);
+            const feedback = document.getElementById('save-feedback');
+            feedback.style.display = 'block';
+            feedback.textContent = 'Preset saved. Automation is paused; review settings before starting.';
+        } catch (error) {
+            const feedback = document.getElementById('save-feedback');
+            feedback.style.display = 'block';
+            feedback.textContent = error.message;
+        } finally { btn.textContent = originalText; }
+        return;
+    }
 
     chrome.storage.sync.set(payload, async () => {
         const feedback = document.getElementById('save-feedback');

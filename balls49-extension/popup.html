@@ -128,6 +128,9 @@
 
             <div class="grid-2" style="margin-bottom: 8px;">
                 <select id="preset-game-select" title="Target Game">
+                    <option value="all">All individual games</option>
+                    <option value="unified">Unified</option>
+                    <option value="totalColor1">Winning Color</option>
                     <option value="betzero">🎯 BetZero</option>
                     <option value="bet49">🟠 Bet49</option>
                     <option value="rainbow">🌈 Rainbow</option>
@@ -136,7 +139,10 @@
                     <option value="totalColor2">🎨 TC (2-Way)</option>
                 </select>
                 <select id="preset-profile-select" title="Strategy Profile">
-                    <option value="conservative">1. Conservative Compounder</option>
+                    <option value="conservative">History recovery</option>
+                    <option value="flat">Flat stakes</option>
+                    <option value="summary">Summary + Sniper</option>
+                    <option value="winning_accumulating">Winning Color accumulating</option>
                     <option value="unified_sniper">2. Unified Sniper (ML)</option>
                     <option value="tc3_aggressive">3. TC3 Rollover Hunter</option>
                     <option value="antivol_ghost">4. Anti-Volatility Ghost</option>
@@ -145,9 +151,12 @@
             </div>
 
             <button id="btn-apply-preset" class="btn-primary" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: #fff;">
-                🚀 Load & Calibrate Selected Preset
+                🚀 Preview from history
             </button>
             
+            <button id="btn-confirm-history-preset" class="btn-primary" disabled>Apply preview to settings</button>
+            <p class="sniper-help">Preview uses settled history since the latest reset. Apply only fills the form; Save Settings sends it to the bot and leaves automation paused. Active recovery sequences cannot be changed by a preset.</p>
+            <label class="check-wrap">Preset risk budget (% of capital)<input id="preset-risk-percent" type="number" min="1" max="100" value="10"></label>
             <button id="btn-run-backtest" class="btn-primary" style="margin-top: 6px; background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); color: #fff;">
                 Run Dry-Run Backtest
             </button>
@@ -308,5 +317,6 @@
 <script src="api.js"></script>
 <script src="tc1-staking.js"></script>
 <script src="popup.js"></script>
+<script src="history-presets.js"></script>
 </body>
 </html>

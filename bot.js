@@ -8,6 +8,7 @@ const childProcess = require('child_process');
 const crypto = require('crypto');
 const { authorizeExtensionRequest } = require('./extension-access');
 const { analyzeMarket } = require('./prediction-analysis');
+const { buildPresetHistory, presetSessionBusy } = require('./preset-history');
 const { createSiteStaticHandler } = require('./site-static');
 const { disabledManagedSessions } = require('./extension-key-store');
 const { DatabaseSync } = require('node:sqlite');
@@ -4628,6 +4629,11 @@ async function handleHttpRequest(req, res) {
     }
     
     else if (parsedUrl.pathname === '/stats') {
+        if (parsedUrl.searchParams.get('presetHistory') === '1') {
+            const limit = Math.min(10000, Math.max(50, Number.parseInt(parsedUrl.searchParams.get('draws'), 10) || 1000));
+            return sendJson(res, 200, { ...buildPresetHistory(predictionLog, limit, getMarketStatsResetAt()),
+                busy: presetSessionBusy(session), halted: session.stats.isHalted });
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         let wsData = loadJSON(WIN_STEPS_FILE, { u4: {}, color: {}, sum: {}, totalColor: {} });
         const getBest = (map) => {
@@ -4942,6 +4948,17 @@ async function handleHttpRequest(req, res) {
                     return sendJson(res, 400, { error: 'Use individual mode for Winning Color.' });
                 }
 
+                if (cfg.historyPreset) {
+                    const age = Date.now() - Number(cfg.historyPreset.generatedAt);
+                    if (Number(cfg.historyPreset.resetAt) !== getMarketStatsResetAt() || !Number.isFinite(age) || age < 0 || age > 600000) {
+                        return sendJson(res, 409, { error: 'Preset preview expired or history reset. Preview again.' });
+                    }
+                    if (presetSessionBusy(session)) return sendJson(res, 409, { error: 'An execution or recovery sequence is active. Finish it before applying a preset; progression has not been changed.' });
+                    cfg.running = false;
+                    cfg.hiloRollover = false;
+                    cfg.cbCooldown = 0;
+                    session.config.dynamicStakePercent = 0;
+                }
                 if (req.extensionAccess?.role === 'member') {
                     delete cfg.telegramChatId;
                     session.config.telegramChatId = null;
@@ -5512,7 +5529,7 @@ checkDailyHistoryReset();
 setInterval(() => {
     try { checkDailyHistoryReset(); } catch (error) { console.error('[DailyReset]', error.message); }
 }, 1000);
-
+       
 if (SITE_PUBLIC_MODE) {
     console.log('[PredictionFeed] Public API ready; waiting for authenticated worker snapshots.');
 } else {
