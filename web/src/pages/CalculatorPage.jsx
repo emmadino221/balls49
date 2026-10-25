@@ -3,7 +3,9 @@ import React, { useMemo, useState } from 'react';
 
 const strategies = [
   { id: 'betzero', label: 'BetZero', odds: 1.65, type: 'odds' },
-  { id: 'bet49', label: 'Bet49 · single number', odds: 7.8, type: 'odds' },
+  { id: 'bet494', label: 'Bet49 - 4 numbers', odds: 7.8, costFactor: 4, type: 'bet49' },
+  { id: 'bet495', label: 'Bet49 - 5 numbers', odds: 7.8, costFactor: 5, type: 'bet49' },
+  { id: 'bet49', label: 'Bet49 - 6 numbers', odds: 7.8, costFactor: 6, type: 'bet49' },
   { id: 'rainbow', label: 'Rainbow Color', odds: 1.5, type: 'odds' },
   { id: 'hilo', label: 'High / Low · 2×', odds: 2, multiplier: 2, type: 'multiplier' },
   { id: 'hilo140', label: 'High / Low · 1.4× progression', odds: 2, multiplier: 1.4, type: 'multiplier' },
@@ -45,7 +47,11 @@ function buildSequence(strategy, baseStake, steps, customOdds) {
     let profit;
     let exposure;
 
-    if (strategy.type === 'totalColor1') {
+    if (strategy.type === 'bet49') {
+      bet = Math.ceil((totalCost + baseStake * (odds - strategy.costFactor)) / (odds - strategy.costFactor));
+      exposure = bet * strategy.costFactor;
+      profit = roundMoney(bet * odds - totalCost - exposure);
+    } else if (strategy.type === 'totalColor1') {
       bet = globalThis.TC1Staking.nextStake(baseStake, totalCost, step - 1, strategy.mode);
       if (!bet) { overflow = true; overflowAtStep = step; break; }
       exposure = bet;
@@ -144,7 +150,7 @@ export default function CalculatorPage() {
           </label>
           <div className="calculator-field-row">
             <label className="calculator-field">
-              <span>Starting stake (₦)</span>
+              <span>{strategy.type === 'bet49' ? 'Stake per number' : 'Starting stake'} (₦)</span>
               <input type="number" min="0.01" step="0.01" value={baseStake} onChange={event => setBaseStake(event.target.value)} inputMode="decimal" />
             </label>
             <label className="calculator-field">
@@ -162,7 +168,7 @@ export default function CalculatorPage() {
             <span>Available capital (₦)</span>
             <input type="number" min="0" step="0.01" value={capital} onChange={event => setCapital(event.target.value)} inputMode="decimal" />
           </label>
-          <p className="calculator-input-note">The capital amount is only used to compare against the sequence total.</p>
+          <p className="calculator-input-note">{strategy.type === 'bet49' && 'Each number is a separate 7.80-odds bet. This estimate assumes one winning number and a constant pick count. '}The capital amount is only used to compare against the sequence total.</p>
         </form>
 
         <aside className="calculator-summary" aria-live="polite">

@@ -13,7 +13,7 @@ The public prediction/history surfaces expose seven markets:
 | Public market | Prediction/result keys | Rule summary |
 |---|---|---|
 | BetZero | `betzero` | Select four numbers; win if none appear in the draw. |
-| Bet49 | `bet49` | Select the number with the longest current absence in the latest 100 completed draws; hold that number until it appears, then select the currently most-overdue number. Win if the selected number appears in the draw. |
+| Bet49 | `bet49` | Use the last 10 consecutive completed draws. Count individual balls by mapped color, select the two dominant colors, and take up to six most-recent numbers from those colors that appeared at least twice. Skip if fewer than four qualify. Any selected number appearing wins. Each number is a separate 7.80-odds bet. |
 | Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
 | Total Color (3-way) | `totalColor` | Exclude the previous completed outcome; pick the other three of Red, Blue, Green and DRAW. No frequency selection. |
 | Total Color (2-way) | `totalColor2` | Select two colors; a tie outcome is represented as black. |
@@ -55,3 +55,16 @@ The shared website/Telegram maximum-loss tracker starts from the configured rese
 ## Selection update ? 20 October 2026
 
 See [the selection rules](../SITE_ACCESS_SETUP.md#highlow-rolling-analysis-without-signal-based-skips) for weights, data validation and missing-data handling. These rules change future picks only. Existing martingale and automation gates remain in force. No accuracy improvement has been established through testing.
+
+
+### Bet49 multi-number execution
+
+- Requires 10 consecutive valid completed draws before the target. Draw order in the input does not affect selection.
+- Count every ball using the existing red/blue/green/yellow mapping (49 is yellow). Rank colors by count, then most recent appearance, then the fixed red/blue/green/yellow order.
+- Within the two dominant colors, numbers must appear at least twice. Take up to six by latest draw appearance; equal-recency numbers use ascending number order. Fewer than four means SKIP.
+- A published WIN means any predicted number appeared. Session settlement uses only the numbers submitted by that extension. Multiple hits each pay 7.80 times the per-number stake.
+- The configured Bet49 stake is per number. Total exposure is the number count times that stake. Recovery uses actual prior cycle costs divided by (7.80 minus the current number count), plus the cycle's initial one-hit profit target; amounts round up. Flat mode keeps the configured stake per number. A win clears Bet49 recovery.
+- Website stake estimates assume a constant current pick count. The calculator has explicit 4-, 5-, and 6-number choices. Preset budgets reserve for six numbers. Legacy Bet49 backtests are unavailable because their single-number accounting is incompatible.
+- Reload the updated extension before using the new backend. Old extensions receive WAIT for multi-number batches. Each number is selected, submitted, and cleared separately; the extension checks the remaining draw window between bets.
+- A partial batch stops automation and reports submitted numbers without replaying the entire instruction. An unconfirmed submission is treated as potentially placed for conservative accounting, flagged in the receipt, and stops the batch. Check the provider's bet slip and balance before resuming; browser balance changes alone are not a definitive bet receipt.
+- Existing single-number history remains readable. Legacy recovery costs are estimated from the saved step and configured base stake when no recorded cycle costs exist. No accounts or prediction history are cleared by this update.

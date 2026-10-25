@@ -1,3 +1,4 @@
+const { predictBet49, bet49Numbers } = require('./bet49');
 ﻿'use strict';
 
 const https = require('https');
@@ -792,12 +793,7 @@ if (!Array.isArray(predictionLog)) {
 if (!SITE_PUBLIC_MODE) {
     const persisted = loadJSON(LAST_PRED_FILE, null);
     if (persisted && persisted.drawId && persisted.pred) lastPrediction = persisted;
-    if (Number.isInteger(lastPrediction?.pred?.bet49Pick)
-        && lastPrediction.pred.bet49Pick >= 1
-        && lastPrediction.pred.bet49Pick <= 49
-        && !Number.isInteger(globalTracker.bet49.target)) {
-        globalTracker.bet49.target = lastPrediction.pred.bet49Pick;
-    }
+
 }
 
 if (SITE_PUBLIC_MODE) {
@@ -831,46 +827,7 @@ function getBet49HistoricalLossStreaks() {
     return { current, maximum };
 }
 
-function getBet49Prediction(draws) {
-    const tracker = globalTracker.bet49;
-    const latestDrawId = draws[0]?.id;
-    const target = Number(tracker.target);
-    if (Number.isInteger(target) && target >= 1 && target <= 49) {
-        const sinceDrawId = tracker.targetSinceDrawId === null || tracker.targetSinceDrawId === undefined
-            ? Number.NaN
-            : Number(tracker.targetSinceDrawId);
-        if (Number.isSafeInteger(sinceDrawId)) {
-            const targetHasAppeared = draws.some(draw => Number(draw.id) > sinceDrawId
-                && (draw.dr || '').split(',').some(value => Number(value) === target));
-            if (!targetHasAppeared) return target;
-            tracker.target = null;
-            tracker.targetSinceDrawId = null;
-        } else {
-            tracker.targetSinceDrawId = latestDrawId === undefined ? null : String(latestDrawId);
-            return target;
-        }
-    }
 
-    const recentDraws = draws.slice(0, 100);
-    let selectedNumber = null;
-    let longestAbsence = -1;
-    for (let number = 1; number <= 49; number++) {
-        let absence = 0;
-        for (const draw of recentDraws) {
-            const appeared = (draw.dr || '').split(',').some(value => Number(value) === number);
-            if (appeared) break;
-            absence++;
-        }
-        if (absence > longestAbsence) {
-            longestAbsence = absence;
-            selectedNumber = number;
-        }
-    }
-
-    tracker.target = selectedNumber;
-    tracker.targetSinceDrawId = latestDrawId === undefined ? null : String(latestDrawId);
-    return selectedNumber;
-}
 
 if (!SITE_PUBLIC_MODE && !(persistedState.globalTracker && persistedState.globalTracker.bet49)) {
     globalTracker.bet49.step = getBet49HistoricalLossStreaks().current + 1;
@@ -894,7 +851,7 @@ function buildPublicFeedHistory() {
         } : null,
         predicted: {
             betzero: Array.isArray(record.predicted?.betzero) ? record.predicted.betzero : [],
-            bet49: Number.isInteger(Number(record.predicted?.bet49)) ? Number(record.predicted.bet49) : null,
+            bet49: bet49Numbers(record.predicted?.bet49),
             rainbow: record.predicted?.rainbow || 'SKIP',
             totalColor: record.predicted?.totalColor ? {
                 status: record.predicted.totalColor.status || 'SKIP',
@@ -1096,7 +1053,7 @@ function buildPublicFeedCurrent() {
         pred: {
             betzeroStatus: pred.betzeroStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             unlikely4: Array.isArray(pred.unlikely4) ? pred.unlikely4.map(item => ({ number: Number(item.number) })) : [],
-            bet49Pick: Number.isInteger(Number(pred.bet49Pick)) ? Number(pred.bet49Pick) : null,
+            bet49Pick: bet49Numbers(pred.bet49Pick),
             rainbowStatus: pred.rainbowStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             topColor: pred.topColor?.name ? { name: String(pred.topColor.name) } : null,
             totalColorPred: {
@@ -1609,7 +1566,7 @@ function getBetPayloadExposure(payload) {
     if (!payload || payload.action !== 'EXECUTE_BET') return 0;
 
     return Math.max(0, Number(payload.stake) || 0) +
-        Math.max(0, Number(payload.bet49Stake) || 0) +
+        (Math.max(0, Number(payload.bet49Stake) || 0) * bet49Numbers(payload.bet49).length) +
         Math.max(0, Number(payload.colorStake) || 0) +
         Math.max(0, Number(payload.sumStake) || 0) +
         (Math.max(0, Number(payload.tcStake) || 0) * 3) +
@@ -2050,12 +2007,21 @@ function getMartingaleStake(clientId, key, localStep, mlScore = 0) {
         const mode = state.cycleMode || session.config.tc1ProfitMode;
         return { stake: TC1Staking.nextStake(base, state.cycleLosses || 0, state.cycleBets || 0, mode), odds: 3.8 };
     }
+    if (key === 'bet49' && !session.config.flatBetting) {
+        const count = bet49Numbers(lastPrediction?.pred?.bet49Pick).length;
+        if (!count) return { stake: 0, odds: 7.8 };
+        const state = session.martingaleState.bet49;
+        if (state.cycleLosses === undefined && localStep > 1) {
+            state.cycleLosses = 0;
+            for (let step = 1; step < localStep; step++) state.cycleLosses += Math.round(initialBaseUnit * Math.pow(7.8 / 6.8, step - 1));
+            state.cycleTarget = initialBaseUnit * 6.8;
+        }
+        const target = state.cycleTarget || initialBaseUnit * (7.8 - count);
+        return { stake: Math.ceil(((state.cycleLosses || 0) + target) / (7.8 - count)), odds: 7.8 };
+    }
     if (session.config.flatBetting || localStep <= 1) return { stake: initialBaseUnit, odds: walletConfig.odds };
 
-    if (key === 'bet49') {
-        const recoveryRatio = walletConfig.odds / (walletConfig.odds - 1);
-        return { stake: Math.round(initialBaseUnit * Math.pow(recoveryRatio, localStep - 1)), odds: walletConfig.odds };
-    }
+
 
     if (key === 'sum') {
         const mult = session.config.hiloMultiplier || 2.0;
@@ -2271,8 +2237,7 @@ async function sendPrediction(drawId, drawDate, pred) {
     const hlPickText = pred.hiloStatus === 'ACTIVE'
         ? `${pred.sumRange === 'HIGH' ? '📈' : '📉'} <b>${pred.sumRange}</b>` : '';
     const u4Format = pickBlock('🔵 BETZERO', 'betzero', 'u4', betzeroPickText);
-    const bet49Format = pickBlock('🎯 BET49', 'bet49', 'bet49', Number.isInteger(pred.bet49Pick)
-        ? `${getBallEmoji(pred.bet49Pick)} <b>${pred.bet49Pick}</b>` : '');
+    const bet49Format = pickBlock('🎯 BET49', 'bet49', 'bet49', bet49Numbers(pred.bet49Pick).map(n => `${getBallEmoji(n)} <b>${n}</b>`).join(' '));
     const rainbowFormat = pickBlock('🌈 RAINBOW', 'rainbow', 'color', rainbowPickText);
     const tcFormat = pickBlock('🎨 TOTAL COLOR · 3-WAY', 'totalColor', 'totalColor', tcPickText);
     const tc2Format = pickBlock('🎨 TOTAL COLOR · 2-WAY', 'totalColor2', 'totalColor2', pred.totalColor2Pred.status === 'ACTIVE'
@@ -2331,7 +2296,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         drawId, drawDate,
         predicted: {
             betzero: pred.betzeroStatus === 'ACTIVE' ? pred.unlikely4.map(x => x.number) : [],
-            bet49: Number.isInteger(pred.bet49Pick) ? pred.bet49Pick : null,
+            bet49: bet49Numbers(pred.bet49Pick),
             rainbow: pred.rainbowStatus === 'ACTIVE' ? pred.topColor.name : 'SKIP',
             totalColor: pred.totalColorPred,
             totalColor2: pred.totalColor2Pred,
@@ -2403,8 +2368,8 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var betzeroStatus = betzero.status;
     var unlikely4 = betzero.numbers.map(number => ({ number }));
     var bzSkipReason = betzero.reason;
-    // Bet49 retains its existing history requirement and selection logic.
-    var bet49Pick = histRaw?.data?.draws?.length >= 100 ? getBet49Prediction(histRaw.data.draws) : null;
+    const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId);
+    var bet49Pick = bet49Prediction.numbers;
 
     if (getDailyHistoryResetAt()) {
         stats100TC = null;
@@ -2570,12 +2535,9 @@ function processUpdates(pred, actualDraw) {
     }
 
     var u4Win = pred.unlikely4.filter(x => new Set(actualNums).has(x.number)).length === 0;
-    var bet49Active = Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49;
-    var bet49Win = bet49Active && actualNums.includes(pred.bet49Pick);
-    if (bet49Win && Number(globalTracker.bet49.target) === pred.bet49Pick) {
-        globalTracker.bet49.target = null;
-        globalTracker.bet49.targetSinceDrawId = null;
-    }
+    var bet49Active = bet49Numbers(pred.bet49Pick).length > 0;
+    var bet49Win = bet49Numbers(pred.bet49Pick).some(n => actualNums.includes(n));
+
     var colorWin = actualNums.filter(n => getBallColor(n) === pred.topColor.name).length >= 2;
     var sumWin = pred.sumRange === actualRange;
 
@@ -2596,7 +2558,7 @@ function processUpdates(pred, actualDraw) {
         targetItem.result = {
             balls: actualNums, total: actualSum, range: actualRange,
             betzero: pred.betzeroStatus === 'SKIP' ? 'SKIP' : (u4Win ? 'WIN' : 'LOSS'),
-            bet49: Number.isInteger(pred.bet49Pick) ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
+            bet49: bet49Active ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
             rainbow: pred.rainbowStatus === 'SKIP' ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
             totalColor: pred.totalColorPred.status === 'SKIP' ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
             totalColor1: pred.totalColor1Pred?.status === 'ACTIVE' ? (tc1Win ? 'WIN' : 'LOSS') : 'SKIP',
@@ -2818,7 +2780,7 @@ function processUpdates(pred, actualDraw) {
     const betzeroPick = pred.betzeroStatus === 'ACTIVE'
         ? pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' ')
         : '';
-    const bet49PickText = bet49Active ? `${getBallEmoji(pred.bet49Pick)} ${pred.bet49Pick}` : '';
+    const bet49PickText = bet49Active ? bet49Numbers(pred.bet49Pick).map(n => `${getBallEmoji(n)} ${n}`).join(' ') : '';
     const colorEmojis = { red: '🔴', blue: '🔵', green: '🟢', yellow: '🟡', black: '⚫' };
     const rainbowPick = pred.rainbowStatus === 'ACTIVE'
         ? `${colorEmojis[pred.topColor.name] || '⚪'} ${pred.topColor.name.toUpperCase()}`
@@ -2914,7 +2876,9 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     const tcWin = r.totalColor === 'WIN';
     const tc1Win = r.totalColor1 === 'WIN';
     const tc2Win = r.totalColor2 === 'WIN';
-    const bet49Win = r.bet49 === 'WIN';
+    const placedBet49 = bet49Numbers(details.bet49Numbers ?? pLogItem.predicted.bet49);
+    const bet49Hits = placedBet49.filter(n => (r.balls || []).map(Number).includes(n)).length;
+    const bet49Win = bet49Hits > 0;
 
     const creditVirtual = (key, stake, odds) => {
         if (!stake || stake <= 0) return;
@@ -2924,7 +2888,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
     if (details.games && details.games.length > 0) {
         if (details.games.includes('u4') && u4Win) { creditVirtual('u4', details.stakes.u4, details.odds.u4 || 1.65); userHadWin = true; }
-        if (details.games.includes('bet49') && bet49Win) { creditVirtual('bet49', details.stakes.bet49, details.odds.bet49 || 7.8); userHadWin = true; }
+        if (details.games.includes('bet49') && bet49Win) { creditVirtual('bet49', details.stakes.bet49 * bet49Hits, details.odds.bet49 || 7.8); userHadWin = true; }
         if (details.games.includes('color') && colorWin) { creditVirtual('color', details.stakes.color, details.odds.color || 1.50); userHadWin = true; }
         if (details.games.includes('sum') && sumWin) { creditVirtual('sum', details.stakes.sum, details.odds.sum || 2.00); userHadWin = true; }
         if (details.games.includes('totalColor') && tcWin) { creditVirtual('totalColor', details.stakes.totalColor, details.odds.totalColor || 3.8); userHadWin = true; }
@@ -3074,10 +3038,10 @@ function evaluateSessionBets(clientId, session, pLogItem) {
             const state = session.martingaleState[key];
             if ((state.active && session.config.enabledGames[key]) || (key === 'totalColor1' && details.games?.includes(key))) {
                 if (!details.games?.includes(key)) return;
-                const activeWin = key === 'totalColor1' ? r.totalColor1 === 'WIN' : key === 'u4' ? u4Win : key === 'bet49' ? r.bet49 === 'WIN' : key === 'color' ? colorWin : key === 'sum' ? sumWin : key === 'totalColor' ? tcWin : tc2Win;
+                const activeWin = key === 'totalColor1' ? r.totalColor1 === 'WIN' : key === 'u4' ? u4Win : key === 'bet49' ? bet49Win : key === 'color' ? colorWin : key === 'sum' ? sumWin : key === 'totalColor' ? tcWin : tc2Win;
                 
                 if (key === 'u4' && pLogItem.predicted.betzero === 'SKIP') return;
-                if (key === 'bet49' && (!Number.isInteger(Number(pLogItem.predicted.bet49)) || Number(pLogItem.predicted.bet49) < 1 || Number(pLogItem.predicted.bet49) > 49)) return;
+                if (key === 'bet49' && !bet49Numbers(pLogItem.predicted.bet49).length) return;
                 if (key === 'color' && pLogItem.predicted.rainbow === 'SKIP') return;
                 if (key === 'sum' && pLogItem.predicted.hilo === 'SKIP') return;
                 if (key === 'totalColor' && pLogItem.predicted.totalColor.status === 'SKIP') return;
@@ -3085,9 +3049,13 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                 if (key === 'totalColor1' && pLogItem.predicted.totalColor1?.status !== 'ACTIVE') return;
 
                 let calc = getMartingaleStake(clientId, key, state.localStep);
-                const displayStake = (key === 'totalColor') ? (calc.stake * 3) : (key === 'totalColor2') ? (calc.stake * 2) : calc.stake;
+                const displayStake = key === 'bet49' ? Number(details.stakes.bet49 || 0) * placedBet49.length : (key === 'totalColor') ? (calc.stake * 3) : (key === 'totalColor2') ? (calc.stake * 2) : calc.stake;
                 const gLabel = key === 'totalColor1' ? 'Winning Color' : key === 'u4' ? '🎯 BetZero' : key === 'bet49' ? '🟠 Bet49' : key === 'color' ? '🌈 Rainbow' : key === 'sum' ? '📊 Hi/Lo' : key === 'totalColor' ? '🎨 TC (3W)' : '🎭 TC (2W)';
 
+                if (key === 'bet49') {
+                    if (activeWin) { state.cycleLosses = 0; state.cycleTarget = 0; }
+                    else state.cycleLosses = (state.cycleLosses || 0) + Number(details.stakes.bet49 || 0) * placedBet49.length;
+                }
                 if (key === 'totalColor1') {
                     if (activeWin) {
                         state.cycleLosses = 0; state.cycleBets = 0;
@@ -3311,7 +3279,7 @@ async function tick() {
                         var actualTopColors = Object.keys(actualColorCounts).filter(c => actualColorCounts[c] === maxActualCount);
 
                         var u4Win = (p.predicted.betzero && p.predicted.betzero.length > 0) ? (p.predicted.betzero.filter(x => new Set(actualNums).has(x)).length === 0) : false;
-                        var bet49Win = Number.isInteger(Number(p.predicted.bet49)) && actualNums.includes(Number(p.predicted.bet49));
+                        var bet49Win = bet49Numbers(p.predicted.bet49).some(n => actualNums.includes(n));
                         var colorWin = (p.predicted.rainbow && p.predicted.rainbow !== 'SKIP') ? (actualNums.filter(n => getBallColor(n) === p.predicted.rainbow).length >= 2) : false;
                         var tcWin = false;
                         if (p.predicted.totalColor && p.predicted.totalColor.status === 'ACTIVE') {
@@ -3336,7 +3304,7 @@ async function tick() {
                         p.result = {
                             balls: actualNums, total: actualSum, range: actualRange,
                             betzero: (!p.predicted.betzero || p.predicted.betzero.length === 0) ? 'SKIP' : (u4Win ? 'WIN' : 'LOSS'),
-                            bet49: Number.isInteger(Number(p.predicted.bet49)) && Number(p.predicted.bet49) >= 1 && Number(p.predicted.bet49) <= 49 ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
+                            bet49: bet49Numbers(p.predicted.bet49).length > 0 ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
                             rainbow: (!p.predicted.rainbow || p.predicted.rainbow === 'SKIP') ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
                             totalColor: (!p.predicted.totalColor || p.predicted.totalColor.status === 'SKIP') ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
                             totalColor1: p.predicted.totalColor1?.status === 'ACTIVE' ? (tc1Win ? 'WIN' : 'LOSS') : 'SKIP',
@@ -3552,7 +3520,7 @@ async function tick() {
                             let isActivePrediction = false;
                             let activeMlScore = 0;
                             if (key === 'u4' && pred.betzeroStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.u4; }
-                            if (key === 'bet49' && Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49) { isActivePrediction = true; }
+                            if (key === 'bet49' && bet49Numbers(pred.bet49Pick).length > 0) { isActivePrediction = true; }
                             if (key === 'color' && pred.rainbowStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.color; }
                             if (key === 'sum' && pred.hiloStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.sum; }
                             if (key === 'totalColor' && pred.totalColorPred.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.totalColor; }
@@ -3588,7 +3556,7 @@ async function tick() {
                         const tc1Stake = Math.max(0, Number(payloadStakes.totalColor1) || 0);
 
                         const hasBetZero = session.config.enabledGames.u4 && pred.betzeroStatus === 'ACTIVE' && bzStake > 0;
-                        const hasBet49 = session.config.enabledGames.bet49 && Number.isInteger(pred.bet49Pick) && pred.bet49Pick >= 1 && pred.bet49Pick <= 49 && bet49Stake > 0;
+                        const hasBet49 = session.config.enabledGames.bet49 && bet49Numbers(pred.bet49Pick).length > 0 && bet49Stake > 0;
                         const hasRainbow = session.config.enabledGames.color && pred.rainbowStatus === 'ACTIVE' && rbStake > 0;
                         const hasHiLo = session.config.enabledGames.sum && pred.hiloStatus === 'ACTIVE' && hlStake > 0;
                         const hasTotalColor = session.config.enabledGames.totalColor && pred.totalColorPred.status === 'ACTIVE' && tcStake > 0;
@@ -3755,7 +3723,7 @@ async function handleHttpRequest(req, res) {
                     },
                     predicted: {
                         betzero: safeArray(record.predicted.betzero, 4).map(Number).filter(value => Number.isInteger(value) && value >= 1 && value <= 49),
-                        bet49: Number.isInteger(Number(record.predicted.bet49)) && Number(record.predicted.bet49) >= 1 && Number(record.predicted.bet49) <= 49 ? Number(record.predicted.bet49) : null,
+                        bet49: bet49Numbers(record.predicted.bet49),
                         rainbow: safeText(record.predicted.rainbow),
                         totalColor: record.predicted.totalColor && typeof record.predicted.totalColor === 'object' ? {
                             status: safeText(record.predicted.totalColor.status),
@@ -4261,7 +4229,7 @@ async function handleHttpRequest(req, res) {
             } : null,
             predicted: {
                 betzero: Array.isArray(p.predicted?.betzero) ? p.predicted.betzero : [],
-                bet49: Number.isInteger(Number(p.predicted?.bet49)) ? Number(p.predicted.bet49) : null,
+                bet49: bet49Numbers(p.predicted?.bet49),
                 rainbow: p.result?.rainbow === 'SKIP' ? 'SKIP' : (p.predicted?.rainbow || 'SKIP'),
                 totalColor: p.predicted?.totalColor ? {
                     status: p.predicted.totalColor.status || 'SKIP',
@@ -4352,7 +4320,7 @@ async function handleHttpRequest(req, res) {
                 betzero: live.betzeroStatus === 'ACTIVE' && Array.isArray(live.unlikely4)
                     ? live.unlikely4.map(item => Number(item.number)).filter(number => Number.isInteger(number) && number >= 1 && number <= 49)
                     : [],
-                bet49: Number.isInteger(Number(live.bet49Pick)) && Number(live.bet49Pick) >= 1 && Number(live.bet49Pick) <= 49 ? Number(live.bet49Pick) : null,
+                bet49: bet49Numbers(live.bet49Pick),
                 rainbow: live.rainbowStatus === 'ACTIVE' ? live.topColor?.name || 'SKIP' : 'SKIP',
                 totalColor: {
                     status: live.totalColorPred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
@@ -4376,7 +4344,7 @@ async function handleHttpRequest(req, res) {
             drawDate: previousRecord.drawDate || previousRecord.timestamp || null,
             predicted: {
                 betzero: previousRecord.result?.betzero === 'SKIP' ? [] : (Array.isArray(previousRecord.predicted?.betzero) ? previousRecord.predicted.betzero : []),
-                bet49: Number.isInteger(Number(previousRecord.predicted?.bet49)) ? Number(previousRecord.predicted.bet49) : null,
+                bet49: bet49Numbers(previousRecord.predicted?.bet49),
                 rainbow: previousRecord.result?.rainbow === 'SKIP' ? 'SKIP' : (previousRecord.predicted?.rainbow || 'SKIP'),
                 totalColor: previousRecord.predicted?.totalColor ? {
                     status: previousRecord.predicted.totalColor.status || 'SKIP',
@@ -4570,6 +4538,7 @@ async function handleHttpRequest(req, res) {
 
     if (parsedUrl.pathname === '/backtest' && req.method === 'GET') {
         const gameKey = parsedUrl.searchParams.get('game') || 'hilo';
+        if (gameKey === 'bet49') return sendJson(res, 400, { error: 'Legacy backtesting does not support multi-number Bet49. Use the history preview.' });
         const capital = Math.max(1000, Number(parsedUrl.searchParams.get('capital')) || 100000);
         const basePercent = Math.min(100, Math.max(0.01, Number(parsedUrl.searchParams.get('basePercent')) || 0.5));
         const drawWindow = Math.min(10000, Math.max(1, Number(parsedUrl.searchParams.get('draws')) || 1000));
@@ -4584,6 +4553,9 @@ async function handleHttpRequest(req, res) {
         const payload = session.pendingBetPayload;
         if (!payload || dailyPendingSettlements.some(record => String(record.drawId) === String(payload.drawId))) return res.end(JSON.stringify({ action: 'WAIT' }));
         if (payload.action !== 'EXECUTE_BET') return res.end(JSON.stringify(payload));
+        if (Array.isArray(payload.bet49) && payload.bet49.length && parsedUrl.searchParams.get('bet49Batch') !== '1') {
+            return res.end(JSON.stringify({ action: 'WAIT', reason: 'Reload the updated extension for multi-number Bet49.' }));
+        }
 
         const drawId = String(payload.drawId);
         if (String(session.failedBetRecovery?.payload?.drawId || '') === drawId) {
@@ -4601,7 +4573,9 @@ async function handleHttpRequest(req, res) {
         if (!claim || claim.drawId !== drawId) {
             session.betExecutionClaim = { drawId, token: executionToken };
         }
-        return res.end(JSON.stringify({ ...payload, executionToken }));
+        const timeLeftMs = String(publicClock.drawId) === drawId && publicClock.observedAt && Date.now() - publicClock.observedAt <= POLL_SEC * 3000
+            ? Math.max(0, publicClock.observedAt + publicClock.timeLeftSeconds * 1000 - Date.now()) : 0;
+        return res.end(JSON.stringify({ ...payload, executionToken, timeLeftMs }));
     }
     
     else if (parsedUrl.pathname === '/risk-profile' && req.method === 'GET') {
@@ -4693,7 +4667,7 @@ async function handleHttpRequest(req, res) {
             }
             const predictionByKey = {
                 u4: livePred.betzeroStatus,
-                bet49: Number.isInteger(livePred.bet49Pick) && livePred.bet49Pick >= 1 && livePred.bet49Pick <= 49 ? 'ACTIVE' : 'SKIP',
+                bet49: bet49Numbers(livePred.bet49Pick).length > 0 ? 'ACTIVE' : 'SKIP',
                 color: livePred.rainbowStatus,
                 sum: livePred.hiloStatus,
                 totalColor: livePred.totalColorPred?.status,
@@ -4776,7 +4750,7 @@ async function handleHttpRequest(req, res) {
 
                 if (data && data.drawId) {
                     const drawId = String(data.drawId);
-                    if (data.status === 'SUCCESS' && session.lastBetDrawId === drawId) {
+                    if (session.lastBetDrawId === drawId) {
                         res.writeHead(200); return res.end(JSON.stringify({ ok: true, duplicate: true }));
                     }
 
@@ -4792,6 +4766,25 @@ async function handleHttpRequest(req, res) {
                         res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
                     }
 
+                    if (Array.isArray(payload.bet49) && payload.bet49.length) {
+                        const report = data.executionReport;
+                        if (!report || !Array.isArray(report.bet49Numbers) || !Array.isArray(report.games)
+                            || report.bet49Numbers.length !== bet49Numbers(report.bet49Numbers).length
+                            || report.bet49Numbers.some(n => !payload.bet49.includes(n))) {
+                            return sendJson(res, 400, { error: 'A per-number Bet49 receipt is required.' });
+                        }
+                        if (data.status !== 'SUCCESS' || report.bet49Numbers.length !== payload.bet49.length || report.unconfirmedBet49?.length) {
+                            session.stats.isHalted = true;
+                            session.stats.haltReason = 'Partial execution: check the bet slip before resuming.';
+                        }
+                        // Receipt describes confirmed placements; never re-submit the batch.
+                        payload.bet49 = report.bet49Numbers;
+                        payload.unconfirmedBet49 = bet49Numbers(report.unconfirmedBet49).filter(n => payload.bet49.includes(n));
+                        for (const [game, field] of Object.entries({ u4: 'stake', color: 'colorStake', sum: 'sumStake', totalColor: 'tcStake', totalColor2: 'tc2Stake', totalColor1: 'tc1Stake' })) {
+                            if (!report.games.includes(game)) payload[field] = 0;
+                        }
+                        data.status = 'SUCCESS';
+                    }
                     if (data.status === 'FAILED') {
                         if (!session.failedBetRecovery) session.failedBetRecovery = { retries: 0 };
                         session.failedBetRecovery.retries += 1;
@@ -4808,11 +4801,14 @@ async function handleHttpRequest(req, res) {
                                 details.games.push('u4');
                                 totalStake += payload.stake;
                             }
-                            if (Number.isInteger(payload.bet49) && payload.bet49 >= 1 && payload.bet49 <= 49 && payload.bet49Stake > 0) {
+                            if (bet49Numbers(payload.bet49).length > 0 && payload.bet49Stake > 0) {
+                                details.bet49Numbers = bet49Numbers(payload.bet49);
+                                details.unconfirmedBet49 = payload.unconfirmedBet49 || [];
                                 details.stakes.bet49 = payload.bet49Stake;
+                                session.martingaleState.bet49.cycleTarget ||= (session.config.initialStakes.bet49 || payload.bet49Stake) * (7.8 - details.bet49Numbers.length);
                                 details.odds.bet49 = session.wallets.bet49.odds;
                                 details.games.push('bet49');
-                                totalStake += payload.bet49Stake;
+                                totalStake += payload.bet49Stake * details.bet49Numbers.length;
                             }
                             if (payload.color && payload.colorStake > 0) {
                                 details.stakes.color = payload.colorStake;
@@ -4864,6 +4860,7 @@ async function handleHttpRequest(req, res) {
                         session.failedBetRecovery = null;
                     }
                     session.betExecutionClaim = null;
+                    persistSessions();
                 }
                 res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
             } catch (e) { res.writeHead(400); return res.end(); }

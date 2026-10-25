@@ -1,3 +1,4 @@
+import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import '../../../balls49-extension/tc1-staking.js';
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
@@ -9,7 +10,7 @@ const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/p
 const LIVE_PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const games = [
   { id: 'betzero', name: 'BetZero', detail: 'Four-number set. A win means none of the selected numbers appear.' },
-  { id: 'bet49', name: 'Bet49', detail: 'One number pick. A win means the number appears in the next draw.' },
+  { id: 'bet49', name: 'Bet49', detail: '4-6 numbers. Any selected number appearing wins; each number is a separate bet.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },
@@ -107,7 +108,7 @@ function getRecommendedStake(marketId, baseAmount, step, prediction) {
 
   const marketStrategies = {
     betzero: { odds: 1.65 },
-    bet49: { odds: 7.8, bet49: true },
+    bet49: { odds: 7.8, bet49: true, count: bet49Numbers(prediction?.predicted?.bet49).length },
     rainbow: { odds: 1.5 },
     hilo: { odds: 2, multiplier: 2 },
     totalColor: { odds: 3.8, costFactor: 3 },
@@ -126,7 +127,10 @@ function getRecommendedStake(marketId, baseAmount, step, prediction) {
   let nextStake = base;
 
   for (let currentStep = 1; currentStep <= safeStep; currentStep += 1) {
-    if (strategy.multiplier) {
+    if (strategy.bet49) {
+      if (!strategy.count) return null;
+      nextStake = Math.ceil((totalCost + base * (7.8 - strategy.count)) / (7.8 - strategy.count));
+    } else if (strategy.multiplier) {
       nextStake = roundMoney(currentStep === 1 ? base : nextStake * strategy.multiplier);
     } else if (strategy.costFactor) {
       nextStake = roundMoney(currentStep === 1
@@ -141,7 +145,7 @@ function getRecommendedStake(marketId, baseAmount, step, prediction) {
       nextStake = roundMoney(currentStep === 1 ? base : (totalCost + stepProfitTarget) / (strategy.odds - 1));
     }
     if (!Number.isFinite(nextStake)) return null;
-    totalCost += nextStake * (strategy.costFactor || 1);
+    totalCost += nextStake * (strategy.count || strategy.costFactor || 1);
   }
   return nextStake;
 }
@@ -165,12 +169,7 @@ function LiveMarketPick({ record, marketId }) {
       ? <span className="pick-balls">{predicted.betzero.map((number, index) => <span className={`ball-number ball-${getBallColor(number)}`} key={`${number}-${index}`}>{number}</span>)}</span>
       : <span className="no-pick">Waiting</span>;
   }
-  if (marketId === 'bet49') {
-    const number = predicted.bet49;
-    return Number.isInteger(Number(number)) && Number(number) >= 1 && Number(number) <= 49
-      ? <span className={`ball-number ball-${getBallColor(number)}`}>{number}</span>
-      : <span className="no-pick">Waiting</span>;
-  }
+  if (marketId === 'bet49') return <Bet49Pick value={predicted.bet49} />;
   if (marketId === 'rainbow') {
     return predicted.rainbow && predicted.rainbow !== 'SKIP'
       ? <span className={`color-name color-${String(predicted.rainbow).toLowerCase()}`}><i aria-hidden="true" />{predicted.rainbow}</span>
@@ -427,7 +426,7 @@ export default function PredictionsPage() {
                     ? <p className="stake-plan-message">Loading your saved stake plan…</p>
                     : stakePlans[activeGame.id]?.locked
                       ? <div className="stake-plan-locked">
-                        <div className="stake-plan-recommendation"><span>Recommended stake</span><strong>{getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction) === null
+                        <div className="stake-plan-recommendation"><span>{activeGame.id === 'bet49' ? 'Estimated stake per number' : 'Recommended stake'}</span><strong>{getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction) === null
                           ? 'Waiting for pick'
                           : formatStake(getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction))}</strong></div>
                         <div><span>Locked base stake</span><strong>{formatStake(stakePlans[activeGame.id].baseAmount)}</strong></div>
@@ -443,7 +442,7 @@ export default function PredictionsPage() {
               {activeGame.id === 'totalColor1' && <p className="stake-plan-disclaimer">Fixed-profit estimate at 3.80 odds, rounded up to whole naira. Both recovery modes are available in the calculator and extension settings.</p>}
               {stakePlanError && sessionKind === 'account' && <p className="stake-plan-error" role="alert">{stakePlanError}</p>}
               {stakePlanNotice && <p className="stake-plan-notice" role="status">{stakePlanNotice}</p>}
-              <p className="stake-plan-disclaimer">A loss advances this market’s step; a win returns it to Step 1. Skips do not change the step. Stakes are estimates only and do not place bets.</p>
+              <p className="stake-plan-disclaimer">A loss advances this market’s step; a win returns it to Step 1. Skips do not change the step. Stakes are estimates only and do not place bets. Bet49 estimates assume the current number count at every step; actual recovery costs can differ when that count changes.</p>
             </section>
             <div className="prediction-card-meta">
             {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}

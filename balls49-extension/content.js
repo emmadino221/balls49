@@ -4,6 +4,7 @@ let SELECTED_GAME = 'hilo';
 let IS_UNIFIED_MODE = false;
 let CURRENT_STAKES = { betzero: 500, bet49: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
 let isBettingActive = false;
+let lastExecutionReceipt = null;
 let lastExecutedDrawId = null;          
 let betBalanceUnconfirmed = false;
 let SOUND_ENABLED = true;
@@ -1092,7 +1093,7 @@ async function listen() {
     if (!LICENSE_KEY) return setTimeout(listen, 2000);
 
     try {
-        const r = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}`);
+        const r = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
         if (r.ok) {
             const m = await r.json();
             
@@ -1140,7 +1141,7 @@ async function listen() {
                     extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ drawId: m.drawId, status: 'SUCCESS', executionToken: m.executionToken })
+                        body: JSON.stringify(lastExecutionReceipt || { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport: { games: [], bet49Numbers: [] } })
                     }).catch(() => {});
                     return setTimeout(listen, 1200);
                 }
@@ -1153,7 +1154,7 @@ async function listen() {
                 const serverSteps = m.steps || { betzero: 1, bet49: 1, rainbow: 1, hilo: 1, totalColor: 1, totalColor2: 1 };
 
                 const bzStake  = m.stake || calcLocalStake('u4', serverSteps.betzero, userStakes, gameStepsLimits, hiloMult);
-                const bet49Stake = m.bet49Stake || calcLocalStake('bet49', serverSteps.bet49, userStakes, gameStepsLimits, hiloMult);
+                const bet49Stake = Number(m.bet49Stake) || 0;
                 const rbStake  = m.colorStake || calcLocalStake('color', serverSteps.rainbow, userStakes, gameStepsLimits, hiloMult);
                 const serverHiLoStake = Number(m.sumStake);
                 const hlStake = Number.isFinite(serverHiLoStake) && serverHiLoStake > 0
@@ -1165,8 +1166,11 @@ async function listen() {
                 const tc1Stake = Number(m.tc1Stake) || 0;
                 const tc2Stake = m.tc2Stake || calcLocalStake('totalColor2', serverSteps.totalColor2, userStakes, gameStepsLimits, hiloMult);
 
+                const executionReport = { games: [], bet49Numbers: [], unconfirmedBet49: [] };
+                const batchBet49 = Array.isArray(m.bet49) ? m.bet49 : m.bet49 == null ? [] : [Number(m.bet49)];
                 try {
                     lastExecutedDrawId = String(m.drawId);
+                    lastExecutionReceipt = null;
                     betBalanceUnconfirmed = false;
                     let playedAny = false;
                     let betSuccess = true;
@@ -1174,42 +1178,63 @@ async function listen() {
                     if (m.numbers && m.stake > 0) {
                         SELECTED_GAME = 'betzero';
                         let res = await runBetZero(m.numbers, bzStake);
+                        if (res) executionReport.games.push('u4');
                         if (!res) betSuccess = false;
                         playedAny = true;
                     }
-                    if (Number.isInteger(Number(m.bet49)) && Number(m.bet49) >= 1 && Number(m.bet49) <= 49 && bet49Stake > 0) {
+                    if (batchBet49.length && bet49Stake > 0) {
                         SELECTED_GAME = 'bet49';
-                        const res = await runBet49(m.bet49, bet49Stake);
-                        if (!res) betSuccess = false;
-                        playedAny = true;
+                        if (batchBet49.length > 6 || new Set(batchBet49).size !== batchBet49.length
+                            || batchBet49.some(n => !Number.isInteger(n) || n < 1 || n > 49)) throw new Error('Invalid Bet49 numbers');
+                        for (const number of batchBet49) {
+                            const currentSettings = await chrome.storage.sync.get(['running']);
+                            if (!currentSettings.running) throw new Error('Automation stopped during Bet49 placement');
+                            const checkStarted = Date.now();
+                            const check = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
+                            const current = await check.json();
+                            if (current.action !== 'EXECUTE_BET' || String(current.drawId) !== String(m.drawId)
+                                || current.timeLeftMs - (Date.now() - checkStarted) < 5000) throw new Error('Bet49 placement window closed');
+                            const res = await runBet49(number, bet49Stake);
+                            playedAny = true;
+                            if (!res) { betSuccess = false; break; }
+                            executionReport.bet49Numbers.push(number);
+                            // An unconfirmed submission must never be retried or followed by more bets.
+                            if (betBalanceUnconfirmed) { executionReport.unconfirmedBet49.push(number); betSuccess = false; break; }
+                        }
+                        if (!betSuccess) throw new Error('Bet49 batch stopped. Review confirmed placements before resuming.');
                     }
                     if (m.color && m.colorStake > 0) {
                         SELECTED_GAME = 'rainbow';
                         let res = await runRainbow(m.color, rbStake);
+                        if (res) executionReport.games.push('color');
                         if (!res) betSuccess = false;
                         playedAny = true;
                     }
                     if (m.sumRange && hlStake > 0) {
                         SELECTED_GAME = 'hilo';
                         let res = await runHiLo(m.sumRange, hlStake);
+                        if (res) executionReport.games.push('sum');
                         if (!res) betSuccess = false;
                         playedAny = true;
                     }
                     if (m.totalColor1 && m.tc1Stake > 0) {
                         SELECTED_GAME = 'totalcolor1';
                         let res = await runTotalColor1(m.totalColor1, tc1Stake);
+                        if (res) executionReport.games.push('totalColor1');
                         if (!res) betSuccess = false;
                         playedAny = true;
                     } 
                     if (m.totalColor2 && m.tc2Stake > 0) {
                         SELECTED_GAME = 'totalcolor2';
                         let res = await runTotalColor2(m.totalColor2, tc2Stake);
+                        if (res) executionReport.games.push('totalColor2');
                         if (!res) betSuccess = false;
                         playedAny = true;
                     } 
                     if (m.totalColor && m.tcStake > 0) {
                         SELECTED_GAME = 'totalcolor';
                         let res = await runTotalColor(m.totalColor, tcStake);
+                        if (res) executionReport.games.push('totalColor');
                         if (!res) betSuccess = false;
                         playedAny = true;
                     }
@@ -1226,14 +1251,9 @@ async function listen() {
                         const drawEl = document.getElementById('overlayDrawId');
                         if (drawEl) drawEl.innerText = `Draw: #${m.drawId}`;
 
-                        await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, { 
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                                drawId: m.drawId,
-                                status: betSuccess ? 'SUCCESS' : 'FAILED',
-                                executionToken: m.executionToken
-                            })
+                        lastExecutionReceipt = { drawId: m.drawId, status: betSuccess ? 'SUCCESS' : 'FAILED', executionToken: m.executionToken, executionReport };
+                        await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lastExecutionReceipt)
                         });
                     }
                     if (!playedAny) {
@@ -1241,16 +1261,16 @@ async function listen() {
                         await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken })
+                            body: JSON.stringify(lastExecutionReceipt = { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport })
                         });
                     }
                 } catch(e) {
-                    console.error("Execution Failed. Receipt not sent.");
-                    setOverlayDecisionReason(`Bet was not placed: ${e.message || 'execution error'}.`);
+                    console.error("Execution interrupted; reporting submitted placements.");
+                    setOverlayDecisionReason(`Execution stopped: ${e.message || 'execution error'}. Bet49 submissions: ${executionReport.bet49Numbers.length}/${batchBet49.length}. Check the bet slip.`);
                     extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken })
+                        body: JSON.stringify(lastExecutionReceipt = { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport })
                     }).catch(() => {});
                 }
 

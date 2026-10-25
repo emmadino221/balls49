@@ -2,7 +2,7 @@
 let appliedHistoryPreset = null;
 let historyPresetPreview = null;
 const PRESET_META = {
-    betzero: ['BetZero', 'u4', 1.65, 1], bet49: ['Bet49', 'bet49', 7.8, 1],
+    betzero: ['BetZero', 'u4', 1.65, 1], bet49: ['Bet49', 'bet49', 7.8, 6],
     rainbow: ['Rainbow', 'color', 1.5, 1], hilo: ['High/Low', 'sum', 2, 1],
     totalColor: ['Total Color 3-way', 'totalColor', 3.8, 3],
     totalColor2: ['Total Color 2-way', 'totalColor2', 3.8, 2],
@@ -44,7 +44,7 @@ function historySequenceCost(game, base, steps, profile, unified) {
         }
         if (game === 'totalColor1') stake = TC1Staking.nextStake(base, cost, step - 1, profile === 'winning_accumulating' ? 'accumulating' : 'fixed');
         else if (profile === 'flat') stake = base;
-        else if (game === 'bet49') stake = Math.round(base * Math.pow(odds / (odds - 1), step - 1));
+        else if (game === 'bet49') stake = Math.ceil((cost + base * (odds - factor)) / (odds - factor));
         else stake = calculateStakeForStep(key, base, step, odds, 2);
         if (!Number.isFinite(stake) || stake <= 0) return Infinity;
         cost += stake * factor;
@@ -192,7 +192,7 @@ function renderHistoryPreset({ history, plans, profile, unified, budget, exclude
         const supportsSummary = SUMMARY_MODEL_MARKETS.some(market => market.id === game);
         const card = presetNode('section', undefined, 'preset-card');
         card.append(presetNode('h3', PRESET_META[game][0]), presetFacts([
-            ['Starting stake', money(plan.base) + (PRESET_META[game][3] > 1 ? ' / color' : '')],
+            ['Starting stake', money(plan.base) + (game === 'bet49' ? ' / number' : PRESET_META[game][3] > 1 ? ' / color' : '')],
             ['Maximum steps', plan.steps], ['Wins / losses', `${stats.wins} / ${stats.losses}`],
             ['Win rate', `${(presetRate(stats) * 100).toFixed(1)}%`],
             ['Worst losing streak', `${stats.worstLosses} losses`],

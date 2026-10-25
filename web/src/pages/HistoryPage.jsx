@@ -1,3 +1,4 @@
+import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TotalColorPick from '../components/TotalColorPick.jsx';
 import { apiRequest } from '../auth.js';
@@ -44,12 +45,7 @@ function MarketPick({ record, market }) {
       ? <span className="pick-balls">{predicted.betzero.map((number, index) => <BallChip key={`${number}-${index}`} number={number} />)}</span>
       : <NoPick />;
   }
-  if (market.id === 'bet49') {
-    const number = predicted.bet49;
-    return Number.isInteger(Number(number)) && Number(number) >= 1 && Number(number) <= 49
-      ? <BallChip number={Number(number)} />
-      : <NoPick />;
-  }
+  if (market.id === 'bet49') return <Bet49Pick value={predicted.bet49} />;
   if (market.id === 'rainbow') {
     return predicted.rainbow && predicted.rainbow !== 'SKIP' ? <ColorTag color={predicted.rainbow} /> : <NoPick />;
   }

@@ -1,4 +1,5 @@
 'use strict';
+const { bet49Numbers } = require('./bet49');
 const { getTotalColorOutcome } = require('./total-color');
 const aliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
 const colorOf = n => n === 49 ? 'yellow' : n % 3 === 1 ? 'red' : n % 3 === 2 ? 'blue' : 'green';
@@ -10,8 +11,7 @@ function marketItems(pred, market, compareRainbow = false) {
     }
     if (market === 'betzero') return pred.betzeroStatus === 'ACTIVE'
         ? (pred.unlikely4 || []).map(item => ({ value: Number(item.number), type: 'number', rule: 'absent' })) : [];
-    if (market === 'bet49') return Number.isInteger(pred.bet49Pick) && pred.bet49Pick > 0 && pred.bet49Pick <= 49
-        ? [{ value: pred.bet49Pick, type: 'number', rule: 'present' }] : [];
+    if (market === 'bet49') return bet49Numbers(pred.bet49Pick).map(value => ({ value, type: 'number', rule: 'present' }));
     if (market === 'rainbow' && compareRainbow) return ['red', 'blue', 'green'].map(value => ({
         value, type: 'color', rule: 'twoPlus',
         selected: pred.rainbowStatus === 'ACTIVE' && pred.topColor?.name === value,

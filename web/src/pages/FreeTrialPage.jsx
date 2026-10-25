@@ -1,3 +1,4 @@
+import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import React, { useEffect, useState } from 'react';
 import TotalColorPick from '../components/TotalColorPick.jsx';
 
@@ -6,7 +7,7 @@ const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/p
 const PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const markets = [
   { id: 'betzero', name: 'BetZero', help: 'Four-number set; the pick wins if none of those numbers appear.' },
-  { id: 'bet49', name: 'Bet49', help: 'One number pick; it wins if the number appears in the next draw.' },
+  { id: 'bet49', name: 'Bet49', help: '4-6 numbers; any selected number appearing wins.' },
   { id: 'rainbow', name: 'Rainbow Color', help: 'One color prediction.' },
   { id: 'totalColor', name: 'Total Color (3-way)', help: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', help: 'Two selected colors.' },
@@ -30,7 +31,7 @@ function Pick({ record, market }) {
   if (!record) return <span className="no-pick">Waiting for the next prediction</span>;
   const pick = record.predicted || {};
   if (market === 'betzero') return pick.betzero?.length ? <span className="pick-balls">{pick.betzero.map((n, i) => <Ball key={`${n}-${i}`} value={n} />)}</span> : <span className="no-pick">No active pick this draw</span>;
-  if (market === 'bet49') return Number.isInteger(Number(pick.bet49)) && Number(pick.bet49) >= 1 && Number(pick.bet49) <= 49 ? <Ball value={pick.bet49} /> : <span className="no-pick">No active pick this draw</span>;
+  if (market === 'bet49') return <Bet49Pick value={pick.bet49} />;
   if (market === 'rainbow') return pick.rainbow && pick.rainbow !== 'SKIP' ? <span className={`color-name color-${String(pick.rainbow).toLowerCase()}`}><i />{pick.rainbow}</span> : <span className="no-pick">No active pick this draw</span>;
   if (market === 'hilo') return pick.hilo && pick.hilo !== 'SKIP' ? <span className={`range-tag range-${String(pick.hilo).toLowerCase()}`}>{pick.hilo}</span> : <span className="no-pick">No active pick this draw</span>;
   if (market === 'totalColor') {
