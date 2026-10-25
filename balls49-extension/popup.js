@@ -502,6 +502,24 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
     try {
         const res = await extensionFetch(`${SERVER_URL}/reset?clientId=${CLIENT_ID}`, { method: 'POST' });
         if (res.ok) {
+            const disabledGames = Object.fromEntries(GAMES.map(game => [game, false]));
+            const clearedStakes = Object.fromEntries(GAMES.map(game => [game, 0]));
+            await chrome.storage.sync.set({ running: false, enabledGames: disabledGames,
+                stakes: clearedStakes, takeProfit: 0, stopLoss: 0 });
+            for (const game of GAMES) {
+                document.getElementById(`btn-${game}`).classList.remove('active');
+                document.getElementById(`stake-${game}`).value = 0;
+            }
+            document.getElementById('take-profit').value = 0;
+            document.getElementById('stop-loss').value = 0;
+            setToggleBtn(false);
+            appliedHistoryPreset = null;
+            historyPresetPreview = null;
+            document.getElementById('preset-preview').style.display = 'none';
+            document.getElementById('btn-confirm-history-preset').disabled = true;
+            document.getElementById('setup-feedback').style.display = 'none';
+            document.getElementById('preset-review-save').hidden = true;
+            presetStatus('Execution wiped. All games are disabled and recovery is cleared. Preview again to create new settings.', 'success');
             btn.textContent = '✅ Cleared';
             setTimeout(() => { btn.textContent = '🔄 Wipe Execution'; btn.disabled = false; }, 1500);
             loadStats(); 

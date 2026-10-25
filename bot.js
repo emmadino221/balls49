@@ -4883,6 +4883,7 @@ async function handleHttpRequest(req, res) {
         session.stats.isHalted = true; 
         session.stats.haltReason = "🛑 Wiped & Stopped by User";
         
+        session.sniperState = makeDefaultSniperState();
         session.pendingBetPayload = null;
         session.betExecutionClaim = null;
         session.failedBetRecovery = null;
@@ -4911,6 +4912,7 @@ async function handleHttpRequest(req, res) {
         session.stats.currentWinStreak = 0; session.stats.maxWinStreak = 0;
         session.stats.currentLossStreak = 0; session.stats.maxLossStreak = 0;
 
+        persistSessions();
         res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
     }
     else if (parsedUrl.pathname === '/config' && req.method === 'POST') {
