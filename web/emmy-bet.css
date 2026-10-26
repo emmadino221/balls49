@@ -1923,3 +1923,27 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .gameplay-table { max-width: 100%; overflow-x: auto; }
 .gameplay-table table { width: 100%; border-collapse: collapse; text-align: left; }
 .gameplay-table th, .gameplay-table td { padding: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+
+@media (max-width: 600px) {
+  /* The desktop 220px flex basis becomes height when the toolbar stacks. */
+  .suggestions-page .gameplay-plan .resource-toolbar label { flex: 0 0 auto; }
+  .suggestions-page .resource-toolbar { gap: 12px; margin-bottom: 16px; }
+  .suggestions-page .resource-toolbar label { min-width: 0; gap: 6px; font-size: 13px; }
+  .suggestions-page .resource-toolbar input,
+  .suggestions-page .resource-toolbar select {
+    box-sizing: border-box;
+    height: 44px;
+    min-height: 44px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 16px;
+    line-height: normal;
+    border-radius: 8px;
+  }
+  .suggestions-page .content-card { padding: 16px; }
+  .suggestions-page .gameplay-plan .resource-toolbar { padding-block: 12px; }
+  .suggestions-page .gameplay-rules { gap: 12px; }
+  .suggestions-page .gameplay-rules article { padding: 14px; }
+  .suggestions-page .gameplay-reserve { padding: 16px; }
+  .suggestions-page .resource-toolbar .btn { min-height: 44px; padding: 10px 16px; }
+}

@@ -14,7 +14,7 @@ export default function SuggestionsPage() {
     setLoading(true); setData(null); load(); const timer = setInterval(load, 30000);
     return () => { active = false; clearInterval(timer); };
   }, [limit, refresh]);
-  return <main className="page-wrap resource-page">
+  return <main className="page-wrap resource-page suggestions-page">
     <section className="page-intro"><span className="overline">OPEN TO EVERYONE</span><h1>Simple game plans.</h1><p>Choose your game and base stake. Review when to enter, pause and resume.</p></section>
     <section className="content-card resource-toolbar"><div><h2>Recent history</h2></div><label>Draw window<select value={limit} onChange={e => setLimit(Number(e.target.value))}>{[50,100,200,500,1000].map(n => <option key={n} value={n}>Last {n} draws</option>)}</select></label><button className="btn btn-secondary" onClick={() => setRefresh(n => n + 1)} disabled={loading}>Refresh</button></section>
     {error && <p className="content-card" role="alert">Could not refresh results: {error}{data ? ' Showing the last loaded snapshot.' : ''}</p>}
