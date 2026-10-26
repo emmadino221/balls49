@@ -1908,3 +1908,16 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 @media (max-width: 980px) {
   .main-nav.is-open { max-height: calc(100dvh - 76px); overflow-y: auto; }
 }
+.gameplay-plan { margin-block: 24px; min-width: 0; }
+.gameplay-plan .resource-toolbar { padding-block: 18px; }
+.gameplay-plan input, .gameplay-plan select { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink); }
+.gameplay-plan .resource-toolbar label { flex: 1 1 220px; }
+.gameplay-rules article { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+.gameplay-rules h3 { margin-top: 0; }
+.gameplay-plan details { margin-block: 20px; }
+.gameplay-plan summary { cursor: pointer; font-weight: 700; }
+.gameplay-reserve { display: grid; gap: 8px; background: var(--green-soft); border: 1px solid var(--line); padding: 20px; border-radius: 14px; margin-block: 18px; overflow-wrap: anywhere; }
+.gameplay-reserve strong { font-size: clamp(1.4rem, 4vw, 2rem); }
+.gameplay-table { max-width: 100%; overflow-x: auto; }
+.gameplay-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.gameplay-table th, .gameplay-table td { padding: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
