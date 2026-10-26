@@ -1914,6 +1914,8 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .gameplay-plan .resource-toolbar label { flex: 1 1 220px; }
 .gameplay-rules article { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
 .gameplay-rules h3 { margin-top: 0; }
+.gameplay-rules strong { display: block; font-size: 1.15rem; line-height: 1.4; }
+.resource-method > summary { cursor: pointer; font-weight: 700; padding-block: 4px; }
 .gameplay-plan details { margin-block: 20px; }
 .gameplay-plan summary { cursor: pointer; font-weight: 700; }
 .gameplay-reserve { display: grid; gap: 8px; background: var(--green-soft); border: 1px solid var(--line); padding: 20px; border-radius: 14px; margin-block: 18px; overflow-wrap: anywhere; }
