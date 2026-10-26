@@ -1923,6 +1923,9 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .gameplay-table { max-width: 100%; overflow-x: auto; }
 .gameplay-table table { width: 100%; border-collapse: collapse; text-align: left; }
 .gameplay-table th, .gameplay-table td { padding: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.daily-streak-history { margin-block: 24px; }
+.daily-streak-history .market-analytics-grid > article { margin: 0; min-width: 0; }
+.daily-streak-history select { min-height: 44px; font-size: 16px; }
 
 @media (max-width: 600px) {
   /* The desktop 220px flex basis becomes height when the toolbar stacks. */

@@ -1,3 +1,4 @@
+import DailyStreakHistory from '../components/DailyStreakHistory';
 import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TotalColorPick from '../components/TotalColorPick.jsx';
@@ -244,6 +245,8 @@ export default function HistoryPage() {
           <span aria-hidden="true">↻</span> Refresh history
         </button>
       </section>
+
+      <DailyStreakHistory markets={markets} />
 
       <section className="history-summary" aria-label="History summary">
         <article className="summary-card"><span>Settled picks</span><strong>{summary.settled.toLocaleString()}</strong><small>Within loaded history</small></article>

@@ -1,3 +1,4 @@
+const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, bet49Numbers } = require('./bet49');
 ﻿'use strict';
@@ -224,7 +225,7 @@ if (SITE_PUBLIC_MODE && SITE_ALLOWED_ORIGINS.size === 0) {
 }
 const PUBLIC_SITE_ROUTES = new Set([
     'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
-    'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
+    'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
@@ -909,6 +910,12 @@ const PUBLIC_MARKET_RESULT_KEYS = {
     unified: 'unified'
 };
 
+const dailyStreakArchive = createDailyStreakArchive(siteDb, Object.keys(PUBLIC_MARKET_RESULT_KEYS));
+if (!SITE_PUBLIC_MODE) {
+    dailyStreakArchive.recordMany(predictionLog);
+    dailyStreakArchive.closeBefore(nigeriaMidnightBoundary());
+}
+
 function safePublicCount(value) {
     const count = Number(value);
     return Number.isSafeInteger(count) && count >= 0 ? count : 0;
@@ -931,6 +938,10 @@ function getDailyHistoryResetAt() {
 }
 
 function applyDailyHistoryReset(resetAt) {
+    if (!SITE_PUBLIC_MODE) {
+        dailyStreakArchive.recordMany(predictionLog);
+        dailyStreakArchive.closeBefore(resetAt);
+    }
     if (!SITE_PUBLIC_MODE) {
         setSiteSettingStatement.run('daily_reset_pending', String(resetAt));
         for (const clientId of Object.keys(persistedSessions)) getSession(clientId);
@@ -1131,6 +1142,7 @@ async function publishPredictionSnapshot() {
             version: 1,
             snapshotAt: Number(timestamp),
             dailyHistoryResetAt: getDailyHistoryResetAt(),
+            dailyStreaks: dailyStreakArchive.batch(),
             marketStatsResetAt: getMarketStatsResetAt(),
             current: buildPublicFeedCurrent(),
             clock: publicClock,
@@ -2495,9 +2507,9 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, totalColor2Pred);
     var bet49Pick = bet49Prediction.numbers;
 
-    // Share the issued Bet49 selection; stable ordering keeps every surface aligned.
+    // Lowest last-10 frequency among issued Bet49 picks; retain Bet49 order on ties.
     const betzeroStatus = bet49Prediction.status === 'ACTIVE' && bet49Pick.length >= 4 ? 'ACTIVE' : 'SKIP';
-    const unlikely4 = betzeroStatus === 'ACTIVE' ? bet49Pick.slice(0, 4).map(number => ({ number })) : [];
+    const unlikely4 = betzeroStatus === 'ACTIVE' ? bet49Pick.map((number, index) => ({ number, index })).sort((a, b) => bet49Prediction.counts[a.number] - bet49Prediction.counts[b.number] || a.index - b.index).slice(0, 4).map(({ number }) => ({ number })) : [];
     const bzSkipReason = betzeroStatus === 'ACTIVE' ? '' : 'Bet49 has fewer than four active picks';
 
     // Total Color 2-way is computed first; Rainbow follows the final Bet49 picks,
@@ -2615,6 +2627,7 @@ function processUpdates(pred, actualDraw) {
             unified: unifiedStatus === 'SKIP' ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
         };
         targetItem.settledAt = new Date().toISOString();
+        dailyStreakArchive.recordMany([targetItem]);
         const shadowResultKeys = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' };
         for (const [key, resultKey] of Object.entries(shadowResultKeys)) {
             if (targetItem.mlShadow?.[key]) targetItem.mlShadow[key].outcome = targetItem.result[resultKey];
@@ -3363,6 +3376,7 @@ async function tick() {
                             unified: !p.predicted.unified ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
                         };
                         p.settledAt = new Date().toISOString();
+                        dailyStreakArchive.recordMany([p]);
                         updatedLog = true;
                     }
                 }
@@ -3805,6 +3819,7 @@ async function handleHttpRequest(req, res) {
                     siteDb.exec('ROLLBACK');
                     return sendJson(res, 409, { error: 'A newer prediction snapshot is already stored.' });
                 }
+                if (snapshot.dailyStreaks !== undefined) dailyStreakArchive.importSummaries(snapshot.dailyStreaks);
                 for (const item of normalizedHistoryUpdates) {
                     upsertPublicPredictionHistoryStatement.run(item.drawId, item.sortDrawId, JSON.stringify(item.record));
                 }
@@ -4292,6 +4307,12 @@ async function handleHttpRequest(req, res) {
             }
         });
         return;
+    }
+
+    if (parsedUrl.pathname === '/public-daily-streaks' && req.method === 'GET') {
+        const dates = dailyStreakArchive.dates();
+        const day = parsedUrl.searchParams.get('day') || dates[0];
+        return sendJson(res, 200, { dates, selected: dates.includes(day) ? dailyStreakArchive.read(day) : null });
     }
 
     if (parsedUrl.pathname === '/public-history' && req.method === 'GET') {

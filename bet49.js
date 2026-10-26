@@ -36,7 +36,7 @@ function predictBet49(draws, targetDrawId, totalColor2Prediction) {
     const numbers = Array.from({ length: 49 }, (_, i) => i + 1)
         .filter(n => counts[n] >= 2 && selectedColors.includes(colorOf(n)))
         .sort((a, b) => latest[b] - latest[a] || a - b).slice(0, 6);
-    return numbers.length >= 4 ? { status: 'ACTIVE', numbers, reason: '' }
+    return numbers.length >= 4 ? { status: 'ACTIVE', numbers, counts, reason: '' }
         : skip('Fewer than four eligible numbers');
 }
 
