@@ -1,9 +1,16 @@
 'use strict';
 
 // targetDrawId prevents using the target or future results.
-function predictBet49(draws, targetDrawId) {
+function predictBet49(draws, targetDrawId, totalColor2Prediction) {
     const target = Number(targetDrawId);
     const skip = reason => ({ status: 'SKIP', numbers: [], reason });
+    const selectedColors = totalColor2Prediction?.top2;
+    if (totalColor2Prediction?.status !== 'ACTIVE') return skip('Total Color 2-way is not active');
+    if (!Array.isArray(selectedColors) || selectedColors.length !== 2
+        || new Set(selectedColors).size !== 2
+        || !selectedColors.every(color => ['red', 'blue', 'green'].includes(color))) {
+        return skip('Total Color 2-way needs two valid colors');
+    }
     if (!Number.isSafeInteger(target) || target <= 10) return skip('Need 10 completed draws');
     const window = new Map();
     for (const draw of Array.isArray(draws) ? draws : []) {
@@ -19,22 +26,15 @@ function predictBet49(draws, targetDrawId) {
     if (window.size !== 10) return skip('Need 10 consecutive completed draws');
     const colors = ['red', 'blue', 'green', 'yellow'];
     const colorOf = n => n === 49 ? 'yellow' : colors[(n - 1) % 3];
-    const colorCounts = Object.fromEntries(colors.map(c => [c, 0]));
-    const colorLatest = Object.fromEntries(colors.map(c => [c, 0]));
     const counts = Array(50).fill(0);
     const latest = Array(50).fill(0);
     for (const [id, balls] of window) for (const n of balls) {
-        const color = colorOf(n);
         counts[n]++;
         latest[n] = Math.max(latest[n], id);
-        colorCounts[color]++;
-        colorLatest[color] = Math.max(colorLatest[color], id);
     }
-    // Stable final tie order avoids changing picks on repeated reads of a draw.
-    const dominant = [...colors].sort((a, b) => colorCounts[b] - colorCounts[a]
-        || colorLatest[b] - colorLatest[a] || colors.indexOf(a) - colors.indexOf(b)).slice(0, 2);
+    // Equal-recency candidates use ascending number order for stable picks.
     const numbers = Array.from({ length: 49 }, (_, i) => i + 1)
-        .filter(n => counts[n] >= 2 && dominant.includes(colorOf(n)))
+        .filter(n => counts[n] >= 2 && selectedColors.includes(colorOf(n)))
         .sort((a, b) => latest[b] - latest[a] || a - b).slice(0, 6);
     return numbers.length >= 4 ? { status: 'ACTIVE', numbers, reason: '' }
         : skip('Fewer than four eligible numbers');

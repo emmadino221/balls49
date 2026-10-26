@@ -26,7 +26,7 @@ const { predictHighLow } = require('./high-low');
 const { predictBetZero } = require('./betzero');
 const { nigeriaMidnightBoundary } = require('./daily-reset');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
-const { applyAdaptiveStrategies, getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
+const { getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
 
 const TC1Staking = require('./balls49-extension/tc1-staking');
 const { singleColorPrediction, singleColorWins } = require('./total-color');
@@ -1435,7 +1435,7 @@ function passesSummaryModelGate(session, key, prediction = lastPrediction) {
 }
 
 function passesStrategyFilter(session, key, prediction = lastPrediction) {
-    if (key === 'u4') return true; // BetZero now has one strategy; old filters cannot block it.
+    if (key === 'u4' || key === 'color') return true; // Single-rule markets cannot be blocked by retired strategy filters.
     const market = ({ u4: 'betzero', color: 'rainbow' })[key];
     const filter = session.config.strategyFilters?.[key] || 'follow';
     if (!market || filter === 'follow') return true;
@@ -2370,8 +2370,6 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var betzeroStatus = betzero.status;
     var unlikely4 = betzero.numbers.map(number => ({ number }));
     var bzSkipReason = betzero.reason;
-    const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId);
-    var bet49Pick = bet49Prediction.numbers;
 
     if (getDailyHistoryResetAt()) {
         stats100TC = null;
@@ -2472,6 +2470,28 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         totalColor2Pred.gap = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
     }
 
+    // Bet49 uses exactly the colors issued for Total Color 2-way on this draw.
+    const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, totalColor2Pred);
+    var bet49Pick = bet49Prediction.numbers;
+
+    // Total Color 2-way is computed first; Rainbow follows the final Bet49 picks,
+    // so a Rainbow tie must not change the two-way prediction retroactively.
+    const bet49ColorCounts = { red: 0, blue: 0, green: 0 };
+    for (const number of bet49Pick) {
+        const color = getBallColor(number);
+        if (Object.hasOwn(bet49ColorCounts, color)) bet49ColorCounts[color]++;
+    }
+    const largestBet49ColorCount = Math.max(...Object.values(bet49ColorCounts));
+    const rainbowLeaders = Object.keys(bet49ColorCounts).filter(color => bet49ColorCounts[color] === largestBet49ColorCount);
+    rainbowStatus = bet49Prediction.status === 'ACTIVE' && largestBet49ColorCount > 0 && rainbowLeaders.length === 1 ? 'ACTIVE' : 'SKIP';
+    rbSkipReason = rainbowStatus === 'ACTIVE' ? '' : bet49Prediction.status !== 'ACTIVE'
+        ? 'Bet49 has no active prediction' : 'Bet49 selected numbers have tied color counts';
+    selectedColorName = rainbowStatus === 'ACTIVE' ? rainbowLeaders[0] : null;
+    rawColorFreq = selectedColorName ? colorFreqs100[selectedColorName] || 0 : 0;
+    topColor = { name: selectedColorName, freq: rawColorFreq, freqs: colorFreqs100,
+        weighted: selectedColorName ? weightedColorCounts[selectedColorName] : 0 };
+
+
     // Total Color 3-way depends only on the previous completed outcome.
     var totalColorPred = applyPreviousDrawRule(null, histRaw?.data?.draws, targetDrawId);
 
@@ -2485,7 +2505,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
 
     var brainData = {
         betzero: { selected: unlikely4.map(x => x.number), status: betzeroStatus, poolSize: betzero.poolSize, strategy: 'rolling_ten_keep_eligible' },
-        rainbow: { selected: topColor.name, freqs: colorFreqs100, maxFreq: rawColorFreq, weightedMax: maxFreq100 },
+        rainbow: { selected: topColor.name, freqs: colorFreqs100, maxFreq: rawColorFreq, weightedMax: topColor.weighted, selectedNumberColorCounts: bet49ColorCounts, strategy: 'bet49_selected_color_majority' },
         hilo: { targetLock: sumRange, oppositeStreakLimit: oppositeStreakLimit, analysis: highLow.analysis },
         totalColor: { status: totalColorPred.status }
     };
@@ -3362,7 +3382,6 @@ async function tick() {
             if (!(drawsForPred.draws || []).length) return;
 
             var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId);
-            pred = applyAdaptiveStrategies(pred, drawsForPred.draws || [], predictionLog, nextId);
             for (const market of ['betzero', 'rainbow']) {
                 const strategy = pred.adaptiveStrategies?.[market];
                 if (strategy?.switched) console.log(`[Strategy] ${market}: ${strategy.selected} selected for draw ${nextId}; paired samples ${strategy.comparison.pairedDraws}.`);
