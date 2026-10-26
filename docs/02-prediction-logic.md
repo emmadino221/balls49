@@ -12,7 +12,7 @@ The public prediction/history surfaces expose seven markets:
 
 | Public market | Prediction/result keys | Rule summary |
 |---|---|---|
-| BetZero | `betzero` | Select four numbers; win if none appear in the draw. |
+| BetZero | `betzero` | Take the first four numbers from the same draw's active Bet49 selection, in its recency order. Skip when Bet49 skips. Win if none of the four appear in the draw. |
 | Bet49 | `bet49` | Use the last 10 consecutive completed draws. Use the two colors in the same draw's active Total Color 2-way prediction, and take up to six most-recent numbers from those colors that appeared at least twice. Skip whenever Total Color 2-way skips. Skip if fewer than four qualify. Any selected number appearing wins. Each number is a separate 7.80-odds bet. |
 | Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
 | Total Color (3-way) | `totalColor` | Exclude the previous completed outcome; pick the other three of Red, Blue, Green and DRAW. No frequency selection. |
@@ -73,3 +73,8 @@ See [the selection rules](../SITE_ACCESS_SETUP.md#highlow-rolling-analysis-witho
 ### Rainbow follows Bet49
 
 Live Rainbow 2+ uses the most common color among the current Bet49 selected numbers (each selected number contributes one vote). A tied highest count or a skipped Bet49 prediction makes Rainbow SKIP. It does not fall back to an older color or the previous adaptive selector. Total Color 2-way is computed first using its existing rule, then Bet49, then Rainbow; a Rainbow skip does not overwrite Total Color 2-way. Old extension strategy filters no longer gate Rainbow entries. Settlement remains a win when at least two balls of the predicted color appear in the actual draw. Historical records are unchanged.
+
+
+### BetZero follows Bet49
+
+BetZero uses the first four numbers of the current Bet49 selection, retaining Bet49's most-recent-first ordering and stable ties. Bet49 must be ACTIVE with at least four picks; otherwise BetZero skips. No prior BetZero selection is carried forward. The old eligible-pool confidence adjustment is not applied to this fixed four-of-Bet49 rule. Settlement, stake progression, and existing records are unchanged: BetZero wins only if none of its four numbers appear. Telegram, the website, and automation consume this same issued selection.
