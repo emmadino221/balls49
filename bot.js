@@ -224,7 +224,7 @@ if (SITE_PUBLIC_MODE && SITE_ALLOWED_ORIGINS.size === 0) {
     throw new Error('SITE_ALLOWED_ORIGINS must contain the deployed website origin when SITE_PUBLIC_MODE=true.');
 }
 const PUBLIC_SITE_ROUTES = new Set([
-    'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
+    'GET /public-suggestions-status', 'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
@@ -1043,6 +1043,13 @@ function getPublicMarketMaxLosses(records = predictionLog) {
     }
 
     return maximumLosses;
+}
+
+function getSuggestionsRevision() {
+    const settled = predictionLog.filter(record => record?.result).map(record => [
+        record.drawId, record.settledAt, record.result
+    ]);
+    return crypto.createHash('sha256').update(JSON.stringify([getDailyHistoryResetAt(), settled])).digest('hex');
 }
 
 function getPublicMarketCurrentWins(records = predictionLog) {
@@ -4112,10 +4119,13 @@ async function handleHttpRequest(req, res) {
         } catch { return sendJson(res, 400, { error: 'Invalid admin request.' }); }
     }
 
+    if (parsedUrl.pathname === '/public-suggestions-status' && req.method === 'GET') {
+        return sendJson(res, 200, { revision: getSuggestionsRevision() });
+    }
     if (parsedUrl.pathname === '/public-suggestions' && req.method === 'GET') {
         const requested = Number(parsedUrl.searchParams.get('limit')) || 100;
         const limit = [50, 100, 200, 500, 1000].includes(requested) ? requested : 100;
-        return sendJson(res, 200, historySuggestions(predictionLog, limit));
+        return sendJson(res, 200, { ...historySuggestions(predictionLog, limit), revision: getSuggestionsRevision() });
     }
     if (parsedUrl.pathname === '/public-videos' && req.method === 'GET') {
         return sendJson(res, 200, { videos: siteDb.prepare('SELECT id, youtube_id AS youtubeId, title, description FROM site_videos ORDER BY position, created_at, id').all() });

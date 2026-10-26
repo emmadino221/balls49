@@ -1926,6 +1926,8 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .daily-streak-history { margin-block: 24px; }
 .daily-streak-history .market-analytics-grid > article { margin: 0; min-width: 0; }
 .daily-streak-history select { min-height: 44px; font-size: 16px; }
+.suggestions-page .suggestions-auto-toggle[aria-checked="true"] { background: var(--green-soft); color: var(--ink); border-color: var(--green); }
+.suggestions-page .suggestions-auto-toggle:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
 
 @media (max-width: 600px) {
   /* The desktop 220px flex basis becomes height when the toolbar stacks. */

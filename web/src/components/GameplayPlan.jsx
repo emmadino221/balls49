@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 const ECONOMICS = { betzero: [1.65, 1], rainbow: [1.5, 1], hilo: [2, 1], totalColor: [3.8, 3], totalColor2: [3.8, 2], totalColor1: [3.8, 1], bet49: [7.8, 6] };
 const money = n => `NGN ${n.toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 const rate = n => n == null ? '--' : `${n}%`;
 
-export default function GameplayPlan({ markets, game, onGameChange }) {
-  const [base, setBase] = useState('50');
+export default function GameplayPlan({ markets, game, onGameChange, base, onBaseChange }) {
   const market = markets.find(m => m.key === game);
   if (!market) return null;
   const plan = market.gameplay, economics = ECONOMICS[game];
@@ -27,7 +26,7 @@ export default function GameplayPlan({ markets, game, onGameChange }) {
   }
   return <section className="content-card gameplay-plan">
     <span className="overline">YOUR GAME PLAN</span><h2>Choose a game. See your plan.</h2>
-    <div className="resource-toolbar"><label>Game<select value={game} onChange={e => onGameChange(e.target.value)}>{markets.map(m => <option key={m.key} value={m.key}>{m.name}</option>)}</select></label><label>Base stake per selection (NGN)<input type="number" min="1" max="1000000" step="any" value={base} onChange={e => setBase(e.target.value)} /></label></div>
+    <div className="resource-toolbar"><label>Game<select value={game} onChange={e => onGameChange(e.target.value)}>{markets.map(m => <option key={m.key} value={m.key}>{m.name}</option>)}</select></label><label>Base stake per selection (NGN)<input type="number" min="1" max="1000000" step="any" value={base} onChange={e => onBaseChange(e.target.value)} /></label></div>
     {!validBase && <p role="alert">Enter a stake from NGN 1 to NGN 1,000,000.</p>}
     <p className="insight-suggestion"><strong>{supported ? 'History-based plan to review' : plan?.status === 'weaker' ? 'This plan did not improve newer results' : 'More results needed'}</strong>{!supported && <><br />Observe longer. Any plan below is an illustration only.</>}</p>
     {hasRule && <>

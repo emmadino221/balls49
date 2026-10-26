@@ -24,6 +24,16 @@ Suggestions explain insufficient samples (under 50 settled picks), current runs 
 
 ### Gameplay planner
 
+The Refresh button and history-window changes preserve the selected game and base
+stake while this page remains open. Auto refresh is OFF initially. When enabled,
+the page checks `/public-suggestions-status` every three seconds and reloads the
+plan only when settled history changes (including corrections and daily clearing).
+Checks do not overlap, and turning the switch off stops polling and ignores any
+in-flight result. The current plan remains visible during refresh; failed requests
+are labelled. Automatic updates only change the displayed suggestion, not bets or
+extension settings. The page must remain open; browser background throttling may
+delay updates.
+
 Visitors select a game and enter **base stake only**. No capital or personal budget is collected. The public response also includes an outcome-only replay of candidate entry/pause rules:
 
 - Wait for 0 through 4 observed losses after a win; pause after 1 through 3 played losses.
