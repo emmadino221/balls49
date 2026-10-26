@@ -450,7 +450,9 @@ const makeDefaultSniperState = () => Object.fromEntries(SNIPER_TRACKERS.map(trac
 
 function getSniperSettings(config, trackerKey) {
     const market = TRACKER_TO_SNIPER_MARKET[trackerKey];
-    const saved = market && config.sniperSettings?.[market];
+    // Markets without a sniper control must not inherit legacy global gates.
+    if (!market) return { enabled: false, step: 0, resetLosses: 0 };
+    const saved = config.sniperSettings?.[market];
     if (saved) return saved;
     return { enabled: !!config.sniperMode, step: config.sniperStep || 0, resetLosses: config.sniperResetLosses || 0 };
 }
@@ -4675,6 +4677,7 @@ async function handleHttpRequest(req, res) {
                 totalColor1: livePred.totalColor1Pred?.status
             };
             const skipReasons = { u4: livePred.bzSkipReason, color: livePred.rbSkipReason, sum: livePred.hlSkipReason };
+            const missingStakeKey = enabledKeys.find(key => !(session.config.initialStakes[key] > 0) && !(session.config.dynamicStakePercent > 0 && session.wallets[key]?.bankroll > 0));
             const blockedKey = enabledKeys.find(key => predictionByKey[key] === 'SKIP');
             const summaryBlockedKey = enabledKeys.find(key => SUMMARY_MODEL_MARKETS.includes(key)
                 && getSummaryGateTarget(session.config, key) !== null
@@ -4689,6 +4692,8 @@ async function handleHttpRequest(req, res) {
                 decisionReason = session.config.unifiedMode && Object.values(session.config.enabledGames).some(Boolean)
                     ? 'Unified is waiting for an eligible score-selected prediction.'
                     : 'No prediction market is enabled.';
+            } else if (missingStakeKey) {
+                decisionReason = `${decisionLabels[missingStakeKey]} has no saved stake. Enter a stake and Save Settings in the extension.`;
             } else if (blockedKey) {
                 decisionReason = `${decisionLabels[blockedKey]} is skipped${skipReasons[blockedKey] ? `: ${skipReasons[blockedKey]}` : '.'}`;
             } else if (strategyBlockedKey) {
