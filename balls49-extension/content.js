@@ -482,8 +482,11 @@ function injectLiveOverlay() {
             overflow: auto;
             transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             resize: both;
-            min-width: 250px;
-            min-height: 200px;
+            min-width: 150px;
+            min-height: 80px;
+            box-sizing: border-box;
+            container-type: inline-size;
+            container-name: b49-overlay;
         }
 
         #balls49-overlay-root .b49-panel {
@@ -621,6 +624,29 @@ function injectLiveOverlay() {
             background: rgba(0, 0, 0, 0.2); border-top: 1px solid rgba(255, 255, 255, 0.04);
             padding: 8px 14px; font-size: 10px; color: #71717a;
             display: flex; justify-content: space-between; align-items: center;
+        }
+
+        #balls49-overlay-root .b49-header {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #141419;
+            gap: 6px;
+        }
+        #balls49-overlay-root .b49-controls { flex-shrink: 0; }
+        #balls49-overlay-root .b49-metric-box { min-width: 0; overflow-wrap: anywhere; }
+        #balls49-overlay-root .b49-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        @container b49-overlay (max-width: 240px) {
+            #balls49-overlay-root .b49-header { padding: 8px; }
+            #balls49-overlay-root .b49-title { gap: 5px; font-size: 10px; }
+            #balls49-overlay-root .b49-title > span:last-child { display: none; }
+            #balls49-overlay-root .b49-title::after { content: 'B49'; }
+            #balls49-overlay-root .b49-body { padding: 7px; gap: 7px; }
+            #balls49-overlay-root .b49-directive-card { padding: 8px; }
+            #balls49-overlay-root .b49-dir-val { flex-wrap: wrap; gap: 5px; font-size: 12px; }
+            #balls49-overlay-root .b49-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+            #balls49-overlay-root .b49-grid > .b49-metric-box { grid-column: 1 !important; }
+            #balls49-overlay-root .b49-footer { flex-wrap: wrap; gap: 4px; padding: 8px; }
         }
 
         .b49-minimized .b49-body, .b49-minimized .b49-footer { display: none; }
