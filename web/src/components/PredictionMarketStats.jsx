@@ -5,9 +5,10 @@ export default function PredictionMarketStats({ stats, marketName, showStep = tr
   const losses = value => `${value} ${value === 1 ? 'loss' : 'losses'}`;
   return (
     <div className="prediction-stats-block">
-      <div className="prediction-market-stats" aria-label={`${marketName} step and losing streak statistics`}>
+      <div className="prediction-market-stats" aria-label={`${marketName} step and streak statistics`}>
         {showStep && <div><span>Current tracking step</span><strong>{stats.step > 0 ? `Step ${stats.step}` : '—'}</strong></div>}
         <div><span>Max losing streak · tracking period</span><strong>{losses(stats.maxLosingStreak)}</strong></div>
+        <div><span>Current winning streak</span><strong>{Number.isSafeInteger(stats.currentWinStreak) ? `${stats.currentWinStreak} ${stats.currentWinStreak === 1 ? 'win' : 'wins'}` : '--'}</strong></div>
         {['ENTER', 'HOLD'].map(label => {
           const summary = stats.summaryStats?.[label];
           const hasData = summary?.settled > 0;

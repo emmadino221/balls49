@@ -8,17 +8,18 @@ function labels(summary) {
     return parts.join(' | ');
 }
 
-function predictionBlock({ name, step, pick, summary }) {
+function predictionBlock({ name, step, pick, summary, currentWinStreak = 0 }) {
     return [`<b>${name} · STEP ${step}</b>`, pick || '⏳ No pick this draw',
-        labels(pick ? summary : null)].filter(Boolean).join('\n');
+        `Current wins: <b>${currentWinStreak}</b>`, labels(pick ? summary : null)].filter(Boolean).join('\n');
 }
 
-function resultBlock({ name, active, won, pick, step, maxLosses, summary, summaryStats }) {
+function resultBlock({ name, active, won, pick, step, maxLosses, summary, summaryStats, currentWinStreak = 0 }) {
     const value = bucket => bucket?.settled > 0 ? bucket.maxLosingStreak : '—';
     const lines = [
         `<b>${name}</b> · ${!active ? '⚪ SKIP' : won ? '✅ WIN' : '❌ LOSS'}`,
         active ? pick : '',
         `${active ? 'Next' : 'Step'} <b>${step}</b> | Game max <b>${maxLosses}</b>`,
+        `Current wins: <b>${currentWinStreak}</b>`,
         labels(active ? summary : null)
     ];
     if (active && ['ENTER', 'HOLD', 'LEARNING'].includes(summary)) {

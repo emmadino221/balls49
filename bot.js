@@ -1034,7 +1034,24 @@ function getPublicMarketMaxLosses(records = predictionLog) {
     return maximumLosses;
 }
 
+function getPublicMarketCurrentWins(records = predictionLog) {
+    const wins = Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, 0]));
+    const resetAt = getMarketStatsResetAt();
+    // Same tracking period and ordering as the shared losing-streak statistics.
+    for (const record of records.slice().reverse()) {
+        const time = Date.parse(record?.settledAt || record?.timestamp || '');
+        if (resetAt && (!Number.isFinite(time) || time <= resetAt)) continue;
+        for (const [market, resultKey] of Object.entries(PUBLIC_MARKET_RESULT_KEYS)) {
+            const outcome = record?.result?.[resultKey];
+            if (outcome === 'WIN') wins[market]++;
+            else if (outcome === 'LOSS') wins[market] = 0;
+        }
+    }
+    return wins;
+}
+
 function buildPublicMarketStats(currentRecord, records = predictionLog) {
+    const currentWins = getPublicMarketCurrentWins(records);
     const maximumLosses = getPublicMarketMaxLosses(records);
     const summaryStats = calculateSummaryLossStats(records, PUBLIC_MARKET_RESULT_KEYS, getMarketStatsResetAt());
     const strategyStats = calculateStrategyStats(records, getMarketStatsResetAt());
@@ -1042,6 +1059,7 @@ function buildPublicMarketStats(currentRecord, records = predictionLog) {
     return Object.fromEntries(Object.keys(PUBLIC_MARKET_RESULT_KEYS).map(market => [market, {
         step: getTrackingStep(market, safePublicCount(currentRecord?.steps?.[market])),
         maxLosingStreak: maximumLosses[market],
+        currentWinStreak: currentWins[market],
         summaryStats: summaryStats[market],
         strategyStats: strategyStats[market] || null
     }]));
@@ -2230,8 +2248,10 @@ async function sendPrediction(drawId, drawDate, pred) {
         sum: getShadowModelDecision('sum', pred, mlHl.score, globalTracker.sum.step),
         totalColor: getShadowModelDecision('totalColor', pred, mlTc.score, globalTracker.totalColor.step)
     };
+    const predictionWinStreaks = getPublicMarketCurrentWins();
     const pickBlock = (name, market, tracker, pick, summaryKey = tracker, unifiedKey = null) => predictionBlock({
         name, step: getTrackingStep(market, globalTracker[tracker].step), pick,
+        currentWinStreak: predictionWinStreaks[market],
         strategy: getSelectedStrategy(pred.adaptiveStrategies, market, unifiedKey),
         summary: getPublicSummaryLabel(mlShadow[summaryKey])
     });
@@ -2781,6 +2801,7 @@ function processUpdates(pred, actualDraw) {
     });
 
     const periodMaxLosses = getPublicMarketMaxLosses();
+    const periodCurrentWins = getPublicMarketCurrentWins();
     const summaryLossStats = calculateSummaryLossStats(predictionLog, PUBLIC_MARKET_RESULT_KEYS, getMarketStatsResetAt());
     const settledSummaryLabels = getRecordSummaryModel(targetItem);
     const strategyStats = calculateStrategyStats(predictionLog, getMarketStatsResetAt());
@@ -2799,6 +2820,7 @@ function processUpdates(pred, actualDraw) {
             name, active, won, pick,
             step: getTrackingStep(marketKey, globalTracker[trackerKey].step),
             maxLosses: periodMaxLosses[marketKey] || 0,
+            currentWinStreak: periodCurrentWins[marketKey],
             strategy: getSelectedStrategy(targetItem?.adaptiveStrategies, marketKey, pred.unifiedPick?.key),
             summary: settledSummaryLabels[marketKey],
             summaryStats: summaryLossStats[marketKey], strategyStats: strategyStats[marketKey]
@@ -4485,6 +4507,7 @@ async function handleHttpRequest(req, res) {
         publicPrediction.strategy = getSelectedStrategy(logged?.adaptiveStrategies || lastPrediction.strategies, market, live.unifiedPick?.key);
         publicPrediction.marketStats = {
             step: selectedMarketStats.step ?? calculatedMarketStats[market].step,
+            currentWinStreak: selectedMarketStats.currentWinStreak ?? calculatedMarketStats[market].currentWinStreak,
             maxLosingStreak: selectedMarketStats.maxLosingStreak ?? calculatedMarketStats[market].maxLosingStreak,
             summaryStats: selectedMarketStats.summaryStats ?? calculatedMarketStats[market].summaryStats,
             strategyStats: selectedMarketStats.strategyStats ?? calculatedMarketStats[market].strategyStats
