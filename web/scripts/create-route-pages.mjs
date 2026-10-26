@@ -14,6 +14,8 @@ const pageFiles = [
   'guide.html',
   'calculator.html',
   'testimonials.html',
+  'suggestions.html',
+  'videos.html',
   'contact.html',
   'free-trial.html',
   'login.html',

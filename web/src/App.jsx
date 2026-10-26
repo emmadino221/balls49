@@ -11,7 +11,8 @@ const navLinks = [
   { path: 'analysis.html', page: 'analysis', label: 'Analysis' },
   { path: 'guide.html', page: 'guide', label: 'Guide' },
   { path: 'calculator.html', page: 'calculator', label: 'Calculator' },
-  { path: 'testimonials.html', page: 'testimonials', label: 'Testimonials' },
+  { path: 'suggestions.html', page: 'suggestions', label: 'Suggestions' },
+  { path: 'videos.html', page: 'videos', label: 'Videos' },
   { path: 'contact.html', page: 'contact', label: 'Contact' },
 ];
 
@@ -133,7 +134,8 @@ export default function App() {
             <a href="analysis.html">Prediction analysis</a>
             <a href="guide.html">Prediction guide</a>
             <a href="calculator.html">Martingale calculator</a>
-            <a href="testimonials.html">Member stories</a>
+            <a href="suggestions.html">Strategy suggestions</a>
+            <a href="videos.html">Video library</a>
           </div>
           <div className="footer-col">
             <h2>Get started</h2>

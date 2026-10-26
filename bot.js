@@ -1,3 +1,4 @@
+const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, bet49Numbers } = require('./bet49');
 ﻿'use strict';
 
@@ -82,6 +83,10 @@ siteDb.exec(`
         record_json TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS public_prediction_history_sort_idx ON public_prediction_history(sort_draw_id DESC);
+    CREATE TABLE IF NOT EXISTS site_videos (
+        id TEXT PRIMARY KEY, youtube_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
+        description TEXT NOT NULL, position INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS site_settings (
         setting_key TEXT PRIMARY KEY,
         setting_value TEXT NOT NULL
@@ -218,6 +223,7 @@ if (SITE_PUBLIC_MODE && SITE_ALLOWED_ORIGINS.size === 0) {
     throw new Error('SITE_ALLOWED_ORIGINS must contain the deployed website origin when SITE_PUBLIC_MODE=true.');
 }
 const PUBLIC_SITE_ROUTES = new Set([
+    'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
@@ -4067,6 +4073,53 @@ async function handleHttpRequest(req, res) {
             setSessionCookie(res, token, 8 * 3600);
             return sendJson(res, 200, { ok: true });
         } catch { return sendJson(res, 400, { error: 'Invalid admin request.' }); }
+    }
+
+    if (parsedUrl.pathname === '/public-suggestions' && req.method === 'GET') {
+        const requested = Number(parsedUrl.searchParams.get('limit')) || 100;
+        const limit = [50, 100, 200, 500, 1000].includes(requested) ? requested : 100;
+        return sendJson(res, 200, historySuggestions(predictionLog, limit));
+    }
+    if (parsedUrl.pathname === '/public-videos' && req.method === 'GET') {
+        return sendJson(res, 200, { videos: siteDb.prepare('SELECT id, youtube_id AS youtubeId, title, description FROM site_videos ORDER BY position, created_at, id').all() });
+    }
+    if (parsedUrl.pathname === '/admin/videos' && req.method === 'POST') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        try {
+            const data = await readRequestJson(req);
+            const id = String(data.id || '');
+            if (data.action === 'save') {
+                const videoId = youtubeId(data.url);
+                const title = String(data.title || '').trim();
+                const description = String(data.description || '').trim();
+                if (!title || title.length > 160 || description.length > 2000) return sendJson(res, 400, { error: 'Add a title up to 160 characters and a description up to 2,000 characters.' });
+                if (id) {
+                    if (!siteDb.prepare('SELECT id FROM site_videos WHERE id = ?').get(id)) return sendJson(res, 404, { error: 'Video no longer exists. Refresh the list.' });
+                    siteDb.prepare('UPDATE site_videos SET youtube_id = ?, title = ?, description = ? WHERE id = ?').run(videoId, title, description, id);
+                } else {
+                    const position = siteDb.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM site_videos').get().next;
+                    siteDb.prepare('INSERT INTO site_videos VALUES (?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), videoId, title, description, position, Date.now());
+                }
+            } else if (data.action === 'delete') {
+                siteDb.prepare('DELETE FROM site_videos WHERE id = ?').run(id);
+            } else if (data.action === 'move' && ['up', 'down'].includes(data.direction)) {
+                const ids = siteDb.prepare('SELECT id FROM site_videos ORDER BY position, created_at, id').all().map(v => v.id);
+                const index = ids.indexOf(id), other = index + (data.direction === 'up' ? -1 : 1);
+                if (index < 0) return sendJson(res, 404, { error: 'Video no longer exists.' });
+                if (other >= 0 && other < ids.length) {
+                    [ids[index], ids[other]] = [ids[other], ids[index]];
+                    siteDb.exec('BEGIN IMMEDIATE');
+                    try {
+                        const update = siteDb.prepare('UPDATE site_videos SET position = ? WHERE id = ?');
+                        ids.forEach((key, position) => update.run(position, key));
+                        siteDb.exec('COMMIT');
+                    } catch (error) { siteDb.exec('ROLLBACK'); throw error; }
+                }
+            } else return sendJson(res, 400, { error: 'Invalid video action.' });
+            return sendJson(res, 200, { ok: true });
+        } catch (error) {
+            return sendJson(res, 400, { error: /UNIQUE/.test(error.message) ? 'This video is already in your library.' : 'Could not save the change. Use a valid HTTPS YouTube video link and try again.' });
+        }
     }
 
     if (parsedUrl.pathname === '/admin/users' && req.method === 'GET') {
