@@ -1,5 +1,5 @@
 const GAMES = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'totalColor1', 'hilo'];
-const SNIPER_MARKETS = ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
+const SNIPER_MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
 const SUMMARY_MODEL_MARKETS = [
     { id: 'betzero', key: 'u4' },
     { id: 'rainbow', key: 'color' },
@@ -589,7 +589,7 @@ function loadParameters() {
         SNIPER_MARKETS.forEach(market => {
             const saved = data.sniperSettings?.[market];
             const legacy = { enabled: !!data.sniperMode, step: data.sniperStep || '', resetLosses: data.sniperResetLosses || '' };
-            const settings = saved || legacy;
+            const settings = saved || (market === 'bet49' ? { enabled: false, step: '', resetLosses: '' } : legacy);
             const enabled = document.getElementById(`sniper-enabled-${market}`);
             const targetStep = document.getElementById(`sniper-step-${market}`);
             const resetLosses = document.getElementById(`sniper-losses-${market}`);

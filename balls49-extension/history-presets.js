@@ -94,7 +94,7 @@ async function previewHistoricalPreset() {
             while (base >= 50 && historySequenceCost(game, base, steps, profile, unified) > perGameBudget) base -= 50;
             if (base < 50) throw new Error(`${PRESET_META[game][0]}: budget cannot cover ${steps} planned steps at the minimum stake. Increase the budget or choose fewer games / flat stakes.`);
             const gate = summaryChoice(history.markets[game]);
-            const sniper = game !== 'bet49' && profile !== 'flat';
+            const sniper = profile !== 'flat';
             plans[game] = { base, steps, gate, sniper, sniperStep: Math.min(10, Math.max(1, Math.ceil(stats.worstLosses / 2))),
                 resetLosses: Math.min(5, Math.max(1, Math.ceil(stats.worstLosses / 3))) };
         }

@@ -448,9 +448,9 @@ let globalTracker = {
     totalColor1: { step: 1 },
     unified: { step: 1 }
 };
-const SNIPER_SETTING_MARKETS = ['betzero', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
-const SNIPER_TRACKERS = ['u4', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
-const TRACKER_TO_SNIPER_MARKET = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1', unified: 'unified' };
+const SNIPER_SETTING_MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
+const SNIPER_TRACKERS = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
+const TRACKER_TO_SNIPER_MARKET = { u4: 'betzero', bet49: 'bet49', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1', unified: 'unified' };
 const makeDefaultSniperSettings = () => Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, { enabled: false, step: 0, resetLosses: 0 }]));
 const makeDefaultSniperState = () => Object.fromEntries(SNIPER_TRACKERS.map(tracker => [tracker, { losses: 0, waitingForTarget: false }]));
 
@@ -460,6 +460,7 @@ function getSniperSettings(config, trackerKey) {
     if (!market) return { enabled: false, step: 0, resetLosses: 0 };
     const saved = config.sniperSettings?.[market];
     if (saved) return saved;
+    if (market === 'bet49') return { enabled: false, step: 0, resetLosses: 0 };
     return { enabled: !!config.sniperMode, step: config.sniperStep || 0, resetLosses: config.sniperResetLosses || 0 };
 }
 
@@ -748,7 +749,7 @@ function restoreSession(session, clientId) {
     }
     if (saved.config && !saved.config.sniperSettings) {
         const legacy = { enabled: !!saved.config.sniperMode, step: saved.config.sniperStep || 0, resetLosses: saved.config.sniperResetLosses || 0 };
-        session.config.sniperSettings = Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, { ...legacy }]));
+        session.config.sniperSettings = Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, market === 'bet49' ? { enabled: false, step: 0, resetLosses: 0 } : { ...legacy }]));
     }
     session.config.summaryModelMarkets = {
         ...makeDefaultSummaryModelMarkets(),
@@ -2921,6 +2922,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
             totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1', unified: 'unified' };
         const trackers = session.config.unifiedMode ? ['unified'] : (details.games || []);
         for (const tracker of trackers) {
+            if (tracker === 'bet49') continue; // Settled below using the numbers actually placed.
             const market = markets[tracker];
             const sniper = getSniperSettings(session.config, tracker);
             if (!market || !sniper.enabled || sniper.step < 1 || sniper.resetLosses < 1) continue;
@@ -2949,6 +2951,20 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     const placedBet49 = bet49Numbers(details.bet49Numbers ?? pLogItem.predicted.bet49);
     const bet49Hits = placedBet49.filter(n => (r.balls || []).map(Number).includes(n)).length;
     const bet49Win = bet49Hits > 0;
+    // Count one settled draw, not one loss per number. Partial placements use
+    // their actual numbers; paused/unplayed draws cannot reset this cycle.
+    if (!session.config.unifiedMode && details.games?.includes('bet49') && placedBet49.length) {
+        const sniper = getSniperSettings(session.config, 'bet49');
+        if (sniper.enabled && sniper.step >= 1 && sniper.resetLosses >= 1) {
+            const state = session.sniperState.bet49 ||= { losses: 0, waitingForTarget: false };
+            if (bet49Win) state.losses = 0;
+            else if (++state.losses >= sniper.resetLosses) {
+                state.losses = 0;
+                state.waitingForTarget = true;
+            }
+        }
+    }
+
 
     const creditVirtual = (key, stake, odds) => {
         if (!stake || stake <= 0) return;
@@ -5165,7 +5181,7 @@ async function handleHttpRequest(req, res) {
                         step: session.config.sniperStep,
                         resetLosses: session.config.sniperResetLosses
                     };
-                    session.config.sniperSettings = Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, { ...legacy }]));
+                    session.config.sniperSettings = Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, market === 'bet49' ? { enabled: false, step: 0, resetLosses: 0 } : { ...legacy }]));
                 }
                 if (cfg.cbMaxLosses !== undefined) session.config.cbMaxLosses = validateNumber(cfg.cbMaxLosses, 0, 50, 0);
                 if (cfg.cbCooldown !== undefined) session.config.cbCooldown = validateNumber(cfg.cbCooldown, 0, 300, 0); 
