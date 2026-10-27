@@ -147,3 +147,22 @@ a void match voids that leg. Any loss makes the ticket Lost immediately; otherwi
 pending legs keep it Pending. All non-void legs winning makes it Won; all void
 legs makes it Void. Selections never change. No bookmaker bet, stake or payout
 is created. Public visitors cannot save official combinations.
+
+## Pitch-style presentation
+
+The Upcoming view displays one match at a time on a pitch-style panel, with
+home/away initials (not official kits), kickoff metadata and a countdown based
+on the last known fixture time. Previous/next buttons and a match selector switch
+fixtures. On narrow screens, teams appear above the central prediction panel.
+
+Market buttons show Match Result, Over 2.5, Under 2.5, BTTS Yes and BTTS No.
+Match Result displays the saved model pick; the other buttons display the exact
+selected outcome's saved estimate, even if it is not the highest estimate.
+The label distinguishes those cases. Missing legacy markets show No pick.
+Started/non-scheduled/void fixtures do not show active estimates. Stale data is
+labelled. Expanded details retain the original explanation and saved timestamp.
+
+The combination section uses 3/5/10/20 buttons to show one list at a time, keeping
+the owner save action and Combination History available. The calculation and
+settlement logic is unchanged by this presentation update. No bookmaker odds or
+external AI-provider claims are displayed.

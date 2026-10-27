@@ -1,7 +1,8 @@
 import { apiRequest } from '../auth';
 import React, { useEffect, useState } from 'react';
 
-export default function FootballCombinations({ data, isOwner }) {
+export default function FootballCombinations({ data, isOwner, compact = false }) {
+  const [selectedSize, setSelectedSize] = useState(3);
   const [saving, setSaving] = useState(null), [notice, setNotice] = useState({});
   async function save(list) {
     setSaving(list.fingerprint);
@@ -22,7 +23,8 @@ export default function FootballCombinations({ data, isOwner }) {
   return <section className="football-combinations" aria-labelledby="combination-title">
     <span className="overline">ACROSS ALL SIX LEAGUES</span><h2 id="combination-title">Model-ranked combinations</h2>
     <p>One outcome per match, chosen by its highest saved model estimate. Separate lists of 3, 5, 10 and 20 matches for the next seven days.</p>
-    <div className="football-combination-grid">{data.lists.map(list => {
+    {compact && <div className="football-market-tabs" role="group" aria-label="Combination size">{[3, 5, 10, 20].map(size => <button key={size} type="button" aria-pressed={size === selectedSize} onClick={() => setSelectedSize(size)}>{size} matches</button>)}</div>}
+    <div className={`football-combination-grid${compact ? ' football-combination-single' : ''}`}>{data.lists.filter(list => !compact || list.size === selectedSize).map(list => {
       const selections = fresh ? list.selections.filter(p => Date.parse(p.kickoff) > now + 15 * 60000) : [];
       return <article className="content-card football-combination-card" key={list.size}>
         <header><h3>{list.size}-match combination</h3><span>{selections.length}/{list.size} available</span></header>

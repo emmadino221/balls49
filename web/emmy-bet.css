@@ -1944,6 +1944,62 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .football-pick-details { margin-top: 10px; font-size: 12px; line-height: 1.6; }
 .football-pick-details summary { cursor: pointer; color: var(--muted); min-height: 32px; padding-block: 6px; }
 .football-final-score { font-size: 13px; font-weight: 700; }
+.football-hub { max-width: 1120px; }
+.football-hub .page-intro { padding-bottom: 24px; }
+.football-hub .page-intro h1 { font-size: clamp(30px, 5vw, 48px); }
+.football-hub > .resource-toolbar { padding: 16px 20px; margin-bottom: 14px; }
+.football-hub .football-tabs { gap: 6px; }
+.football-hub .football-tabs .btn { padding: 10px 14px; font-size: 12px; }
+.football-stage { border: 1px solid var(--line); border-radius: 22px; padding: 20px; background: var(--surface); box-shadow: var(--shadow); min-width: 0; }
+.football-stage-meta { display: grid; grid-template-columns: 1fr 1.5fr .6fr 1fr; gap: 8px; margin-bottom: 18px; }
+.football-stage-meta > div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); min-width: 0; }
+.football-stage-meta span { display: block; margin-bottom: 5px; font-size: 10px; color: var(--muted); }
+.football-stage-meta strong { font-size: 12px; overflow-wrap: anywhere; }
+.football-stage-meta .football-countdown strong { font-variant-numeric: tabular-nums; }
+.football-market-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: thin; }
+.football-market-tabs button { flex: 0 0 auto; min-height: 42px; padding: 9px 16px; border: 1px solid var(--line); border-radius: 100px; background: var(--surface-soft); color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.football-market-tabs button[aria-pressed="true"] { background: #087653; border-color: #087653; color: white; }
+.football-market-tabs button:focus-visible, .football-match-navigation :is(button, select):focus-visible { outline: 3px solid var(--green-bright); outline-offset: 2px; }
+.football-pitch { position: relative; isolation: isolate; display: grid; grid-template-columns: 1fr 1.1fr 1fr; align-items: center; gap: 20px; min-height: 310px; border-radius: 18px; padding: 30px 20px; overflow: hidden; color: #effaf3; background: repeating-linear-gradient(90deg, #163d2b 0, #163d2b 9%, #1b4531 9%, #1b4531 18%); }
+.football-pitch::before { content: ''; position: absolute; z-index: -1; inset: 16px; border: 1px solid #ffffff18; border-radius: 6px; }
+.football-pitch::after { content: ''; position: absolute; z-index: -1; width: 170px; height: 170px; border: 1px solid #ffffff18; border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.football-team { text-align: center; min-width: 0; }
+.football-team-badge { display: grid; place-items: center; width: 90px; height: 100px; margin: 0 auto 16px; clip-path: polygon(0 0, 100% 0, 95% 70%, 50% 100%, 5% 70%); background: linear-gradient(135deg, #e8f6f0, #9bc7b5); color: #123a2a; font-size: 26px; font-weight: 800; border-top: 5px solid #63d79e; }
+.football-team-away .football-team-badge { background: linear-gradient(135deg, #dce8ff, #7e9cc9); border-top-color: #8ab5fb; color: #19304b; }
+.site .football-team h2 { color: #f1fff6; font-size: clamp(15px, 2vw, 21px); margin: 0 0 6px; line-height: 1.4; }
+.football-team > span { font-size: 10px; letter-spacing: 1.5px; color: #b5d5c2; }
+.football-stage-pick { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+.football-pick-tag { border-radius: 10px; padding: 12px 18px; background: #087b42; border: 1px solid #61dc9266; box-shadow: 0 8px 25px #001f2640; font-size: 17px; font-weight: 800; }
+.football-estimate-ring { width: 116px; height: 116px; border-radius: 50%; padding: 7px; background: conic-gradient(#4bdf88 var(--estimate), #ffffff20 0); }
+.football-estimate-ring > div { height: 100%; display: flex; flex-direction: column; justify-content: center; border-radius: 50%; background: #173f2d; }
+.football-estimate-ring strong { font-size: 27px; }
+.football-estimate-ring span { font-size: 10px; color: #c1ddcb; }
+.football-stage-pick small { font-size: 11px; color: #c1ddcb; }
+.football-stage-pick p { color: #d7eade; font-size: 13px; line-height: 1.6; margin: 0; }
+.football-match-navigation { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; }
+.football-match-navigation label { min-width: 0; width: min(100%, 380px); }
+.football-match-navigation select { width: 100%; min-width: 0; height: 44px; padding: 8px; font: inherit; font-size: 14px; background: var(--surface-soft); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; }
+.football-match-navigation button { flex-shrink: 0; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--surface-soft); font-size: 20px; cursor: pointer; }
+.football-match-navigation button:disabled { opacity: .4; cursor: default; }
+.football-stage-details { margin-top: 12px; }
+.football-stage-details > summary { padding: 12px; cursor: pointer; text-align: center; font-size: 12px; color: var(--green); }
+.football-stage-caption, .football-stage-notice { font-size: 12px; line-height: 1.6; color: var(--muted); text-align: center; margin: 12px 0 0; }
+.football-stage-notice { margin: 0 0 12px; }
+.football-stage-empty { padding: 30px; border: 1px dashed var(--line); border-radius: 18px; }
+.football-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.football-hub .football-combination-single { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 600px) {
+  .football-stage { padding: 12px; border-radius: 16px; }
+  .football-stage-meta { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .football-pitch { grid-template-columns: 1fr 1fr; gap: 20px 12px; padding: 24px 14px; }
+  .football-team-home { order: 1; } .football-team-away { order: 2; }
+  .football-stage-pick { order: 3; grid-column: 1 / -1; gap: 10px; }
+  .football-team-badge { width: 64px; height: 74px; font-size: 20px; margin-bottom: 10px; }
+  .football-estimate-ring { width: 100px; height: 100px; }
+  .football-match-navigation select { font-size: 16px; }
+  .football-hub .football-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .football-hub .football-tabs .btn { flex-shrink: 0; }
+}
 .football-combinations { margin-block: 24px 32px; }
 .football-combination-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .site .football-combination-card { min-width: 0; padding: 18px; margin: 0; }
