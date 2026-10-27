@@ -228,7 +228,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <main className="page-wrap history-page">
+    <main className="page-wrap history-page history-dashboard">
       {isOwner && <section className="content-card owner-tools" aria-label="Owner history controls"><div className="owner-stats-reset"><div><span className="overline">OWNER CONTROL</span><h2>History streak tracking</h2><p>Restart only the worst losing streak statistic. All draw records, win rates and automation progression are preserved.</p></div><button className="btn btn-secondary" type="button" disabled={resettingStreaks} onClick={resetHistoryStreaks}>{resettingStreaks ? 'Restarting...' : 'Restart history streak tracking'}</button></div>{resetNotice && <p role="status">{resetNotice}</p>}</section>}
       <section className="history-hero">
         <div>
@@ -246,42 +246,7 @@ export default function HistoryPage() {
         </button>
       </section>
 
-      <DailyStreakHistory markets={markets} />
-
-      <section className="history-summary" aria-label="History summary">
-        <article className="summary-card"><span>Settled picks</span><strong>{summary.settled.toLocaleString()}</strong><small>Within loaded history</small></article>
-        <article className="summary-card"><span>Wins</span><strong className="summary-win">{summary.wins.toLocaleString()}</strong><small>Recorded as wins</small></article>
-        <article className="summary-card"><span>Losses</span><strong className="summary-loss">{summary.losses.toLocaleString()}</strong><small>Recorded as losses</small></article>
-        <article className="summary-card"><span>Win rate</span><strong>{summary.rate === null ? '—' : `${summary.rate}%`}</strong><small>Wins ÷ settled picks</small></article>
-      </section>
-
-      <section className="market-analytics" aria-labelledby="market-analytics-title">
-        {streakResetAt && <p role="status">Worst losing streak tracking restarted {new Date(streakResetAt).toLocaleString()}. Only newer draws validated after this reset count toward streaks. Earlier results remain in history.</p>}
-        <div className="analytics-heading">
-          <div><span className="overline">RESULTS BY MARKET</span><h2 id="market-analytics-title">Market performance</h2></div>
-          <p>{drawRange === 'all' ? `All time · ${predictions.length.toLocaleString()} of ${total.toLocaleString()} loaded` : `Last ${drawRange} draws`}{query.trim() ? ' · Search applied' : ''}{marketFilter !== 'all' ? ' · Market filter applied' : ''}</p>
-        </div>
-        <div className="market-analytics-grid">
-          {marketStats.map((market) => {
-            const winWidth = market.settled ? (market.wins / market.settled) * 100 : 0;
-            return (
-              <article className="market-analytics-card" key={market.id}>
-                <div className="analytics-card-top"><strong>{market.label}</strong><span>{market.rate === null ? '—' : `${market.rate}%`}</span></div>
-                <div className="analytics-progress" role="img" aria-label={`${market.wins} wins and ${market.losses} losses`}>
-                  <span className="analytics-progress-win" style={{ width: `${winWidth}%` }} />
-                  <span className="analytics-progress-loss" style={{ width: `${market.settled ? 100 - winWidth : 0}%` }} />
-                </div>
-                <div className="analytics-counts"><span><i className="analytics-dot win" />{market.wins} wins</span><span><i className="analytics-dot loss" />{market.losses} losses</span><span>{market.skipped} skipped</span>{market.pending > 0 && <span>{market.pending} pending</span>}</div>
-                <small>{market.settled.toLocaleString()} settled picks</small>
-                <p><strong>Worst losing streak{streakResetAt ? ' since reset' : ''}: {rangeStreaks[market.id] ?? '—'}</strong></p>
-                <small>Across {streakDrawCount.toLocaleString()} draws{streakResetAt ? ' since reset' : ''} in the selected range. Skips do not reset a streak. Draw ID search does not change this statistic.</small>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="history-panel">
+      <section className="history-filter-panel" aria-label="History filters">
         <div className="history-toolbar">
           <div>
             <h2>Resolved draws</h2>
@@ -314,6 +279,55 @@ export default function HistoryPage() {
             </label>
           </div>
         </div>
+      </section>
+
+      <DailyStreakHistory markets={markets} />
+
+      <section className="history-summary" aria-label="History summary">
+        <article className="summary-card"><span>Settled picks</span><strong>{summary.settled.toLocaleString()}</strong><small>Within loaded history</small></article>
+        <article className="summary-card"><span>Wins</span><strong className="summary-win">{summary.wins.toLocaleString()}</strong><small>Recorded as wins</small></article>
+        <article className="summary-card"><span>Losses</span><strong className="summary-loss">{summary.losses.toLocaleString()}</strong><small>Recorded as losses</small></article>
+        <article className="summary-card"><span>Win rate</span><strong>{summary.rate === null ? '—' : `${summary.rate}%`}</strong><small>Wins ÷ settled picks</small></article>
+      </section>
+
+      <section className="history-record-strip" aria-label="Loaded results breakdown">
+        <div><span className="overline">YOUR SELECTED RESULTS</span><h2>{summary.rate === null ? '--' : `${summary.rate}%`} <small>of settled picks won</small></h2></div>
+        <p>{visiblePredictions.length.toLocaleString()} loaded draws{query.trim() ? ' matching your search' : ''} &middot; {marketFilter === 'all' ? 'All markets' : visibleMarkets[0]?.label}</p>
+        <div className="history-outcome-track" role="img" aria-label={`${summary.wins} wins, ${summary.losses} losses, ${summary.skipped} skipped`}>
+          <span style={{width: `${summary.settled ? summary.wins / summary.settled * 100 : 0}%`}} />
+          <span style={{width: `${summary.settled ? summary.losses / summary.settled * 100 : 0}%`}} />
+        </div>
+        <div className="history-record-counts"><span>{summary.wins} wins</span><span>{summary.losses} losses</span><span>{summary.skipped} skipped (excluded)</span></div>
+      </section>
+
+      <section className="market-analytics" aria-labelledby="market-analytics-title">
+        {streakResetAt && <p role="status">Worst losing streak tracking restarted {new Date(streakResetAt).toLocaleString()}. Only newer draws validated after this reset count toward streaks. Earlier results remain in history.</p>}
+        <div className="analytics-heading">
+          <div><span className="overline">RESULTS BY MARKET</span><h2 id="market-analytics-title">Market performance</h2></div>
+          <p>{drawRange === 'all' ? `All time · ${predictions.length.toLocaleString()} of ${total.toLocaleString()} loaded` : `Last ${drawRange} draws`}{query.trim() ? ' · Search applied' : ''}{marketFilter !== 'all' ? ' · Market filter applied' : ''}</p>
+        </div>
+        <div className="market-analytics-grid">
+          {marketStats.map((market) => {
+            const winWidth = market.settled ? (market.wins / market.settled) * 100 : 0;
+            return (
+              <article className="market-analytics-card" key={market.id}>
+                <div className="analytics-card-top"><strong>{market.label}</strong><span>{market.rate === null ? '—' : `${market.rate}%`}</span></div>
+                <div className="analytics-progress" role="img" aria-label={`${market.wins} wins and ${market.losses} losses`}>
+                  <span className="analytics-progress-win" style={{ width: `${winWidth}%` }} />
+                  <span className="analytics-progress-loss" style={{ width: `${market.settled ? 100 - winWidth : 0}%` }} />
+                </div>
+                <div className="analytics-counts"><span><i className="analytics-dot win" />{market.wins} wins</span><span><i className="analytics-dot loss" />{market.losses} losses</span><span>{market.skipped} skipped</span>{market.pending > 0 && <span>{market.pending} pending</span>}</div>
+                <small>{market.settled.toLocaleString()} settled picks</small>
+                <p><strong>Worst losing streak{streakResetAt ? ' since reset' : ''}: {rangeStreaks[market.id] ?? '—'}</strong></p>
+                <small>Across {streakDrawCount.toLocaleString()} draws{streakResetAt ? ' since reset' : ''} in the selected range. Skips do not reset a streak. Draw ID search does not change this statistic.</small>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="history-panel">
+
 
         {generatedAt && <p className="history-updated">Data refreshed {formatDate(generatedAt)}</p>}
 
@@ -336,7 +350,7 @@ export default function HistoryPage() {
         )}
 
         {!error && visiblePredictions.length > 0 && (
-          <div className="history-list">
+          <div className={`history-list ${marketFilter === 'all' ? 'history-all-markets' : 'history-one-market'}`}>
             {visiblePredictions.map((record) => (
               <article className="history-draw" key={record.drawId}>
                 <header className="draw-heading">

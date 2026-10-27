@@ -2061,3 +2061,40 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
   .suggestions-page .gameplay-reserve { padding: 16px; }
   .suggestions-page .resource-toolbar .btn { min-height: 44px; padding: 10px 16px; }
 }
+
+/* 49ja history dashboard */
+.history-dashboard .history-hero { padding: clamp(22px, 3vw, 36px); border: 1px solid var(--line); border-radius: 24px; background: radial-gradient(ellipse at top left, color-mix(in srgb, var(--green-bright) 16%, var(--surface)), var(--surface) 75%); margin-bottom: 20px; }
+.history-dashboard .history-hero h1 { font-size: clamp(30px, 4vw, 48px); }
+.history-dashboard .history-hero p { max-width: 540px; }
+.history-filter-panel { padding: 20px; margin-bottom: 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.history-dashboard .history-controls { flex-wrap: wrap; }
+.history-dashboard .history-summary { gap: 12px; }
+.history-dashboard .summary-card { border-radius: 18px; min-height: 110px; }
+.history-record-strip { padding: clamp(20px, 3vw, 28px); border: 1px solid var(--line); border-radius: 20px; background: var(--surface-soft); margin-bottom: 22px; }
+.history-record-strip h2 { margin: 8px 0; font-size: clamp(30px, 4vw, 44px); }
+.history-record-strip h2 small { font-size: 15px; color: var(--muted); font-weight: 500; }
+.history-record-strip p { font-size: 13px; color: var(--muted); }
+.history-outcome-track { display: flex; height: 10px; overflow: hidden; border-radius: 10px; background: var(--line); margin: 18px 0 12px; }
+.history-outcome-track span:first-child { background: #2eb56d; }
+.history-outcome-track span:last-child { background: #de625f; }
+.history-record-counts { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--muted); }
+.history-record-counts span:first-child { color: var(--green); }
+.history-dashboard .market-analytics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.history-dashboard .market-analytics-card { border-radius: 16px; }
+.history-dashboard .history-list { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
+.history-dashboard .history-one-market { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.history-dashboard .history-draw { min-width: 0; border-radius: 18px; }
+.history-dashboard .draw-heading { flex-wrap: wrap; gap: 6px; padding: 16px; }
+.history-dashboard .actual-result { flex-direction: column; align-items: flex-start; gap: 12px; }
+.history-dashboard .ball-list { justify-content: flex-start; }
+.history-dashboard .market-history-list { grid-template-columns: 1fr; padding: 0 16px; }
+.history-dashboard .market-history-row:last-child { border-bottom: 0; }
+.history-dashboard .market-history-name strong { font-size: 12px; }
+.history-dashboard .market-history-name { gap: 6px; }
+.history-dashboard .market-history-row { gap: 8px; }
+.history-dashboard .outcome-badge { flex-shrink: 0; }
+.history-dashboard .history-panel { border-radius: 22px; }
+.history-dashboard :is(input, select) { max-width: 100%; min-width: 0; }
+@media (max-width: 1000px) { .history-dashboard .market-analytics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .history-dashboard .history-one-market { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .history-dashboard .history-list { grid-template-columns: 1fr; } .history-dashboard .history-hero { align-items: flex-start; flex-direction: column; } .history-dashboard .history-toolbar { align-items: stretch; flex-direction: column; } .history-dashboard .history-controls { display: grid; grid-template-columns: 1fr 1fr; width: 100%; } .history-dashboard .history-search { grid-column: 1 / -1; } .history-dashboard .history-select-label select { width: 100%; font-size: 16px; } .history-dashboard .history-search input { width: 100%; font-size: 16px; } }
+@media (max-width: 400px) { .history-dashboard .market-analytics-grid { grid-template-columns: 1fr; } .history-dashboard .history-controls { grid-template-columns: 1fr; } }
