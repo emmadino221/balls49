@@ -37,4 +37,19 @@ function predictHighLow(draws, targetDrawId) {
     } };
 }
 
-module.exports = { predictHighLow };
+function predictHighLowFromBet49(prediction) {
+    const numbers = prediction?.numbers;
+    if (prediction?.status !== 'ACTIVE' || !Array.isArray(numbers) || numbers.length !== 6
+        || new Set(numbers).size !== 6 || numbers.some(n => !Number.isInteger(n) || n < 1 || n > 49)) {
+        return { status: 'SKIP', range: null, reason: 'High/Low needs exactly six active Bet49 numbers', analysis: null };
+    }
+    const total = numbers.reduce((sum, number) => sum + number, 0);
+    const analysis = { method: 'BET49_SIX_NUMBER_SUM_V1', total, numbers: [...numbers] };
+    if (total >= 149 && total <= 151) {
+        return { status: 'SKIP', range: null, reason: 'Bet49 total is in the middle range (149-151)', analysis };
+    }
+    return { status: 'ACTIVE', range: total <= 148 ? 'LOW' : 'HIGH', reason: '', analysis };
+}
+
+// Retain the earlier function for historical/offline callers only.
+module.exports = { predictHighLow, predictHighLowFromBet49 };

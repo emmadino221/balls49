@@ -25,7 +25,7 @@ const {
     getSummaryGateTarget, summaryGateAllows, getIssuedSummaryLabels, applySummaryGateConfig
 } = require('./summary-gate');
 const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
-const { predictHighLow } = require('./high-low');
+const { predictHighLowFromBet49 } = require('./high-low');
 const { nigeriaMidnightBoundary } = require('./daily-reset');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
 const { getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
@@ -2544,9 +2544,9 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     // Total Color 3-way depends only on the previous completed outcome.
     var totalColorPred = applyPreviousDrawRule(null, histRaw?.data?.draws, targetDrawId);
 
-    const highLow = predictHighLow(histRaw?.data?.draws, targetDrawId);
+    const highLow = predictHighLowFromBet49(bet49Prediction);
     var hiloStatus = highLow.status;
-    var sumRange = highLow.range || 'LOW';
+    var sumRange = highLow.range || 'SKIP';
     var hlSkipReason = highLow.reason;
     const oppositeKey = sumRange === 'HIGH' ? 'l' : 'h';
     const hiloStats = Array.isArray(stats24HiLo?.data?.stats) ? stats24HiLo.data.stats : [];
