@@ -1,4 +1,5 @@
 'use strict';
+const { buildFootballCombinations } = require('./football-combinations');
 const LEAGUES = [
     { code: 'PL', name: 'Premier League' }, { code: 'PD', name: 'La Liga' },
     { code: 'BL1', name: 'Bundesliga' }, { code: 'SA', name: 'Serie A' },
@@ -139,9 +140,11 @@ function createFootballService(db) {
         read(requested = 'PL') {
             const code = LEAGUES.some(l => l.code === requested) ? requested : 'PL';
             const state = getState(code), now = Date.now();
-            const picks = allPicks().filter(p => (p.league || 'PL') === code).sort((a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff));
+            const storedPicks = allPicks();
+            const combinations = buildFootballCombinations(storedPicks, LEAGUES.map(l => ({ ...l, state: getState(l.code) })), now);
+            const picks = storedPicks.filter(p => (p.league || 'PL') === code).sort((a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff));
             const next = (state.matches || []).filter(m => Date.parse(m.kickoff) > now && Date.parse(m.kickoff) <= now + 7 * 86400000);
-            return { leagues: LEAGUES, league: code, accessDenied: !!state.accessDenied, configured: !!apiKey, updatedAt: state.updatedAt || null, error: state.error || null,
+            return { combinations, leagues: LEAGUES, league: code, accessDenied: !!state.accessDenied, configured: !!apiKey, updatedAt: state.updatedAt || null, error: state.error || null,
                 stale: !state.updatedAt || now - state.updatedAt > 3600000,
                 upcoming: next.sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff)).map(m => ({ ...m, prediction: picks.find(p => p.id === m.id) || null })),
                 history: picks.filter(p => Date.parse(p.kickoff) <= now || p.outcome !== 'PENDING').slice(0, 100) };

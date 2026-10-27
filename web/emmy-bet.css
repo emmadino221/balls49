@@ -1944,6 +1944,24 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .football-pick-details { margin-top: 10px; font-size: 12px; line-height: 1.6; }
 .football-pick-details summary { cursor: pointer; color: var(--muted); min-height: 32px; padding-block: 6px; }
 .football-final-score { font-size: 13px; font-weight: 700; }
+.football-combinations { margin-block: 24px 32px; }
+.football-combination-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.site .football-combination-card { min-width: 0; padding: 18px; margin: 0; }
+.football-combination-card header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.football-combination-card h3 { margin: 0; font-size: 18px; }
+.football-combination-card header > span { font-size: 12px; color: var(--muted); }
+.football-combination-card ol { margin: 12px 0 0; padding-left: 22px; }
+.football-combination-card li { padding: 12px 0; border-top: 1px solid var(--line); }
+.football-combination-card li::marker { color: var(--muted); font-size: 12px; }
+.combination-match { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.combination-match > strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.combination-match > span { flex-shrink: 0; font-weight: 700; text-align: right; }
+.combination-match small { display: block; font-size: 10px; font-weight: 400; color: var(--muted); }
+.football-combination-card li p { margin: 5px 0; font-size: 13px; }
+.football-combination-card li > small { color: var(--muted); font-size: 11px; }
+.football-combinations > details { margin-top: 16px; line-height: 1.7; font-size: 13px; }
+.football-combinations summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
+@media (max-width: 700px) { .football-combination-grid { grid-template-columns: minmax(0, 1fr); } }
 .site-header .grouped-nav { gap: 14px; flex-wrap: nowrap; }
 .nav-group { position: relative; }
 .nav-group-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 12px 0; white-space: nowrap; }

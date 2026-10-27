@@ -1,3 +1,4 @@
+import FootballCombinations from '../components/FootballCombinations';
 import FootballPick from '../components/FootballPick';
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth';
@@ -28,6 +29,7 @@ export default function FootballPage() {
       {!data.configured && <p className="content-card">Football predictions are being prepared. Please check back later.</p>}
       {data.error && <p className="content-card" role="alert">{data.accessDenied ? 'This competition is unavailable with the current data subscription. Choose another league.' : data.error}</p>}
       <div className="content-card resource-toolbar"><div><strong>{LEAGUES.find(([code]) => code === league)?.[1]}</strong><p>{data.updatedAt ? `Updated ${new Date(data.updatedAt).toLocaleString()}` : 'Waiting for the first successful sync.'}{data.stale && ' Data is not fresh.'}</p></div><div className="football-tabs"><button className="btn btn-secondary" aria-pressed={tab === 'upcoming'} onClick={() => setTab('upcoming')}>Upcoming</button><button className="btn btn-secondary" aria-pressed={tab === 'history'} onClick={() => setTab('history')}>Results</button></div></div>
+      {tab === 'upcoming' && <FootballCombinations data={data.combinations} />}
       {league === 'CL' && <p className="resource-note">Champions League picks require at least five completed matches per team in this competition's current season. Early-season fixtures may have no pick.</p>}
       <p className="resource-note">Read the suggested outcome on each card: 1 = home win, X = draw, 2 = away win. No pick means no suggestion. Percentages are experimental model estimates, not betting odds or proven accuracy. All markets use 90 minutes plus stoppage time. Over 2.5 means at least 3 goals; both teams to score means each scores at least once. All times use your device timezone.</p>
       {tab === 'upcoming' ? <div className="football-match-grid">

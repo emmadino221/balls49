@@ -101,3 +101,27 @@ the five-result minimum per team. Champions League early-season samples may be
 insufficient; no cross-league data is silently substituted. Historical picks and
 market results are separated by league. Current-season API refreshes do not
 automatically query previous seasons for unresolved old picks.
+
+## Model-ranked combinations
+
+The Upcoming tab displays separate 3-, 5-, 10- and 20-match lists across all six
+competitions, independent of the fixture league selector. For each eligible
+fixture, choose the largest saved estimate among 1/X/2, Over/Under 2.5 and BTTS
+Yes/No. Only markets actually saved before kickoff are eligible. Legacy picks
+may have only 1/X/2. Tied market estimates retain the explicit outcome order;
+matches tie-break by kickoff, then match ID. Lists may overlap but never repeat
+a match within a list.
+
+Exclude matches within 15 minutes of kickoff, beyond seven days, non-scheduled
+statuses, void/non-pending picks, changed kickoff, missing fixtures, and league
+feeds with errors or updates older than one hour. Incomplete lists show their
+actual counts, without duplicates or fabricated selections. There is no minimum
+probability filter: these are the highest ranked eligible selections, not a
+claim that every selection is strong.
+
+These are dynamic lists, not saved betting tickets. Match predictions and their
+individual market results remain in the existing history. The page refreshes
+every minute, removes selections near kickoff, and hides combinations when the
+page's combination snapshot is over two minutes old. No additional provider
+calls or betting actions are made. No combined success probability is calculated;
+individual experimental estimates do not establish accumulator success chances.
