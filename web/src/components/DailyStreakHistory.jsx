@@ -18,8 +18,13 @@ export default function DailyStreakHistory({ markets }) {
     const timer = setInterval(load, 60000);
     return () => { active = false; clearInterval(timer); };
   }, [day]);
-  return <section className="content-card daily-streak-history">
-    <div className="resource-toolbar"><div><span className="overline">PAST DAYS</span><h2>Daily worst losing streaks</h2></div>
+  return <details className="content-card daily-streak-history">
+    <summary className="daily-streak-toggle">
+      <span><span className="overline">PAST DAYS</span><strong>Daily worst losing streaks</strong></span>
+      <span className="daily-streak-toggle-icon" aria-hidden="true" />
+    </summary>
+    <div className="daily-streak-body">
+    <div className="resource-toolbar">
       {data?.dates?.length > 0 && <label>Date (Nigeria time)<select value={day || data.dates[0]} onChange={e => setDay(e.target.value)}>{data.dates.map(date => <option key={date} value={date}>{date}</option>)}</select></label>}
     </div>
     <p>Each day starts at midnight in Nigeria. These daily records stay available after history is cleared.</p>
@@ -35,5 +40,6 @@ export default function DailyStreakHistory({ markets }) {
       })}</div>
       <p className="resource-note">Skips preserve a losing run. A win ends it. Runs start fresh each day. Owner streak resets do not erase these daily records.</p>
     </>}
-  </section>;
+    </div>
+  </details>;
 }
