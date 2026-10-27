@@ -1,3 +1,4 @@
+import HistorySimulator from '../components/HistorySimulator.jsx';
 import DailyStreakHistory from '../components/DailyStreakHistory';
 import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -280,6 +281,8 @@ export default function HistoryPage() {
           </div>
         </div>
       </section>
+
+      <HistorySimulator />
 
       <DailyStreakHistory markets={markets} />
 
