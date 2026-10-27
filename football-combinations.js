@@ -1,4 +1,9 @@
 'use strict';
+const { createHash } = require('crypto');
+
+function combinationId(size, selections) {
+    return createHash('sha256').update(JSON.stringify([size, selections])).digest('hex');
+}
 
 function buildFootballCombinations(picks, leagues, now = Date.now()) {
     const ranked = [], seen = new Set();
@@ -33,6 +38,9 @@ function buildFootballCombinations(picks, leagues, now = Date.now()) {
     }
     ranked.sort((a, b) => b.probability - a.probability || Date.parse(a.kickoff) - Date.parse(b.kickoff) || a.id - b.id);
     return { generatedAt: now, eligible: ranked.length,
-        lists: [3, 5, 10, 20].map(size => ({ size, selections: ranked.slice(0, size) })) };
+        lists: [3, 5, 10, 20].map(size => {
+            const selections = ranked.slice(0, size);
+            return { size, selections, fingerprint: combinationId(size, selections) };
+        }) };
 }
 module.exports = { buildFootballCombinations };

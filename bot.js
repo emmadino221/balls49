@@ -234,7 +234,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
     'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
-    'GET /public-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
+    'GET /public-football-combinations', 'POST /admin/football-combinations', 'GET /public-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
 function isAllowedApiOrigin(origin) {
@@ -4253,6 +4253,22 @@ async function handleHttpRequest(req, res) {
             siteSessions.update(sessionToken(req), session);
             return sendJson(res, 200, { ok: true, tier: session.previewTier, games: session.previewGames });
         } catch { return sendJson(res, 400, { error: 'Invalid preview request.' }); }
+    }
+
+    if (parsedUrl.pathname === '/admin/football-combinations' && req.method === 'POST') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Owner sign-in required.' });
+        try {
+            const body = await readRequestJson(req);
+            return sendJson(res, 200, { ok: true, ...footballService.saveCombination(body.size, body.fingerprint) });
+        } catch (error) {
+            const messages = ['Invalid combination.', 'Not enough eligible matches to save this combination.', 'Selections have changed. Refresh and review the list before saving.'];
+            return sendJson(res, 400, { error: messages.includes(error.message) ? error.message : 'Could not save this combination.' });
+        }
+    }
+    if (parsedUrl.pathname === '/public-football-combinations' && req.method === 'GET') {
+        const offset = Number(parsedUrl.searchParams.get('offset') || 0);
+        if (!Number.isSafeInteger(offset) || offset < 0) return sendJson(res, 400, { error: 'Invalid page.' });
+        return sendJson(res, 200, footballService.combinationHistory(offset));
     }
 
     if (parsedUrl.pathname === '/public-football' && req.method === 'GET') {

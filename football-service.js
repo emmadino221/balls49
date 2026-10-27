@@ -1,4 +1,5 @@
 'use strict';
+const { createFootballTickets } = require('./football-tickets');
 const { buildFootballCombinations } = require('./football-combinations');
 const LEAGUES = [
     { code: 'PL', name: 'Premier League' }, { code: 'PD', name: 'La Liga' },
@@ -59,6 +60,7 @@ function createFootballService(db) {
     const saveState = (code, value) => db.prepare('INSERT OR REPLACE INTO football_league_state VALUES (?, ?)').run(code, JSON.stringify(value));
     const allPicks = () => db.prepare('SELECT data FROM football_picks').all().map(row => JSON.parse(row.data));
     const savePick = pick => db.prepare('INSERT OR REPLACE INTO football_picks VALUES (?, ?)').run(pick.id, JSON.stringify(pick));
+    const tickets = createFootballTickets(db, allPicks);
     const apiKey = process.env.FOOTBALL_DATA_API_KEY;
     let busy = false;
     async function refresh() {
@@ -136,6 +138,16 @@ function createFootballService(db) {
         } finally { busy = false; }
     }
     return {
+        saveCombination(size, fingerprint) {
+            if (![3, 5, 10, 20].includes(size) || !/^[a-f0-9]{64}$/.test(fingerprint || '')) throw new Error('Invalid combination.');
+            if (tickets.exists(fingerprint)) return { id: fingerprint, alreadySaved: true };
+            const current = buildFootballCombinations(allPicks(), LEAGUES.map(l => ({ ...l, state: getState(l.code) })));
+            const list = current.lists.find(l => l.size === size);
+            if (list.selections.length !== size) throw new Error('Not enough eligible matches to save this combination.');
+            if (list.fingerprint !== fingerprint) throw new Error('Selections have changed. Refresh and review the list before saving.');
+            return { id: tickets.save(list), alreadySaved: false };
+        },
+        combinationHistory(offset) { return tickets.history(offset); },
         start() { if (apiKey) { refresh(); setInterval(refresh, 10000).unref(); } },
         read(requested = 'PL') {
             const code = LEAGUES.some(l => l.code === requested) ? requested : 'PL';

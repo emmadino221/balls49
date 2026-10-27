@@ -125,3 +125,25 @@ every minute, removes selections near kickoff, and hides combinations when the
 page's combination snapshot is over two minutes old. No additional provider
 calls or betting actions are made. No combined success probability is calculated;
 individual experimental estimates do not establish accumulator success chances.
+
+## Saved official combinations
+
+Owners can save a complete 3/5/10/20 list with its Save combination button after
+unlocking Owner Tools. `POST /admin/football-combinations` requires an owner
+session and receives only size plus a server-generated content fingerprint.
+The server rebuilds the current eligible list and rejects changed or incomplete
+lists rather than silently substituting selections. Repeated saves are idempotent.
+
+`football_tickets` stores an immutable selection snapshot and creation time in
+the site database. Public `GET /public-football-combinations?offset=0` returns
+20 tickets per page, newest first. These records survive casino resets and
+deployments with persistent storage. Include them in the site database backup.
+
+Combination History is public, across all leagues. Each leg is graded against
+the final regular-time score for its saved outcome (not merely the match-winner
+prediction). Results derive from the persisted match results on each history
+read and reflect provider score corrections. A missing result remains pending;
+a void match voids that leg. Any loss makes the ticket Lost immediately; otherwise
+pending legs keep it Pending. All non-void legs winning makes it Won; all void
+legs makes it Void. Selections never change. No bookmaker bet, stake or payout
+is created. Public visitors cannot save official combinations.
