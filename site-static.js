@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const pages = new Set(['index.html', 'account.html', 'analysis.html', 'about.html',
-    'pricing.html', 'predictions.html', 'history.html', 'guide.html', 'calculator.html',
+    'football.html', 'pricing.html', 'predictions.html', 'history.html', 'guide.html', 'calculator.html',
     'testimonials.html', 'suggestions.html', 'videos.html', 'contact.html', 'free-trial.html', 'login.html', 'signup.html']);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',

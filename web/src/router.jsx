@@ -1,3 +1,4 @@
+import FootballPage from './pages/FootballPage.jsx';
 import React from 'react';
 import HomePage from './pages/HomePage.jsx';
 import AboutPage from './pages/AboutPage.jsx';
@@ -18,6 +19,7 @@ import AnalysisPage from './pages/AnalysisPage.jsx';
 export function getPageName() {
   const route = window.location.pathname.replace(/^\/|\/index.html$/g, '').replace(/^\/|\/$/, '');
   if (!route || route === 'index.html') return 'home';
+  if (route === 'football.html') return 'football';
   if (route === 'about.html') return 'about';
   if (route === 'pricing.html') return 'pricing';
   if (route === 'testimonials.html' || route === 'suggestions.html') return 'suggestions';
@@ -36,6 +38,7 @@ export function getPageName() {
 }
 
 export function PageRenderer({ page }) {
+  if (page === 'football') return <FootballPage />;
   if (page === 'analysis') return <AnalysisPage />;
   if (page === 'account') return <AccountPage />;
   if (page === 'about') return <AboutPage />;

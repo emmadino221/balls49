@@ -7,6 +7,7 @@ const navLinks = [
   { path: 'about.html', page: 'about', label: 'About' },
   { path: 'pricing.html', page: 'pricing', label: 'Pricing' },
   { path: 'predictions.html', page: 'predictions', label: 'Predictions' },
+  { path: 'football.html', page: 'football', label: 'Football', ownerOnly: true },
   { path: 'history.html', page: 'history', label: 'History' },
   { path: 'analysis.html', page: 'analysis', label: 'Analysis' },
   { path: 'guide.html', page: 'guide', label: 'Guide' },
@@ -79,7 +80,7 @@ export default function App() {
         </button>
 
         <nav id="primary-navigation" className={`main-nav${menuOpen ? ' is-open' : ''}`} aria-label="Main navigation">
-          {navLinks.map((item) => (
+          {navLinks.filter(item => !item.ownerOnly || session.admin).map((item) => (
             <a
               key={item.path}
               className={page === item.page ? 'active' : ''}

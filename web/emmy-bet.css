@@ -1926,6 +1926,13 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .daily-streak-history { margin-block: 24px; }
 .daily-streak-history .market-analytics-grid > article { margin: 0; min-width: 0; }
 .daily-streak-history select { min-height: 44px; font-size: 16px; }
+.football-tabs { display: flex; flex-wrap: wrap; gap: 10px; }
+.football-tabs button[aria-pressed="true"] { border-color: var(--green); background: var(--green-soft); }
+.football-probabilities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-block: 16px; }
+.football-probabilities > div { display: grid; gap: 8px; padding: 10px; border-radius: 10px; background: var(--surface-soft); overflow-wrap: anywhere; }
+.football-page h2 { overflow-wrap: anywhere; }
+.football-page h2 small { color: var(--muted); font-size: .65em; }
+@media (max-width: 600px) { .football-page .content-card { padding: 16px; } .football-probabilities { font-size: 13px; } }
 .suggestions-page .suggestions-auto-toggle[aria-checked="true"] { background: var(--green-soft); color: var(--ink); border-color: var(--green); }
 .suggestions-page .suggestions-auto-toggle:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
 

@@ -1,3 +1,4 @@
+const { createFootballService } = require('./football-service');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, bet49Numbers } = require('./bet49');
@@ -93,6 +94,8 @@ siteDb.exec(`
         setting_value TEXT NOT NULL
     );
 `);
+const footballService = createFootballService(siteDb);
+
 function migrateLegacySiteUsers() {
     const userCount = siteDb.prepare('SELECT COUNT(*) AS count FROM site_users').get().count;
     if (userCount > 0 || !fs.existsSync(SITE_USERS_FILE)) return;
@@ -231,7 +234,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
     'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
-    'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
+    'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
 function isAllowedApiOrigin(origin) {
@@ -4252,6 +4255,11 @@ async function handleHttpRequest(req, res) {
         } catch { return sendJson(res, 400, { error: 'Invalid preview request.' }); }
     }
 
+    if (parsedUrl.pathname === '/admin/football' && req.method === 'GET') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Sign in through Owner Tools to view football.' });
+        return sendJson(res, 200, footballService.read());
+    }
+
     if (parsedUrl.pathname === '/admin/preview' && req.method === 'GET') {
         const session = siteSession(req);
         if (!session?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
@@ -5655,6 +5663,7 @@ setInterval(() => {
 }, 1000);
        
 if (SITE_PUBLIC_MODE) {
+    footballService.start();
     console.log('[PredictionFeed] Public API ready; waiting for authenticated worker snapshots.');
 } else {
     refreshRetrainingModelArtifactFromLog();

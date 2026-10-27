@@ -5,6 +5,7 @@ import path from 'node:path';
 const outputDirectory = fileURLToPath(new URL('../dist/', import.meta.url));
 const indexFile = path.join(outputDirectory, 'index.html');
 const pageFiles = [
+  'football.html',
   'account.html',
   'analysis.html',
   'about.html',
