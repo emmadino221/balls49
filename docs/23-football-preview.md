@@ -58,3 +58,22 @@ on the VPS. After deployment, check the preview's configured state, update time,
 provider errors, fixtures and saved picks. An empty fixture window is valid;
 insufficient history must show no pick. Review actual prediction results before
 enabling paid/public access.
+
+## Public preview update
+
+Football is now freely accessible at `/football.html` through
+`GET /public-football`. No login or subscription is required during this preview.
+The admin-only endpoint remains available for provider diagnostics; public errors
+use a generic message. Tokens remain server-side. The navigation is visible to
+everyone. Cards label the suggested outcome as 1 (home), X (draw), or 2 (away).
+This is an experimental model selection, not a proven betting recommendation.
+
+## Compact cards and additional markets
+
+New `goals-baseline-v2` predictions also save Over/Under 2.5 and Both Teams to
+Score Yes/No. These probabilities sum the same pre-match Poisson score model;
+they require no extra provider calls. All three markets settle separately using
+regular-time goals and are voided together when the fixture is voided.
+Older saved predictions retain match-result-only coverage, even if still upcoming.
+There is no retrospective addition of markets. Cards show compact market/pick/
+estimate rows, with explanations and alternative percentages behind Details.

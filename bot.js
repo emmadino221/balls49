@@ -234,7 +234,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
     'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
-    'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
+    'GET /public-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
 function isAllowedApiOrigin(origin) {
@@ -4253,6 +4253,11 @@ async function handleHttpRequest(req, res) {
             siteSessions.update(sessionToken(req), session);
             return sendJson(res, 200, { ok: true, tier: session.previewTier, games: session.previewGames });
         } catch { return sendJson(res, 400, { error: 'Invalid preview request.' }); }
+    }
+
+    if (parsedUrl.pathname === '/public-football' && req.method === 'GET') {
+        const football = footballService.read();
+        return sendJson(res, 200, { ...football, error: football.error ? 'Football updates are temporarily unavailable. Saved data may be out of date.' : null });
     }
 
     if (parsedUrl.pathname === '/admin/football' && req.method === 'GET') {

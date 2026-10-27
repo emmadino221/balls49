@@ -7,7 +7,7 @@ const navLinks = [
   { path: 'about.html', page: 'about', label: 'About' },
   { path: 'pricing.html', page: 'pricing', label: 'Pricing' },
   { path: 'predictions.html', page: 'predictions', label: 'Predictions' },
-  { path: 'football.html', page: 'football', label: 'Football', ownerOnly: true },
+  { path: 'football.html', page: 'football', label: 'Football' },
   { path: 'history.html', page: 'history', label: 'History' },
   { path: 'analysis.html', page: 'analysis', label: 'Analysis' },
   { path: 'guide.html', page: 'guide', label: 'Guide' },

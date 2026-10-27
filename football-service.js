@@ -23,14 +23,23 @@ function estimate(match, history) {
     };
     const hp = poisson(homeMean), ap = poisson(awayMean);
     const probabilities = { HOME: 0, DRAW: 0, AWAY: 0 };
+    let over = 0, both = 0;
     for (let i = 0; i < hp.length; i++) for (let j = 0; j < ap.length; j++) {
-        probabilities[i > j ? 'HOME' : i === j ? 'DRAW' : 'AWAY'] += hp[i] * ap[j];
+        const weight = hp[i] * ap[j];
+        probabilities[i > j ? 'HOME' : i === j ? 'DRAW' : 'AWAY'] += weight;
+        if (i + j >= 3) over += weight;
+        if (i > 0 && j > 0) both += weight;
     }
     const total = Object.values(probabilities).reduce((sum, p) => sum + p, 0);
     for (const key of Object.keys(probabilities)) probabilities[key] = Math.round(probabilities[key] / total * 1000) / 10;
     const pick = Object.keys(probabilities).sort((a, b) => probabilities[b] - probabilities[a])[0];
-    return { pick, probabilities, homeSamples: home.length, awaySamples: away.length,
-        model: 'goals-baseline-v1', explanation: `Based on ${home.length} recent home-team results and ${away.length} recent away-team results, with a home advantage adjustment.` };
+    const binary = (value, yes, no) => {
+        const percentage = Math.round(value / total * 1000) / 10;
+        return { pick: value / total >= 0.5 ? yes : no,
+            probabilities: { [yes]: percentage, [no]: Math.round((100 - percentage) * 10) / 10 }, outcome: 'PENDING' };
+    };
+    return { pick, probabilities, markets: { goals25: binary(over, 'OVER', 'UNDER'), btts: binary(both, 'YES', 'NO') }, homeSamples: home.length, awaySamples: away.length,
+        model: 'goals-baseline-v2', explanation: `Based on ${home.length} recent home-team results and ${away.length} recent away-team results, with a home advantage adjustment.` };
 }
 
 function createFootballService(db) {
@@ -71,11 +80,18 @@ function createFootballService(db) {
                     const saved = existing.get(m.id);
                     if (saved) {
                         if (saved.outcome !== 'VOID') {
-                            if (['POSTPONED', 'CANCELLED', 'SUSPENDED'].includes(m.status) || m.kickoff !== saved.kickoff) saved.outcome = 'VOID';
+                            if (['POSTPONED', 'CANCELLED', 'SUSPENDED'].includes(m.status) || m.kickoff !== saved.kickoff) {
+                                saved.outcome = 'VOID';
+                                for (const market of Object.values(saved.markets || {})) market.outcome = 'VOID';
+                            }
                             else if (m.status === 'FINISHED' && m.homeGoals !== null && m.awayGoals !== null) {
                                 const result = m.homeGoals > m.awayGoals ? 'HOME' : m.homeGoals === m.awayGoals ? 'DRAW' : 'AWAY';
                                 saved.outcome = result === saved.pick ? 'WIN' : 'LOSS';
                                 saved.score = `${m.homeGoals} - ${m.awayGoals}`;
+                                const actual = { goals25: m.homeGoals + m.awayGoals >= 3 ? 'OVER' : 'UNDER', btts: m.homeGoals > 0 && m.awayGoals > 0 ? 'YES' : 'NO' };
+                                for (const [key, result] of Object.entries(actual)) {
+                                    if (saved.markets?.[key]) saved.markets[key].outcome = saved.markets[key].pick === result ? 'WIN' : 'LOSS';
+                                }
                             }
                             savePick(saved);
                         }
