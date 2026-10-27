@@ -1,25 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { PageRenderer, getPageName } from './router.jsx';
 import { apiRequest } from './auth.js';
 
 const navLinks = [
   { path: 'index.html', page: 'home', label: 'Home' },
-  { path: 'about.html', page: 'about', label: 'About' },
+  { label: 'Predictions', id: 'predictions', children: [
+    { path: 'predictions.html', page: 'predictions', label: '49ja predictions' },
+    { path: 'football.html', page: 'football', label: 'Football' },
+    { path: 'free-trial.html', page: 'free-trial', label: '49ja free trial' }
+  ] },
+  { label: 'Tools & history', id: 'tools', children: [
+    { path: 'history.html', page: 'history', label: '49ja history' },
+    { path: 'analysis.html', page: 'analysis', label: '49ja analysis' },
+    { path: 'calculator.html', page: 'calculator', label: 'Calculator' },
+    { path: 'suggestions.html', page: 'suggestions', label: 'Strategy suggestions' }
+  ] },
+  { label: 'Learn', id: 'learn', children: [
+    { path: 'guide.html', page: 'guide', label: 'Guide' },
+    { path: 'videos.html', page: 'videos', label: 'Videos' }
+  ] },
   { path: 'pricing.html', page: 'pricing', label: 'Pricing' },
-  { path: 'predictions.html', page: 'predictions', label: 'Predictions' },
-  { path: 'football.html', page: 'football', label: 'Football' },
-  { path: 'history.html', page: 'history', label: 'History' },
-  { path: 'analysis.html', page: 'analysis', label: 'Analysis' },
-  { path: 'guide.html', page: 'guide', label: 'Guide' },
-  { path: 'calculator.html', page: 'calculator', label: 'Calculator' },
-  { path: 'suggestions.html', page: 'suggestions', label: 'Suggestions' },
-  { path: 'videos.html', page: 'videos', label: 'Videos' },
-  { path: 'contact.html', page: 'contact', label: 'Contact' },
+  { label: 'More', id: 'more', children: [
+    { path: 'about.html', page: 'about', label: 'About' },
+    { path: 'contact.html', page: 'contact', label: 'Contact' }
+  ] }
 ];
 
 export default function App() {
   const page = getPageName();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState(null);
+  const navRef = useRef(null);
   const [session, setSession] = useState({ checking: true, user: null, admin: false });
   const [darkMode, setDarkMode] = useState(() => {
     try {
@@ -57,7 +68,16 @@ export default function App() {
     window.location.href = 'index.html';
   }
 
-  useEffect(() => setMenuOpen(false), [page]);
+  useEffect(() => { setMenuOpen(false); setOpenGroup(null); }, [page]);
+  useEffect(() => {
+    const outside = event => { if (!navRef.current?.contains(event.target)) setOpenGroup(null); };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, []);
+  const closeNavigation = () => { setMenuOpen(false); setOpenGroup(null); };
+  const navLink = item => <a key={item.path} className={page === item.page ? 'active' : ''} href={item.path}
+    aria-current={page === item.page ? 'page' : undefined} onClick={closeNavigation}>{item.label}</a>;
+
 
   return (
     <div className={`site${darkMode ? ' dark-theme' : ''}${page === 'home' ? ' home-site' : ' cinematic-site'}`}>
@@ -74,23 +94,28 @@ export default function App() {
           aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
           aria-expanded={menuOpen}
           aria-controls="primary-navigation"
-          onClick={() => setMenuOpen((open) => !open)}
+          onClick={() => { setMenuOpen(open => !open); setOpenGroup(null); }}
         >
           <span /><span /><span />
         </button>
 
-        <nav id="primary-navigation" className={`main-nav${menuOpen ? ' is-open' : ''}`} aria-label="Main navigation">
-          {navLinks.filter(item => !item.ownerOnly || session.admin).map((item) => (
-            <a
-              key={item.path}
-              className={page === item.page ? 'active' : ''}
-              href={item.path}
-              aria-current={page === item.page ? 'page' : undefined}
-              onClick={() => setMenuOpen(false)}
-            >
-              {item.label}
-            </a>
-          ))}
+        <nav ref={navRef} id="primary-navigation" className={`main-nav grouped-nav${menuOpen ? ' is-open' : ''}`} aria-label="Main navigation"
+          onKeyDown={event => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              if (openGroup) { navRef.current?.querySelector(`#nav-trigger-${openGroup}`)?.focus(); setOpenGroup(null); }
+              else { setMenuOpen(false); document.querySelector('.menu-toggle')?.focus(); }
+            }
+          }}>
+          {navLinks.map(item => item.children ? <div className="nav-group" key={item.id}
+            onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenGroup(current => current === item.id ? null : current); }}>
+            <button id={`nav-trigger-${item.id}`} type="button" className={`nav-group-trigger${item.children.some(child => child.page === page) ? ' active' : ''}`}
+              aria-expanded={openGroup === item.id} aria-controls={`nav-panel-${item.id}`}
+              onClick={() => setOpenGroup(current => current === item.id ? null : item.id)}>
+              {item.label}<span aria-hidden="true">{openGroup === item.id ? '\u2212' : '+'}</span>
+            </button>
+            <div id={`nav-panel-${item.id}`} className="nav-group-panel" hidden={openGroup !== item.id}>{item.children.map(navLink)}</div>
+          </div> : navLink(item))}
           {session.user || session.admin
             ? <button className="mobile-login mobile-logout" type="button" onClick={signOut}>{session.admin ? 'Exit owner session' : 'Sign out'}</button>
             : <a className="mobile-login" href="login.html" onClick={() => setMenuOpen(false)}>Log in</a>}
@@ -130,7 +155,8 @@ export default function App() {
             <h2>Explore</h2>
             <a href="about.html">About</a>
             <a href="pricing.html">Pricing</a>
-            <a href="predictions.html">Predictions</a>
+            <a href="predictions.html">49ja predictions</a>
+            <a href="football.html">Football</a>
             <a href="history.html">Prediction history</a>
             <a href="analysis.html">Prediction analysis</a>
             <a href="guide.html">Prediction guide</a>

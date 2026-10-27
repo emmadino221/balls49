@@ -1,4 +1,9 @@
 'use strict';
+const LEAGUES = [
+    { code: 'PL', name: 'Premier League' }, { code: 'PD', name: 'La Liga' },
+    { code: 'BL1', name: 'Bundesliga' }, { code: 'SA', name: 'Serie A' },
+    { code: 'FL1', name: 'Ligue 1' }, { code: 'CL', name: 'Champions League' }
+];
 
 // Experimental pre-match baseline, independent of the casino prediction loop.
 function estimate(match, history) {
@@ -45,29 +50,48 @@ function estimate(match, history) {
 function createFootballService(db) {
     db.exec(`CREATE TABLE IF NOT EXISTS football_state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS football_picks (id INTEGER PRIMARY KEY, data TEXT NOT NULL)`);
-    const getState = () => JSON.parse(db.prepare('SELECT data FROM football_state WHERE id=1').get()?.data || '{}');
-    const saveState = value => db.prepare('INSERT OR REPLACE INTO football_state VALUES (1, ?)').run(JSON.stringify(value));
+    db.exec('CREATE TABLE IF NOT EXISTS football_league_state (code TEXT PRIMARY KEY, data TEXT NOT NULL)');
+    // Preserve the original Premier League cache and picks on upgrade.
+    const legacy = db.prepare('SELECT data FROM football_state WHERE id=1').get();
+    if (legacy) db.prepare('INSERT OR IGNORE INTO football_league_state VALUES (?, ?)').run('PL', legacy.data);
+    const getState = code => JSON.parse(db.prepare('SELECT data FROM football_league_state WHERE code=?').get(code)?.data || '{}');
+    const saveState = (code, value) => db.prepare('INSERT OR REPLACE INTO football_league_state VALUES (?, ?)').run(code, JSON.stringify(value));
     const allPicks = () => db.prepare('SELECT data FROM football_picks').all().map(row => JSON.parse(row.data));
     const savePick = pick => db.prepare('INSERT OR REPLACE INTO football_picks VALUES (?, ?)').run(pick.id, JSON.stringify(pick));
     const apiKey = process.env.FOOTBALL_DATA_API_KEY;
     let busy = false;
     async function refresh() {
         if (!apiKey || busy) return;
-        const previous = getState();
-        if (Date.now() - (previous.attemptAt || 0) < 30 * 60 * 1000) return;
+        const now = Date.now();
+        const states = LEAGUES.map(league => ({ ...league, state: getState(league.code) }));
+        // Global spacing survives restarts and limits this service to six calls/minute.
+        if (states.some(item => now < (item.state.globalRetryAt || 0))
+            || now - Math.max(0, ...states.map(item => item.state.attemptAt || 0)) < 10000) return;
+        const next = states.filter(item => now >= (item.state.retryAt || 0) && now - (item.state.attemptAt || 0) >= 30 * 60000)
+            .sort((a, b) => (a.state.attemptAt || 0) - (b.state.attemptAt || 0))[0];
+        if (!next) return;
+        const code = next.code, previous = next.state;
         busy = true;
-        saveState({ ...previous, attemptAt: Date.now() });
+        saveState(code, { ...previous, attemptAt: Date.now() });
         try {
-            const response = await fetch('https://api.football-data.org/v4/competitions/PL/matches', {
+            const response = await fetch(`https://api.football-data.org/v4/competitions/${code}/matches`, {
                 headers: { 'X-Auth-Token': apiKey }, signal: AbortSignal.timeout(15000), redirect: 'error'
             });
-            if (!response.ok) throw new Error(`Provider returned HTTP ${response.status}. Check your token and plan access.`);
+            if (!response.ok) {
+                const failure = new Error(`Provider returned HTTP ${response.status}. Check your token and plan access.`);
+                failure.status = response.status;
+                const retryHeader = response.headers.get('retry-after');
+                const seconds = Number(retryHeader);
+                failure.retryAt = Math.max(Date.now() + 30 * 60000,
+                    Number.isFinite(seconds) ? Date.now() + seconds * 1000 : Date.parse(retryHeader) || 0);
+                throw failure;
+            }
             const payload = await response.json();
             if (!Array.isArray(payload.matches)) throw new Error('Provider returned an unexpected fixture response.');
             const goal = value => Number.isInteger(value) && value >= 0 ? value : null;
             const matches = payload.matches.filter(m => Number.isSafeInteger(m.id) && m.homeTeam?.id && m.awayTeam?.id && Number.isFinite(Date.parse(m.utcDate))).map(m => {
                 const score = m.score?.regularTime || (m.score?.duration === 'REGULAR' ? m.score?.fullTime : null);
-                return { id: m.id, kickoff: m.utcDate, status: m.status,
+                return { league: code, id: m.id, kickoff: m.utcDate, status: m.status,
                     homeId: m.homeTeam.id, awayId: m.awayTeam.id,
                     home: String(m.homeTeam.shortName || m.homeTeam.name).slice(0, 100),
                     away: String(m.awayTeam.shortName || m.awayTeam.name).slice(0, 100),
@@ -79,6 +103,7 @@ function createFootballService(db) {
                 for (const m of matches) {
                     const saved = existing.get(m.id);
                     if (saved) {
+                        if ((saved.league || 'PL') !== code) continue;
                         if (saved.outcome !== 'VOID') {
                             if (['POSTPONED', 'CANCELLED', 'SUSPENDED'].includes(m.status) || m.kickoff !== saved.kickoff) {
                                 saved.outcome = 'VOID';
@@ -102,20 +127,21 @@ function createFootballService(db) {
                         if (estimateResult) savePick({ ...m, ...estimateResult, generatedAt: now, outcome: 'PENDING' });
                     }
                 }
-                saveState({ attemptAt: now, updatedAt: now, error: null, matches });
+                saveState(code, { attemptAt: now, updatedAt: now, error: null, matches });
                 db.exec('COMMIT');
             } catch (e) { db.exec('ROLLBACK'); throw e; }
         } catch (error) {
-            saveState({ ...getState(), error: /^Provider returned/.test(error.message) ? error.message : 'Football update failed. Saved data is retained; the next scheduled refresh will retry.' });
+            saveState(code, { ...getState(code), retryAt: error.retryAt || 0, globalRetryAt: error.status === 429 ? error.retryAt : 0, accessDenied: error.status === 403, error: /^Provider returned/.test(error.message) ? error.message : 'Football update failed. Saved data is retained; the next scheduled refresh will retry.' });
         } finally { busy = false; }
     }
     return {
-        start() { if (apiKey) { refresh(); setInterval(refresh, 60000).unref(); } },
-        read() {
-            const state = getState(), now = Date.now();
-            const picks = allPicks().sort((a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff));
+        start() { if (apiKey) { refresh(); setInterval(refresh, 10000).unref(); } },
+        read(requested = 'PL') {
+            const code = LEAGUES.some(l => l.code === requested) ? requested : 'PL';
+            const state = getState(code), now = Date.now();
+            const picks = allPicks().filter(p => (p.league || 'PL') === code).sort((a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff));
             const next = (state.matches || []).filter(m => Date.parse(m.kickoff) > now && Date.parse(m.kickoff) <= now + 7 * 86400000);
-            return { configured: !!apiKey, updatedAt: state.updatedAt || null, error: state.error || null,
+            return { leagues: LEAGUES, league: code, accessDenied: !!state.accessDenied, configured: !!apiKey, updatedAt: state.updatedAt || null, error: state.error || null,
                 stale: !state.updatedAt || now - state.updatedAt > 3600000,
                 upcoming: next.sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff)).map(m => ({ ...m, prediction: picks.find(p => p.id === m.id) || null })),
                 history: picks.filter(p => Date.parse(p.kickoff) <= now || p.outcome !== 'PENDING').slice(0, 100) };

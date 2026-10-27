@@ -77,3 +77,27 @@ regular-time goals and are voided together when the fixture is voided.
 Older saved predictions retain match-result-only coverage, even if still upcoming.
 There is no retrospective addition of markets. Cards show compact market/pick/
 estimate rows, with explanations and alternative percentages behind Details.
+
+## Multiple competitions
+
+The league selector now supports PL (Premier League), PD (La Liga), BL1
+(Bundesliga), SA (Serie A), FL1 (Ligue 1) and CL (Champions League). These are
+listed in the provider's free coverage at https://www.football-data.org/coverage;
+actual account authorization is still enforced by the provider.
+
+`football_league_state` stores independent caches, update times and errors. The
+old Premier League cache migrates once without deleting any saved picks. Legacy
+picks without a league code belong to PL. New picks carry their competition code.
+Public and admin endpoints accept `?league=CODE`; unknown codes default to PL.
+
+One request is started at least ten seconds apart, with a 30-minute minimum
+between attempts for each competition. Attempt timestamps persist across
+restarts. HTTP 429 causes a global pause, respecting Retry-After with a minimum
+30-minute backoff. HTTP 403 displays a competition availability notice and does
+not block other leagues. Browser navigation never triggers provider fetches.
+
+Models use only that competition's current-season completed matches, maintaining
+the five-result minimum per team. Champions League early-season samples may be
+insufficient; no cross-league data is silently substituted. Historical picks and
+market results are separated by league. Current-season API refreshes do not
+automatically query previous seasons for unresolved old picks.

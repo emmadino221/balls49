@@ -4256,13 +4256,13 @@ async function handleHttpRequest(req, res) {
     }
 
     if (parsedUrl.pathname === '/public-football' && req.method === 'GET') {
-        const football = footballService.read();
+        const football = footballService.read(parsedUrl.searchParams.get('league') || 'PL');
         return sendJson(res, 200, { ...football, error: football.error ? 'Football updates are temporarily unavailable. Saved data may be out of date.' : null });
     }
 
     if (parsedUrl.pathname === '/admin/football' && req.method === 'GET') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Sign in through Owner Tools to view football.' });
-        return sendJson(res, 200, footballService.read());
+        return sendJson(res, 200, footballService.read(parsedUrl.searchParams.get('league') || 'PL'));
     }
 
     if (parsedUrl.pathname === '/admin/preview' && req.method === 'GET') {
