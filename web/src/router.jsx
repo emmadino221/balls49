@@ -1,3 +1,4 @@
+import VerifyEmailPage from './pages/VerifyEmailPage.jsx';
 import FootballPage from './pages/FootballPage.jsx';
 import React from 'react';
 import HomePage from './pages/HomePage.jsx';
@@ -31,6 +32,7 @@ export function getPageName() {
   if (route === 'free-trial.html') return 'free-trial';
   if (route === 'contact.html') return 'contact';
   if (route === 'login.html') return 'login';
+  if (route === 'verify-email.html') return 'verify-email';
   if (route === 'signup.html') return 'signup';
   if (route === 'account.html') return 'account';
   if (route === 'analysis.html') return 'analysis';
@@ -52,6 +54,7 @@ export function PageRenderer({ page }) {
   if (page === 'free-trial') return <FreeTrialPage />;
   if (page === 'contact') return <ContactPage />;
   if (page === 'login') return <LoginPage />;
+  if (page === 'verify-email') return <VerifyEmailPage />;
   if (page === 'signup') return <SignupPage />;
   return <HomePage />;
 }

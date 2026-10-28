@@ -157,3 +157,8 @@ Draw ID search filters cards but does not change this range statistic.
 An empty Summary ENTER/HOLD bucket can show **No summary data** until a new
 prediction with that label settles. Markets without a summary model continue
 to show no summary data. This does not mean synchronization has failed.
+
+
+## Signup verification emails
+
+Signup now verifies email with a six-digit, 10-minute code before setting a password. Configure Resend on the website service; see [Email verification setup](docs/25-email-verification.md). Premium and Elite still require owner approval.

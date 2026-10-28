@@ -35,6 +35,7 @@ export default function LoginPage() {
       <input id="login-password" name="password" type="password" placeholder="Enter your password" autoComplete="current-password" required />
       <button className="btn btn-primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
       {message && <p className="auth-feedback" role="alert">{message}</p>}
+      <p className="auth-password-hint">Need to verify your email? <a href="verify-email.html">Enter or request a code</a>.</p>
     </form>
   </AuthLayout>;
 }

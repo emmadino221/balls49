@@ -1,0 +1,9 @@
+.verification-steps { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; font-size: 12px; color: var(--muted); }
+.verification-steps > * { padding: 8px 12px; border-radius: 20px; border: 1px solid var(--line); }
+.verification-steps strong { background: var(--surface-soft); color: var(--green); }
+.auth-form .verification-code { font-size: 24px; letter-spacing: .3em; text-align: center; font-variant-numeric: tabular-nums; }
+.verification-resend { margin-top: 24px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; }
+.verification-resend summary { cursor: pointer; font-size: 14px; font-weight: 700; }
+.verification-resend p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+.verification-resend input { min-width: 0; width: 100%; font-size: 16px; }
+.verification-resend summary:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; }
