@@ -12,7 +12,7 @@ available. This update does not embed Bet9ja inside the website.
 4. Link that same extension access key (not your owner key or Bet9ja password).
 5. Choose Use website control. This pauses automation.
 6. Review games, stakes, progression, sniper, entry rules and limits, then save.
-7. Choose Start automation and confirm. Keep the dashboard and Bet9ja tab open.
+7. Choose Start automation and confirm. Keep the Bet9ja tab and extension connected. You may close the dashboard.
 
 The page shows the reported bookmaker balance separately from the bot's calculated
 balance, session profit/loss, game steps and up to 100 recently placed draws.
@@ -40,8 +40,10 @@ replace the user's loss limit.
 - Switching or stopping preserves recovery and sniper progression. Settings edits
   require a stopped session without an active execution or recovery sequence.
 - The extension popup has a Use extension control button for returning to manual use.
-- Website mode requires fresh dashboard and extension heartbeats. A connection
-  missing for about 15 seconds pauses the worker; restarting requires an explicit Start.
+- Website mode requires a fresh extension heartbeat. Closing the dashboard does
+  not pause automation. An extension connection missing for about 15 seconds pauses
+  the worker; restarting requires an explicit Start. Stop loss, take profit and
+  other configured limits continue to apply while the dashboard is closed.
 - Each submission rechecks the worker. One extension executor token holds the lease;
   existing per-draw claims prevent another tab claiming the same execution.
 - Stop cannot undo a bookmaker-accepted bet or an in-flight submission. Submitted

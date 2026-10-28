@@ -707,7 +707,7 @@ function restoreSession(session, clientId) {
     const saved = persistedSessions[clientId];
     if (!saved) return;
     session.automationHistory = Array.isArray(saved.automationHistory) ? saved.automationHistory.slice(0,100) : [];
-    session.automationControl = { ...automationControl.state(session), ...saved.automationControl, executorAt: 0, dashboardAt: 0, executorToken: "" };
+    session.automationControl = { ...automationControl.state(session), ...saved.automationControl, executorAt: 0, executorToken: "" };
 
     for (const key of ['userTracker', 'wallets', 'martingaleState', 'masterState', 'cooldowns', 'sniperState', 'config', 'stats', 'balanceVerification']) {
         if (saved[key] && typeof saved[key] === 'object') Object.assign(session[key], saved[key]);
@@ -4680,7 +4680,6 @@ async function handleHttpRequest(req, res) {
     automationControl.guard(session);
     if (parsedUrl.pathname === "/stats" && parsedUrl.searchParams.get("dashboardProtocol") === "1") automationControl.heartbeat(session, parsedUrl.searchParams.get("executor") || "");
     if (parsedUrl.pathname === "/stats" && parsedUrl.searchParams.get("dashboard") === "1") {
-        if (parsedUrl.searchParams.get("dashboardHeartbeat") === "1") automationControl.state(session).dashboardAt = Date.now();
         return sendJson(res, 200, { clientId, control: automationControl.view(session) });
     }
 

@@ -3,9 +3,9 @@ const { getTotalColorOutcome } = require('./total-color');
 const { presetSessionBusy } = require('./preset-history');
 const aliases = { u4: 'betzero', bet49: 'bet49', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1' };
 const fail = message => Object.assign(new Error(message), { status: 409 });
-function state(s) { return s.automationControl ||= { controller: 'extension', revision: 0, executorAt: 0, executorToken: '', dashboardAt: 0 }; }
+function state(s) { return s.automationControl ||= { controller: 'extension', revision: 0, executorAt: 0, executorToken: '' }; }
 function stop(s, reason = 'Stopped by user') { s.stats.isHalted = true; s.stats.haltReason = reason; if (!s.betExecutionClaim) s.pendingBetPayload = null; s.failedBetRecovery = null; }
-function guard(s) { const c = state(s); if (c.controller === 'website' && !s.stats.isHalted && (Date.now() - c.executorAt > 15000 || Date.now() - c.dashboardAt > 15000)) stop(s, 'Connection expired. Review and start again.'); }
+function guard(s) { const c = state(s); if (c.controller === 'website' && !s.stats.isHalted && Date.now() - c.executorAt > 15000) stop(s, 'Extension connection expired. Reconnect Bet9ja, then start again.'); }
 function heartbeat(s, token) { const c = state(s); if (/^[a-f0-9]{32}$/.test(token) && (!c.executorToken || c.executorToken === token || Date.now() - c.executorAt > 15000)) { c.executorToken = token; c.executorAt = Date.now(); } }
 function settings(s) {
  const out = { stakes: {}, gameSteps: {}, enabledGames: {} };
@@ -35,9 +35,9 @@ function command(s, cfg, busy) {
  if (action === 'stop') { stop(s); c.revision++; return { done: true }; }
  if (action === 'extension') { stop(s); c.controller = 'extension'; c.revision++; return { done: true }; }
  if (cfg.revision !== c.revision) throw fail('Settings changed. Refresh the dashboard before continuing.');
- if (action === 'website') { stop(s); c.controller = 'website'; c.dashboardAt = Date.now(); c.revision++; return { done: true }; }
+ if (action === 'website') { stop(s); c.controller = 'website'; c.revision++; return { done: true }; }
  if (c.controller !== 'website') throw fail('Switch to website control first.');
- if (action === 'start') { if (Date.now() - c.executorAt > 10000) throw fail('Open Bet9ja with the updated extension connected first.'); if (s.betExecutionClaim || s.lastBetDetails) throw fail('Wait for the placed bet to settle.'); if (!Object.keys(aliases).some(k => s.config.enabledGames[k] && s.config.initialStakes[k] > 0)) throw fail('Enable a game and save a stake first.'); c.dashboardAt = Date.now(); c.revision++; return { config: { running: true } }; }
+ if (action === 'start') { if (Date.now() - c.executorAt > 10000) throw fail('Open Bet9ja with the updated extension connected first.'); if (s.betExecutionClaim || s.lastBetDetails) throw fail('Wait for the placed bet to settle.'); if (!Object.keys(aliases).some(k => s.config.enabledGames[k] && s.config.initialStakes[k] > 0)) throw fail('Enable a game and save a stake first.'); c.revision++; return { config: { running: true } }; }
  if (action === 'save') { if (!s.stats.isHalted || busy) throw fail('Stop and finish the active recovery sequence before changing settings. Progression is preserved.'); const config = normalize(cfg.settings || {}); c.revision++; return { config: { ...config, running: false } }; }
  throw fail('Unknown dashboard action.');
 }
