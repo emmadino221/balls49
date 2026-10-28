@@ -14,6 +14,17 @@ function validRequest(req, data, secret) {
     return crypto.timingSafeEqual(Buffer.from(supplied, 'hex'), Buffer.from(signature(secret, timestamp, JSON.stringify(data)), 'hex'));
 }
 function manage(data) {
+    if (data.action === 'bind-account') {
+        if (!/^\S+@\S+\.\S+$/.test(data.email || '') || !/^[A-Za-z0-9_-]{32,256}$/.test(data.key || '')) throw new Error('Invalid binding.');
+        if (data.key === process.env.EXTENSION_ACCESS_KEY) throw new Error('Owner keys cannot be linked to member accounts.');
+        return updateStore(store => {
+            const user = store.users.find(record => record.keyHash === hashKey(data.key));
+            if (!user || user.revokedAt || (user.expiresAt !== undefined && user.expiresAt <= Date.now())) throw new Error('Inactive key.');
+            if (user.accountEmail && user.accountEmail !== data.email) throw new Error('Key belongs to another account.');
+            user.accountEmail = data.email;
+            return { clientId: user.clientId };
+        });
+    }
     if (data.action === 'revoke-account') {
         const email = String(data.email || '').trim().toLowerCase();
         if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254

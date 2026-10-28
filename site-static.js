@@ -33,6 +33,9 @@ function createSiteStaticHandler(directory) {
             'Content-Length': content.length,
             'Cache-Control': asset ? 'public, max-age=31536000, immutable' : 'no-store',
             'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'Content-Security-Policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+            'Content-Security-Policy-Report-Only': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-src https://www.youtube-nocookie.com; form-action 'self'",
             'Referrer-Policy': 'strict-origin-when-cross-origin'
         });
         res.end(req.method === 'HEAD' ? undefined : content);

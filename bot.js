@@ -98,7 +98,9 @@ siteDb.exec(`
     );
 `);
 const footballService = createFootballService(siteDb);
-const automationBridge = createAutomationBridge(siteDb, SITE_ADMIN_KEY);
+const siteVault = require('./site-vault').createSiteVault(process.env.SITE_VAULT_KEY_FILE || `${SITE_DATABASE_FILE}.security-key`);
+const automationBridge = createAutomationBridge(siteDb, SITE_ADMIN_KEY, siteVault);
+const ownerSecurity = require('./owner-security').createOwnerSecurity(siteDb, siteVault, SITE_ADMIN_KEY);
 
 function migrateLegacySiteUsers() {
     if (siteDb.prepare("SELECT 1 FROM site_settings WHERE setting_key = 'legacy_users_migrated'").get()) return;
@@ -230,7 +232,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
-    'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/delete-user', 'POST /admin/reset-market-stats',
+    'GET /admin/security', 'POST /admin/security', 'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/delete-user', 'POST /admin/reset-market-stats',
     'GET /public-football-combinations', 'POST /admin/football-combinations', 'GET /public-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
@@ -298,6 +300,7 @@ function siteSession(req) {
     const token = sessionToken(req);
     const session = token && siteSessions.get(token);
     if (!session || session.expiresAt <= Date.now()) return null;
+    if (session.admin && session.ownerVersion !== ownerSecurity.version()) return null;
     if (!session.admin) {
         const user = getSiteUser(session.email);
         if (!user || user.emailVerified === false) return null;
@@ -319,7 +322,7 @@ function clearSessionCookie(res) {
 }
 function allowSiteAuthAttempt(req, res, rules) {
     const now = Date.now();
-    const ip = req.socket.remoteAddress || 'unknown';
+    const ip = require('./request-security').clientAddress(req);
     const keys = rules.map(rule => ({ ...rule, key: `${rule.scope}:${rule.identity || ip}` }));
     if (siteAuthRateLimits.size + keys.filter(rule => !siteAuthRateLimits.has(rule.key)).length > 10000) {
         for (const [key, bucket] of siteAuthRateLimits) {
@@ -4056,19 +4059,39 @@ async function handleHttpRequest(req, res) {
         return sendJson(res, 200, { ok: true });
     }
 
+    if (parsedUrl.pathname === '/admin/security') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        if (req.method === 'GET') return sendJson(res, 200, ownerSecurity.status());
+        if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed.' });
+        if (!allowSiteAuthAttempt(req, res, [{scope:'owner-security',limit:10,windowMs:600000}])) return;
+        try {
+            const data = await readRequestJson(req);
+            if (data.action === 'begin') return sendJson(res, 200, ownerSecurity.begin(data.key));
+            if (data.action === 'confirm') {
+                const result = ownerSecurity.confirm(data.key, data.code);
+                const token = sessionToken(req), session = siteSessions.get(token);
+                session.ownerVersion = ownerSecurity.version(); siteSessions.update(token,session);
+                return sendJson(res, 200, result);
+            }
+            if (data.action === 'disable') ownerSecurity.disable(data.key,data.code);
+            else if (data.action === 'revoke') ownerSecurity.revoke(data.key,data.code);
+            else return sendJson(res, 400, { error: 'Unknown security action.' });
+            clearSessionCookie(res);
+            return sendJson(res, 200, {ok:true, signedOut:true});
+        } catch(error) { return sendJson(res, error.status || 400, {error:error.status ? error.message : 'Security change failed. Refresh setup and try again.'}); }
+    }
+
     if (parsedUrl.pathname === '/admin/session' && req.method === 'POST') {
         if (!allowSiteAuthAttempt(req, res, [{ scope: 'admin-key-ip', limit: 20, windowMs: 60 * 60 * 1000 }])) return;
         if (!SITE_ADMIN_KEY) return sendJson(res, 503, { error: 'Set SITE_ADMIN_KEY in the server environment first.' });
         try {
             const data = await readRequestJson(req);
-            const supplied = Buffer.from(String(data.key || ''));
-            const expected = Buffer.from(SITE_ADMIN_KEY);
-            if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return sendJson(res, 401, { error: 'Admin key is incorrect.' });
+            ownerSecurity.verify(data.key, data.code);
             const token = crypto.randomBytes(32).toString('hex');
-            siteSessions.create(token, { admin: true, previewTier: null, previewGames: [], expiresAt: Date.now() + 8 * 3600000 });
+            siteSessions.create(token, { admin: true, ownerVersion: ownerSecurity.version(), previewTier: null, previewGames: [], expiresAt: Date.now() + 8 * 3600000 });
             setSessionCookie(res, token, 8 * 3600);
             return sendJson(res, 200, { ok: true });
-        } catch { return sendJson(res, 400, { error: 'Invalid admin request.' }); }
+        } catch (error) { return sendJson(res, error.status || 400, { error: error.status ? error.message : 'Invalid admin request.' }); }
     }
 
     if (parsedUrl.pathname === '/public-suggestions-status' && req.method === 'GET') {

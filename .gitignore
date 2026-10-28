@@ -13,6 +13,7 @@ __pycache__/
 .env.*
 !.env.example
 cookies.txt
+*.security-key
 
 # Local accounts, sessions, predictions, and learned state
 site_users.json

@@ -65,10 +65,11 @@ the existing extension stats/config routes. Both services must run on the same V
 
 Links use the signed-in account identity. One extension session can be linked to
 one website account. Keys are encrypted in the website SQLite database using a key
-derived from SITE_ADMIN_KEY. Normal status responses never contain keys. An active
+stored separately from SITE_ADMIN_KEY (see docs/27-security-and-owner-2fa.md for
+the vault-key migration and backup requirements). Normal status responses never contain keys. An active
 subscriber may explicitly reveal their own key, and the owner receives the key
-when approving extension access. Rotating the
-admin key requires relinking. Revoked extension keys cannot operate the worker.
+when approving extension access. After the vault migration, rotating the
+admin key invalidates owner sessions without requiring relinking. Revoked extension keys cannot operate the worker.
 Keep the website database and server key persistent and backed up.
 
 ## Extension subscriptions
