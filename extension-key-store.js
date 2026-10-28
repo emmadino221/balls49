@@ -58,7 +58,7 @@ function disabledManagedSessions(clientIds, env = process.env) {
     const managed = clientIds.filter(id => id.startsWith('user_ext_') && id !== env.EXTENSION_CLIENT_ID);
     if (!managed.length) return [];
     try {
-        const active = new Set(readStore(env).users.filter(user => !user.revokedAt).map(user => user.clientId));
+        const active = new Set(readStore(env).users.filter(user => !user.revokedAt && (user.expiresAt === undefined || user.expiresAt > Date.now())).map(user => user.clientId));
         return managed.filter(id => !active.has(id));
     } catch { return managed; }
 }

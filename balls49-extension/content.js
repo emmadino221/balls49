@@ -4,6 +4,9 @@ let SELECTED_GAME = 'hilo';
 let IS_UNIFIED_MODE = false;
 let CURRENT_STAKES = { betzero: 500, bet49: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
 let isBettingActive = false;
+let websiteController = false;
+let dashboardRevision = -1;
+let currentPlacementReport = null;
 let lastExecutionReceipt = null;
 let lastExecutedDrawId = null;          
 let betBalanceUnconfirmed = false;
@@ -181,6 +184,14 @@ function findPlaceBetButton() {
 }
 
 async function placeBet() {
+    // Recheck the worker immediately before each submission. Never submit offline.
+    const check = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
+    if (!check.ok) return false;
+    const instruction = await check.json();
+    if (instruction.action !== 'EXECUTE_BET' || String(instruction.drawId) !== String(lastExecutedDrawId)) return false;
+    const local = await getStorage(['running']);
+    if (!instruction.websiteControl && local.running !== true) return false;
+
     const beforeBal = getLiveAccountBalance();
     const btn = findPlaceBetButton();
     if (!btn) return false;
@@ -380,7 +391,8 @@ async function runTotalColor(topColors, stake) {
                 await sleep(200);
                 
                 const placed = await placeBet();
-                if (!placed) allSuccess = false;
+                if (placed) currentPlacementReport?.colorSelections.totalColor.push(colorClass);
+                if (!placed) return false;
                 await sleep(200);
             } else {
                 allSuccess = false;
@@ -407,7 +419,8 @@ async function runTotalColor2(top2Colors, stake) {
                 await sleep(200);
                 
                 const placed = await placeBet();
-                if (!placed) allSuccess = false;
+                if (placed) currentPlacementReport?.colorSelections.totalColor2.push(colorClass);
+                if (!placed) return false;
                 await sleep(200); 
             }
         }
@@ -1032,8 +1045,20 @@ async function pollOverlayData() {
         const settings = await getStorage(['enabledGames', 'unifiedMode']);
         setSelectedGameFromSettings(settings);
 
-        const statsRes = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}`);
+        const statsRes = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboardProtocol=1&executor=${EXECUTION_CLIENT_TOKEN}`);
         const stats = statsRes.ok ? await statsRes.json() : null;
+        const control = stats?.automationControl;
+        if (control) {
+            const wasWebsite = websiteController;
+            websiteController = control.controller === 'website';
+            if (websiteController) {
+                if (dashboardRevision !== control.revision) {
+                    await chrome.storage.sync.set({ ...control.settings, running: control.running });
+                    setSelectedGameFromSettings(control.settings);
+                    dashboardRevision = control.revision;
+                } else if (!control.running) await chrome.storage.sync.set({ running: false });
+            } else if (wasWebsite) { await chrome.storage.sync.set({ ...control.settings, running: false }); dashboardRevision = -1; }
+        }
         updateLiveOverlay(stats);
     } catch(e) {}
     setTimeout(pollOverlayData, 1500);
@@ -1153,7 +1178,7 @@ async function listen() {
 
             if (m && m.action === "EXECUTE_BET" && !isBettingActive) {
                 const storage = await getStorage(['running', 'stakes', 'gameSteps', 'hiloMultiplier']);
-                if (storage.running !== true) {
+                if (!m.websiteControl && storage.running !== true) {
                     isBettingActive = false;
                     extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                         method: 'POST',
@@ -1192,7 +1217,8 @@ async function listen() {
                 const tc1Stake = Number(m.tc1Stake) || 0;
                 const tc2Stake = m.tc2Stake || calcLocalStake('totalColor2', serverSteps.totalColor2, userStakes, gameStepsLimits, hiloMult);
 
-                const executionReport = { games: [], bet49Numbers: [], unconfirmedBet49: [] };
+                const executionReport = { version: 2, games: [], bet49Numbers: [], unconfirmedBet49: [], colorSelections: { totalColor: [], totalColor2: [] } };
+                currentPlacementReport = executionReport;
                 const batchBet49 = Array.isArray(m.bet49) ? m.bet49 : m.bet49 == null ? [] : [Number(m.bet49)];
                 try {
                     lastExecutedDrawId = String(m.drawId);
@@ -1214,7 +1240,7 @@ async function listen() {
                             || batchBet49.some(n => !Number.isInteger(n) || n < 1 || n > 49)) throw new Error('Invalid Bet49 numbers');
                         for (const number of batchBet49) {
                             const currentSettings = await chrome.storage.sync.get(['running']);
-                            if (!currentSettings.running) throw new Error('Automation stopped during Bet49 placement');
+                            if (!m.websiteControl && !currentSettings.running) throw new Error('Automation stopped during Bet49 placement');
                             const checkStarted = Date.now();
                             const check = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
                             const current = await check.json();
@@ -1277,7 +1303,7 @@ async function listen() {
                         const drawEl = document.getElementById('overlayDrawId');
                         if (drawEl) drawEl.innerText = `Draw: #${m.drawId}`;
 
-                        lastExecutionReceipt = { drawId: m.drawId, status: betSuccess ? 'SUCCESS' : 'FAILED', executionToken: m.executionToken, executionReport };
+                        lastExecutionReceipt = { drawId: m.drawId, status: betSuccess && !betBalanceUnconfirmed ? 'SUCCESS' : 'FAILED', executionToken: m.executionToken, executionReport };
                         await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
                             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lastExecutionReceipt)
                         });

@@ -32,6 +32,11 @@ function authorizeExtensionRequest(req, url, env = process.env) {
         const digest = Buffer.from(hashKey(bearer[1]), 'hex');
         const user = users.find(record => crypto.timingSafeEqual(Buffer.from(record.keyHash, 'hex'), digest));
         if (!user || user.revokedAt) return { status: 401, error: 'Invalid or revoked extension access key.' };
+        if (user.expiresAt !== undefined && !(user.expiresAt > Date.now())) {
+            // Permit settlement receipts and stopping after expiry, but never new execution.
+            const settlementOnly = req.method === 'POST' && ['/ack', '/update-balance'].includes(route);
+            if (!settlementOnly) return { status: 403, error: 'Extension subscription expired. Contact the owner to renew.' };
+        }
         clientId = user.clientId;
         // Backtests consume the shared worker; only the owner may run them remotely.
         if (route === '/backtest') return { status: 403, error: 'Backtesting is available to the owner only.' };

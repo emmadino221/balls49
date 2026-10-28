@@ -12,6 +12,7 @@ const navLinks = [
   { label: 'Tools & history', id: 'tools', children: [
     { path: 'history.html', page: 'history', label: '49ja history' },
     { path: 'analysis.html', page: 'analysis', label: '49ja analysis' },
+    { path: 'automation.html', page: 'automation', label: 'Automation dashboard' },
     { path: 'calculator.html', page: 'calculator', label: 'Calculator' },
     { path: 'suggestions.html', page: 'suggestions', label: 'Strategy suggestions' }
   ] },

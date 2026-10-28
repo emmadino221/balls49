@@ -1,3 +1,5 @@
+const automationControl = require('./automation-control');
+const { createAutomationBridge } = require('./automation-bridge');
 const { createSiteEmail } = require('./site-email');
 const { createFootballService } = require('./football-service');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
@@ -25,7 +27,7 @@ const {
     SUMMARY_MODEL_MARKETS, makeDefaultSummaryModelMarkets, normalizeSummaryModelTargets,
     getSummaryGateTarget, summaryGateAllows, getIssuedSummaryLabels, applySummaryGateConfig
 } = require('./summary-gate');
-const { applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
+const { getTotalColorOutcome, applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
 const { predictHighLowFromBet49 } = require('./high-low');
 const { nigeriaMidnightBoundary } = require('./daily-reset');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
@@ -96,8 +98,10 @@ siteDb.exec(`
     );
 `);
 const footballService = createFootballService(siteDb);
+const automationBridge = createAutomationBridge(siteDb, SITE_ADMIN_KEY);
 
 function migrateLegacySiteUsers() {
+    if (siteDb.prepare("SELECT 1 FROM site_settings WHERE setting_key = 'legacy_users_migrated'").get()) return;
     const userCount = siteDb.prepare('SELECT COUNT(*) AS count FROM site_users').get().count;
     if (userCount > 0 || !fs.existsSync(SITE_USERS_FILE)) return;
     const legacyUsers = JSON.parse(fs.readFileSync(SITE_USERS_FILE, 'utf8'));
@@ -219,13 +223,14 @@ if (SITE_PUBLIC_MODE && SITE_ALLOWED_ORIGINS.size === 0) {
     throw new Error('SITE_ALLOWED_ORIGINS must contain the deployed website origin when SITE_PUBLIC_MODE=true.');
 }
 const PUBLIC_SITE_ROUTES = new Set([
+    'GET /account/automation', 'POST /account/automation/link', 'POST /account/automation/command', 'POST /account/automation/key',
     'GET /public-suggestions-status', 'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'POST /internal/prediction-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
-    'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/reset-market-stats',
+    'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/delete-user', 'POST /admin/reset-market-stats',
     'GET /public-football-combinations', 'POST /admin/football-combinations', 'GET /public-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
@@ -293,7 +298,10 @@ function siteSession(req) {
     const token = sessionToken(req);
     const session = token && siteSessions.get(token);
     if (!session || session.expiresAt <= Date.now()) return null;
-    if (!session.admin && getSiteUser(session.email)?.emailVerified === false) return null;
+    if (!session.admin) {
+        const user = getSiteUser(session.email);
+        if (!user || user.emailVerified === false) return null;
+    }
     return session;
 }
 function setSessionCookie(res, token, maxAgeSeconds) {
@@ -357,6 +365,7 @@ function publicAccount(session) {
         email: session.email, name: user?.name || '',
         expiresAt: Number(user?.expiresAt) || null,
         approvalStatus: user?.expiresAt > Date.now() ? 'approved' : user?.expiresAt > 0 ? 'expired' : 'pending',
+        extensionExpiresAt: user?.extensionExpiresAt || null,
         plan
     };
 }
@@ -662,6 +671,8 @@ lastGlobalDrawId = persistedState.lastGlobalDrawId ?? null;
 
 function snapshotSession(session) {
     return JSON.parse(JSON.stringify({
+        automationControl: { controller: automationControl.state(session).controller, revision: automationControl.state(session).revision },
+        automationHistory: session.automationHistory || [],
         userTracker: session.userTracker,
         wallets: session.wallets,
         martingaleState: session.martingaleState,
@@ -695,6 +706,8 @@ function persistSessions() {
 function restoreSession(session, clientId) {
     const saved = persistedSessions[clientId];
     if (!saved) return;
+    session.automationHistory = Array.isArray(saved.automationHistory) ? saved.automationHistory.slice(0,100) : [];
+    session.automationControl = { ...automationControl.state(session), ...saved.automationControl, executorAt: 0, dashboardAt: 0, executorToken: "" };
 
     for (const key of ['userTracker', 'wallets', 'martingaleState', 'masterState', 'cooldowns', 'sniperState', 'config', 'stats', 'balanceVerification']) {
         if (saved[key] && typeof saved[key] === 'object') Object.assign(session[key], saved[key]);
@@ -724,6 +737,7 @@ function restoreSession(session, clientId) {
 }
 
 if (!SITE_PUBLIC_MODE) {
+    setInterval(() => { for (const session of Object.values(userSessions)) automationControl.guard(session); }, 1000);
     setInterval(() => {
         try {
             persistSessions();
@@ -1586,6 +1600,7 @@ function exceedsStopLossWithPayload(session, payload) {
 }
 
 function enforceSessionLimits(session) {
+    automationControl.guard(session);
     // Debited stakes are not settled losses: wait for the placed bet's result.
     if (!session.stats.isHalted && !session.lastBetDetails) {
         if (session.config.takeProfit > 0 && session.stats.totalReturned >= session.config.takeProfit) {
@@ -2873,6 +2888,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     const details = session.lastBetDetails;
     const r = pLogItem.result;
     if (!r) return;
+    automationControl.settle(session, pLogItem);
 
     // Pre-midnight bets settle outside processUpdates after their public history is
     // cleared. Still apply their actual outcome to this session's sniper cycle.
@@ -2904,9 +2920,9 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     const u4Win = r.betzero === 'WIN';
     const colorWin = r.rainbow === 'WIN';
     const sumWin = r.hilo === 'WIN';
-    const tcWin = r.totalColor === 'WIN';
+    const tcWin = details.colorSelections ? details.colorSelections.totalColor.includes(getTotalColorOutcome(r.balls)) : r.totalColor === 'WIN';
     const tc1Win = r.totalColor1 === 'WIN';
-    const tc2Win = r.totalColor2 === 'WIN';
+    const tc2Win = details.colorSelections ? details.colorSelections.totalColor2.includes(getTotalColorOutcome(r.balls)) : r.totalColor2 === 'WIN';
     const placedBet49 = bet49Numbers(details.bet49Numbers ?? pLogItem.predicted.bet49);
     const bet49Hits = placedBet49.filter(n => (r.balls || []).map(Number).includes(n)).length;
     const bet49Win = bet49Hits > 0;
@@ -3662,6 +3678,20 @@ async function handleHttpRequest(req, res) {
     checkDailyHistoryReset();
     const origin = req.headers.origin;
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+    if (parsedUrl.pathname === '/internal/extension-subscription' && req.method === 'POST') {
+        if (SITE_PUBLIC_MODE) return sendJson(res, 404, { error: 'Not found.' });
+        try {
+            const data = await readRequestJson(req);
+            const subscriptions = require('./extension-subscriptions');
+            if (!subscriptions.validRequest(req, data, PREDICTION_INGEST_SECRET)) return sendJson(res, 403, { error: 'Unauthorized.' });
+            const result = subscriptions.manage(data);
+            for (const id of result.revokedClientIds || []) {
+                if (userSessions[id]) automationControl.stop(userSessions[id], 'Account deleted by owner');
+            }
+            if (result.revokedClientIds?.length) persistSessions();
+            return sendJson(res, 200, result);
+        } catch { return sendJson(res, 400, { error: 'Could not update extension subscription.' }); }
+    }
     if (serveWebsite) {
         if (await serveWebsite(req, res, parsedUrl)) return;
         // Same-address browser API requests retain the normal public route/auth checks.
@@ -3694,6 +3724,26 @@ async function handleHttpRequest(req, res) {
 
     if (SITE_PUBLIC_MODE && !PUBLIC_SITE_ROUTES.has(`${req.method} ${parsedUrl.pathname}`)) {
         return sendJson(res, 404, { error: 'Not found.' });
+    }
+
+    if (parsedUrl.pathname.startsWith('/account/automation')) {
+        const login = siteSession(req);
+        if (!login) return sendJson(res, 401, { error: 'Sign in to access automation.' });
+        const account = login.admin ? '__owner__' : login.email;
+        try {
+            if (req.method === 'GET' && parsedUrl.pathname === '/account/automation') return sendJson(res, 200, await automationBridge.status(account));
+            if (req.method === 'POST') {
+                if (!allowSiteAuthAttempt(req, res, [{ scope: 'automation-command', identity: account, limit: 60, windowMs: 60000 }])) return;
+                const data = await readRequestJson(req);
+                if (parsedUrl.pathname === '/account/automation/key') {
+                    if (!login.admin && !(getSiteUser(account)?.extensionExpiresAt > Date.now())) return sendJson(res, 403, { error: 'An active extension subscription is required.' });
+                    return sendJson(res, 200, { key: automationBridge.credential(account) });
+                }
+                if (parsedUrl.pathname === '/account/automation/link') return sendJson(res, 200, await automationBridge.link(account, String(data.key || '')));
+                if (parsedUrl.pathname === '/account/automation/command') return sendJson(res, 200, await automationBridge.command(account, data));
+            }
+            return sendJson(res, 404, { error: 'Not found.' });
+        } catch (error) { return sendJson(res, error.status || 503, { error: error.status ? error.message : 'Automation service unavailable.' }); }
     }
 
     if (isPredictionIngest && SITE_PUBLIC_MODE) {
@@ -4073,12 +4123,13 @@ async function handleHttpRequest(req, res) {
 
     if (parsedUrl.pathname === '/admin/users' && req.method === 'GET') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
-        const users = getSiteUsers().map(({ email, name, createdAt, plan, expiresAt, emailVerified }) => ({
+        const users = getSiteUsers().map(({ email, name, createdAt, plan, expiresAt, emailVerified, extensionExpiresAt }) => ({
             email,
             name,
             createdAt,
             plan,
             expiresAt,
+            extensionExpiresAt: extensionExpiresAt || null,
             identityStatus: emailVerified === true ? 'confirmed' : emailVerified === false ? 'needs-confirmation' : 'legacy',
             approvalStatus: expiresAt > Date.now() ? 'approved' : expiresAt > 0 ? 'expired' : 'pending'
         })).sort((left, right) => Number(left.approvalStatus === 'approved') - Number(right.approvalStatus === 'approved')
@@ -4099,6 +4150,29 @@ async function handleHttpRequest(req, res) {
         return sendJson(res, 200, { ok: true, resetAt: new Date(resetAt).toISOString() });
     }
 
+    if (parsedUrl.pathname === '/admin/delete-user' && req.method === 'POST') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        try {
+            const data = await readRequestJson(req);
+            const email = String(data.email || '').trim().toLowerCase();
+            if (data.confirmEmail !== email) return sendJson(res, 400, { error: 'Type the exact account email to confirm deletion.' });
+            const user = getSiteUser(email);
+            if (!user) return sendJson(res, 404, { error: 'Account not found.' });
+            // Revoke first. If the worker is unavailable, retain the account for retry.
+            await automationBridge.revokeAccount(email, !!user.extensionExpiresAt);
+            siteDb.exec('BEGIN IMMEDIATE');
+            try {
+                siteDb.prepare("DELETE FROM site_sessions WHERE json_extract(session_json, '$.email') = ? AND COALESCE(json_extract(session_json, '$.admin'), 0) = 0").run(email);
+                deleteEmailVerificationStatement.run(email);
+                siteDb.prepare('DELETE FROM site_automation_links WHERE account = ?').run(email);
+                siteDb.prepare('DELETE FROM site_users WHERE email = ?').run(email);
+                setSiteSettingStatement.run('legacy_users_migrated', 'true');
+                siteDb.exec('COMMIT');
+            } catch (error) { siteDb.exec('ROLLBACK'); throw error; }
+            return sendJson(res, 200, { ok: true, email });
+        } catch { return sendJson(res, 503, { error: 'Deletion could not finish. Check the worker connection and retry. Extension access may already be revoked.' }); }
+    }
+
     if (parsedUrl.pathname === '/admin/approve' && req.method === 'POST') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
         try {
@@ -4106,20 +4180,30 @@ async function handleHttpRequest(req, res) {
             const email = String(data.email || '').trim().toLowerCase();
             const user = getSiteUser(email);
             const tier = String(data.tier || '');
+            const access = data.access || 'predictions';
+            if (!['predictions', 'extension', 'both'].includes(access)) return sendJson(res, 400, { error: 'Choose an access type.' });
             const months = Math.max(1, Math.min(12, Number.parseInt(data.months, 10) || 1));
             const games = Array.isArray(data.games) ? [...new Set(data.games.filter(game => siteMarkets.includes(game)))] : [];
             if (!user) return sendJson(res, 404, { error: 'Create the user account before approving it.' });
             if (user.emailVerified !== true && data.identityConfirmed !== true) {
                 return sendJson(res, 400, { error: 'Confirm this person through a known contact method before approving the account.' });
             }
-            if (!['trial', 'premium', 'elite'].includes(tier)) return sendJson(res, 400, { error: 'Choose Trial, Premium, or Elite.' });
-            if (tier === 'premium' && !games.length) return sendJson(res, 400, { error: 'Select at least one Premium game.' });
+            if (access !== 'extension' && !['trial', 'premium', 'elite'].includes(tier)) return sendJson(res, 400, { error: 'Choose Trial, Premium, or Elite.' });
+            if (access !== 'extension' && tier === 'premium' && !games.length) return sendJson(res, 400, { error: 'Select at least one Premium game.' });
             const expiresAt = Date.now() + months * 30 * 86400000;
+            let extensionKey;
+            if (access !== 'predictions') {
+                try { extensionKey = (await automationBridge.subscription(email, expiresAt)).key; }
+                catch (error) { return sendJson(res, 503, { error: error.message }); }
+                user.extensionExpiresAt = expiresAt;
+            }
             user.emailVerified = true;
-            user.plan = { tier, games: tier === 'elite' ? [...siteMarkets] : tier === 'premium' ? games : [], expiresAt, telegram: tier === 'elite' };
-            user.expiresAt = expiresAt;
+            if (access !== 'extension') {
+                user.plan = { tier, games: tier === 'elite' ? [...siteMarkets] : tier === 'premium' ? games : [], expiresAt, telegram: tier === 'elite' };
+                user.expiresAt = expiresAt;
+            }
             saveSiteUser(user);
-            return sendJson(res, 200, { ok: true, user: { email, plan: user.plan } });
+            return sendJson(res, 200, { ok: true, extensionKey, user: { email, plan: user.plan, extensionExpiresAt: user.extensionExpiresAt || null } });
         } catch { return sendJson(res, 400, { error: 'Invalid approval request.' }); }
     }
 
@@ -4187,6 +4271,8 @@ async function handleHttpRequest(req, res) {
                     if (session.stats.initialBalance === null || session.stats.initialBalance === undefined) {
                         session.stats.initialBalance = data.balance;
                     }
+                    if (!Number.isFinite(data.balance) || data.balance < 0) return sendJson(res, 400, { error: "Invalid balance." });
+                    session.stats.balanceAt = Date.now();
                     session.stats.liveAccountBalance = data.balance;
 
                     if ((session.stats.initialVirtualBalance == null) && data.balance > 0) {
@@ -4590,7 +4676,13 @@ async function handleHttpRequest(req, res) {
     if (!clientId) return res.writeHead(400), res.end(JSON.stringify({ error: 'Missing coordinate' }));
 
     const session = getSession(clientId);
-    syncSessionFromParams(session, parsedUrl.searchParams);
+    if (automationControl.state(session).controller !== "website") syncSessionFromParams(session, parsedUrl.searchParams);
+    automationControl.guard(session);
+    if (parsedUrl.pathname === "/stats" && parsedUrl.searchParams.get("dashboardProtocol") === "1") automationControl.heartbeat(session, parsedUrl.searchParams.get("executor") || "");
+    if (parsedUrl.pathname === "/stats" && parsedUrl.searchParams.get("dashboard") === "1") {
+        if (parsedUrl.searchParams.get("dashboardHeartbeat") === "1") automationControl.state(session).dashboardAt = Date.now();
+        return sendJson(res, 200, { clientId, control: automationControl.view(session) });
+    }
 
     if (parsedUrl.pathname === '/backtest' && req.method === 'GET') {
         const gameKey = parsedUrl.searchParams.get('game') || 'hilo';
@@ -4606,6 +4698,7 @@ async function handleHttpRequest(req, res) {
     if (parsedUrl.pathname === '/stream') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         if (enforceSessionLimits(session)) return res.end(JSON.stringify({ action: 'WAIT' }));
+        if (automationControl.state(session).controller === "website" && parsedUrl.searchParams.get("executionToken") !== automationControl.state(session).executorToken) return res.end(JSON.stringify({ action: "WAIT" }));
         const payload = session.pendingBetPayload;
         if (!payload || dailyPendingSettlements.some(record => String(record.drawId) === String(payload.drawId))) return res.end(JSON.stringify({ action: 'WAIT' }));
         if (payload.action !== 'EXECUTE_BET') return res.end(JSON.stringify(payload));
@@ -4631,7 +4724,7 @@ async function handleHttpRequest(req, res) {
         }
         const timeLeftMs = String(publicClock.drawId) === drawId && publicClock.observedAt && Date.now() - publicClock.observedAt <= POLL_SEC * 3000
             ? Math.max(0, publicClock.observedAt + publicClock.timeLeftSeconds * 1000 - Date.now()) : 0;
-        return res.end(JSON.stringify({ ...payload, executionToken, timeLeftMs }));
+        return res.end(JSON.stringify({ ...payload, executionToken, timeLeftMs, websiteControl: automationControl.state(session).controller === "website" }));
     }
     
     else if (parsedUrl.pathname === '/risk-profile' && req.method === 'GET') {
@@ -4765,6 +4858,7 @@ async function handleHttpRequest(req, res) {
         return res.end(JSON.stringify({
             ...session.stats, status: statusDisplay,
             extensionAccess: req.extensionAccess || null,
+            automationControl: automationControl.view(session),
             cbStatus: activeCb,
             retryStatus,
             currentStep: session.config.unifiedMode 
@@ -4825,6 +4919,30 @@ async function handleHttpRequest(req, res) {
                         res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
                     }
 
+                    if (data.executionReport?.version === 2) {
+                        const report = data.executionReport;
+                        if (!Array.isArray(report.games) || !Array.isArray(report.bet49Numbers)
+                            || new Set(report.bet49Numbers).size !== report.bet49Numbers.length
+                            || report.bet49Numbers.some(n => !bet49Numbers(payload.bet49).includes(n))) return sendJson(res, 400, { error: 'Invalid placement receipt.' });
+                        for (const [game, field, stakeField] of [['totalColor','totalColor','tcStake'],['totalColor2','totalColor2','tc2Stake']]) {
+                            const placed = report.colorSelections?.[game];
+                            const expected = payload[field] || [];
+                            if (!Array.isArray(placed) || new Set(placed).size !== placed.length || placed.some(c => !expected.includes(c))) return sendJson(res, 400, { error: 'Invalid color placement receipt.' });
+                        }
+                        const incomplete = report.bet49Numbers.length !== bet49Numbers(payload.bet49).length
+                            || report.colorSelections.totalColor.length !== (payload.totalColor || []).length
+                            || report.colorSelections.totalColor2.length !== (payload.totalColor2 || []).length
+                            || Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake' }).some(([game, field]) => payload[field] > 0 && !report.games.includes(game));
+                        if (data.status !== 'SUCCESS' || incomplete || report.unconfirmedBet49?.length) automationControl.stop(session, 'Execution interrupted. Check the bet slip before starting again.');
+                        payload.bet49 = report.bet49Numbers;
+                        payload.unconfirmedBet49 = bet49Numbers(report.unconfirmedBet49).filter(n => payload.bet49.includes(n));
+                        for (const [game, field] of Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake' })) if (!report.games.includes(game)) payload[field] = 0;
+                        payload.totalColor = report.colorSelections.totalColor;
+                        payload.totalColor2 = report.colorSelections.totalColor2;
+                        if (!payload.totalColor.length) payload.tcStake = 0;
+                        if (!payload.totalColor2.length) payload.tc2Stake = 0;
+                        data.status = 'SUCCESS'; // Account for submitted selections; do not retry a partial batch.
+                    } else
                     if (Array.isArray(payload.bet49) && payload.bet49.length) {
                         const report = data.executionReport;
                         if (!report || !Array.isArray(report.bet49Numbers) || !Array.isArray(report.games)
@@ -4851,7 +4969,7 @@ async function handleHttpRequest(req, res) {
                         session.pendingBetPayload = null;
                     } else {
                         let totalStake = 0;
-                        const details = { drawId, stakes: {}, odds: {}, games: [] };
+                        const details = { drawId, stakes: {}, odds: {}, games: [], colorSelections: data.executionReport?.version === 2 ? data.executionReport.colorSelections : null };
 
                         if (payload && payload.action === 'EXECUTE_BET') {
                             if (payload.numbers && payload.stake > 0) {
@@ -4885,7 +5003,7 @@ async function handleHttpRequest(req, res) {
                                 details.stakes.totalColor = payload.tcStake;
                                 details.odds.totalColor = session.wallets.totalColor.odds;
                                 details.games.push('totalColor');
-                                totalStake += (payload.tcStake * 3);
+                                totalStake += (payload.tcStake * (details.colorSelections?.totalColor.length ?? 3));
                             }
                             if (payload.totalColor1 && payload.tc1Stake > 0) {
                                 details.stakes.totalColor1 = payload.tc1Stake;
@@ -4900,7 +5018,7 @@ async function handleHttpRequest(req, res) {
                                 details.stakes.totalColor2 = payload.tc2Stake;
                                 details.odds.totalColor2 = session.wallets.totalColor2.odds;
                                 details.games.push('totalColor2');
-                                totalStake += (payload.tc2Stake * 2);
+                                totalStake += (payload.tc2Stake * (details.colorSelections?.totalColor2.length ?? 2));
                             }
                         }
 
@@ -4913,7 +5031,11 @@ async function handleHttpRequest(req, res) {
                             session.stats.totalReturned = Math.round(session.stats.virtualBalance - session.stats.initialVirtualBalance);
                         }
 
-                        session.lastBetDetails = details;
+                        if (details.games.length) automationControl.record(session, data.drawId, details, {
+                            betzero: payload.numbers, rainbow: payload.color, hilo: payload.sumRange,
+                            totalColor: payload.totalColor, totalColor2: payload.totalColor2, totalColor1: payload.totalColor1
+                        });
+                        session.lastBetDetails = details.games.length ? details : null;
                         session.lastBetDrawId = String(data.drawId);
                         session.pendingBetPayload = null;
                         session.failedBetRecovery = null;
@@ -4960,6 +5082,8 @@ async function handleHttpRequest(req, res) {
         session.stats.virtualBalance = session.stats.initialVirtualBalance || 0;
         session.stats.totalReturned = 0; 
         session.stats.wins = 0; session.stats.losses = 0; session.stats.betsPlaced = 0;
+        session.automationHistory = [];
+        automationControl.state(session).revision++;
         
         session.stats.currentWinStreak = 0; session.stats.maxWinStreak = 0;
         session.stats.currentLossStreak = 0; session.stats.maxLossStreak = 0;
@@ -4971,7 +5095,10 @@ async function handleHttpRequest(req, res) {
         let body = ''; req.on('data', chunk => body += chunk);
         req.on('end', () => {
             try {
-                const cfg = JSON.parse(body);
+                let cfg = JSON.parse(body);
+                const controlResult = automationControl.command(session, cfg, presetSessionBusy(session));
+                if (controlResult?.done) { enforceSessionLimits(session); persistSessions(); return sendJson(res, 200, { ok: true }); }
+                if (controlResult?.config) cfg = controlResult.config;
                 const validateNumber = (val, min = 0, max = null, defaultVal = 0) => {
                     const num = parseInt(val, 10);
                     if (!Number.isSafeInteger(num)) return defaultVal;
@@ -5113,10 +5240,13 @@ async function handleHttpRequest(req, res) {
                 if (cfg.tc3RolloverTarget !== undefined) session.config.tc3RolloverTarget = validateNumber(cfg.tc3RolloverTarget, 2, 10, 3);
                 if (cfg.shadowMode !== undefined) session.config.shadowMode = Boolean(cfg.shadowMode);
                 if (cfg.weightedStaking !== undefined) session.config.weightedStaking = Boolean(cfg.weightedStaking);
+                automationControl.state(session).revision++;
+                enforceSessionLimits(session);
+                persistSessions();
 
                 res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
             } catch (e) { 
-                res.writeHead(400); return res.end(JSON.stringify({ error: 'Invalid config format' })); 
+                return sendJson(res, e.status || 400, { error: e.status ? e.message : 'Invalid config format' });
             }
         });
     } else { res.writeHead(404); res.end(); }

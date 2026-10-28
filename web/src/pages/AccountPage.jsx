@@ -86,6 +86,13 @@ export default function AccountPage() {
       </section>
 
       <section className="content-card account-markets">
+        <h2>Extension membership</h2>
+        <p>NGN 80,000 per 30 days. Approved separately from predictions.</p>
+        <p>{account.extensionExpiresAt ? `${account.extensionExpiresAt > Date.now() ? 'Active until' : 'Expired on'} ${new Date(account.extensionExpiresAt).toLocaleString()}` : 'No monthly extension subscription approved.'}</p>
+        <a className="btn btn-secondary" href="automation.html">Open automation &amp; access key</a>
+      </section>
+
+      <section className="content-card account-markets">
         <div className="account-card-heading"><div><span className="overline">YOUR MARKETS</span><h2>{paid ? 'Included in your plan' : 'Explore a free prediction'}</h2></div><a className="account-text-link" href="pricing.html">Compare plans</a></div>
         {paid ? <ul className="account-market-list">{available.map(([id, name]) => <li key={id}><span>{name}</span><span className="account-status is-approved">Approved</span></li>)}</ul> : <p>Free Trial lets you select one market on each draw. Premium unlocks selected games; Elite includes every market.</p>}
         {paid && !available.length && <p>No markets are listed for this plan. Contact the owner to review your approval.</p>}

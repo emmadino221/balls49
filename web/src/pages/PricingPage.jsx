@@ -55,9 +55,17 @@ export default function PricingPage() {
           <ul><li>All eight prediction markets included</li><li>Predictions available as soon as they are generated</li><li>Elite Telegram access entitlement</li><li>Save {naira(40000)} vs. eight separate Premium games</li></ul>
           <a className="btn btn-primary" href="signup.html">Create account to request Elite</a>
         </article>
+        <article className="price-card">
+          <div className="section-kicker">EXTENSION AUTOMATION</div>
+          <div className="price">{naira(80000)}<small>/ 30 days</small></div>
+          <p className="plan-card-summary">A separate subscription for the browser extension and connected automation dashboard.</p>
+          <ul><li>Manual extension or website controls</li><li>Game, stake and progression settings</li><li>Balance and session activity</li><li>Separate owner approval and expiry</li></ul>
+          <p>Prediction memberships are sold separately. Elite covers predictions; it does not include extension access.</p>
+          <a className="btn btn-primary" href="signup.html">Create account to request extension access</a>
+        </article>
       </section>
 
-      <aside className="pricing-approval-note"><strong>Manual plan approval</strong><span>Create an account, then the site owner approves the selected plan and duration. Payment processing and automatic Telegram invites are not connected yet.</span></aside>
+      <aside className="pricing-approval-note"><strong>Manual plan approval</strong><span>Create an account, then contact the owner to arrange payment and approval for predictions, extension access, or both. Each subscription lasts 30 days per month purchased. Payment processing and automatic Telegram invites are not connected yet.</span></aside>
       <p className="pricing-disclaimer">Prices are monthly in Nigerian naira. Predictions are uncertain and do not guarantee results. Please bet responsibly.</p>
     </main>
   );

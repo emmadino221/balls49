@@ -128,18 +128,36 @@ GAMES.forEach(g => {
     btn.addEventListener('click', () => { btn.classList.toggle('active'); });
 });
 
-document.getElementById('toggle-btn')?.addEventListener('click', () => {
-    chrome.storage.sync.get(['running'], ({ running }) => {
-        const newRunning = !running;
-        chrome.storage.sync.set({ running: newRunning }, () => {
-            setToggleBtn(newRunning);
-            extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ running: newRunning })
-            }).catch(() => {});
-        });
-    });
+document.getElementById('toggle-btn')?.addEventListener('click', async () => {
+    const button = document.getElementById('toggle-btn'); button.disabled = true;
+    try {
+        const statusResponse = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboard=1`);
+        if (!statusResponse.ok) throw new Error('Cannot reach the bot.');
+        const status = await statusResponse.json();
+        const data = await chrome.storage.sync.get(['running']);
+        const running = status.control?.controller === 'website' ? status.control.running : data.running;
+        if (status.control?.controller === 'website' && !running) throw new Error('Use Website Start, or switch to extension control below.');
+        const response = await extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ running: !running }) });
+        const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Command failed.');
+        await chrome.storage.sync.set({ running: !running }); setToggleBtn(!running);
+    } catch (error) { alert(error.message); }
+    finally { button.disabled = false; }
+});
+
+const controlButton = document.createElement('button');
+controlButton.type = 'button'; controlButton.textContent = 'Use extension control (pauses automation)';
+controlButton.style.cssText = 'width:100%;padding:10px;margin:8px 0;background:#182923;color:#c8f5df;border:1px solid #315342;border-radius:8px;cursor:pointer';
+document.getElementById('toggle-btn')?.parentElement?.after(controlButton);
+controlButton.addEventListener('click', async () => {
+    controlButton.disabled = true;
+    try {
+        const response = await extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({dashboardAction:'extension'}) });
+        const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Command failed.');
+        const statusResponse = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboard=1`);
+        if (!statusResponse.ok) throw new Error('Switched and stopped. Reopen the extension to refresh settings.');
+        const status = await statusResponse.json();
+        await chrome.storage.sync.set({...status.control.settings, running:false}); window.location.reload();
+    } catch(error) { alert(error.message); } finally { controlButton.disabled = false; }
 });
 
 document.getElementById('sound-btn')?.addEventListener('click', () => {
@@ -313,6 +331,15 @@ async function applyHistoricalPreset() {
 }
 
 document.getElementById('save-btn')?.addEventListener('click', async () => {
+    try {
+        const response = await extensionFetch(`${SERVER_URL}/stats?dashboard=1`);
+        if (!response.ok) throw new Error('Cannot confirm the active controller. Reconnect before saving.');
+        const status = await response.json();
+        if (status.control?.controller === 'website') {
+            alert('Save settings on the website, or select Use extension control first.');
+            return;
+        }
+    } catch (error) { alert(error.message); return; }
     if (!LICENSE_KEY) return;
     const btn = document.getElementById('save-btn');
     const originalText = btn.textContent;
