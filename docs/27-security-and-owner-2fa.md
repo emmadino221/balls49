@@ -52,8 +52,10 @@ this step is complete.
 
 1. Sign in again under Predictions > Owner tools using the existing owner key.
 2. Open Owner security and enter that key again.
-3. Choose Set up authenticator. In an authenticator app, add a time-based account
-   named Emmy-Bet owner using the displayed setup secret.
+3. Choose Set up authenticator. In an authenticator app, choose Add account and
+   scan the displayed QR code. It is generated locally in the browser, without
+   sending the secret to a QR service. If scanning is unavailable, expand the
+   manual setup option and add a time-based account using its setup secret.
 4. Enter its six-digit code and choose Confirm and enable 2FA within ten minutes.
 5. Save the ten recovery codes somewhere private outside the website. They are
    shown once. Each can replace an authenticator code once, alongside the owner key.
