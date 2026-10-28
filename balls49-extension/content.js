@@ -1049,11 +1049,12 @@ async function pollOverlayData() {
         const statsRes = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboardProtocol=1&executor=${EXECUTION_CLIENT_TOKEN}`);
         const stats = statsRes.ok ? await statsRes.json() : null;
         const control = stats?.automationControl;
+        let resetOverlay = false;
         if (control) {
             if (control.resetAt && control.resetAt > lastDashboardResetAt) {
                 lastDashboardResetAt = control.resetAt;
                 if (!control.running) {
-                    resetRuntimeClock();
+                    resetOverlay = true;
                     await chrome.storage.sync.set({ running: false });
                 }
             }
@@ -1068,6 +1069,7 @@ async function pollOverlayData() {
             } else if (wasWebsite) { await chrome.storage.sync.set({ ...control.settings, running: false }); dashboardRevision = -1; }
         }
         updateLiveOverlay(stats);
+        if (resetOverlay) wipeExecutionOverlay();
     } catch(e) {}
     setTimeout(pollOverlayData, 1500);
 }
@@ -1362,9 +1364,7 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    // --- FIX: WIPES DATA ON THE LIVE WEBPAGE OVERLAY WHEN TRIGGERED ---
-    if (msg.type === 'WIPE_OVERLAY') {
+function wipeExecutionOverlay() {
         const elementsToClear = [
             'overlayCurrentStep', 'overlayWinRate', 'overlayTotalTrades', 
             'overlayVirtualBalance', 'overlayNetPl'
@@ -1387,6 +1387,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             badge.style.background = '#f59e0b';
             badge.style.color = '#000';
         }
+        lastWins = 0; lastLosses = 0;
+        currentWinStreak = 0; currentLossStreak = 0;
+        maxWinStreak = 0; maxLossStreak = 0;
+        for (const key of ['b49_maxWinStreak','b49_maxLossStreak','b49_currWinStreak','b49_currLossStreak']) localStorage.removeItem(key);
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    // --- FIX: WIPES DATA ON THE LIVE WEBPAGE OVERLAY WHEN TRIGGERED ---
+    if (msg.type === 'WIPE_OVERLAY') {
+        wipeExecutionOverlay();
         sendResponse({ ok: true });
         return true;
     }

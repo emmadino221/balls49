@@ -20,6 +20,22 @@ Activity begins with this update; older placements are not reconstructed.
 
 ## Control and execution
 
+### Transfer a strategy suggestion
+
+On Suggestions, choose a game, history window and whole-naira base stake from
+1 to 50,000. Supported plans offer Preview automation setup. In Automation,
+preview the latest history, then apply to the setup form while stopped and free
+of active recovery. Game setup opens for review; Save settings is still required.
+No transfer starts betting or wipes progression. New history invalidates a preview
+before it is applied. Unsupported or insufficient samples cannot be transferred.
+
+The preview lists the selected game, base stake, maximum steps and sniper values.
+Unified enables supported games except Winning Color. Stop loss, take profit,
+circuit breaker and shadow settings remain in place. Existing live staking and
+sniper rules apply; their prediction-history entry steps are not an exact replay
+of the suggestion's played-bet illustration. The illustrated reserve does not
+replace the user's loss limit.
+
 - Stop works from either interface. Switching controllers pauses the session.
 - Switching or stopping preserves recovery and sniper progression. Settings edits
   require a stopped session without an active execution or recovery sequence.

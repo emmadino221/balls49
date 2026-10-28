@@ -4,7 +4,7 @@ const ECONOMICS = { betzero: [1.65, 1], rainbow: [1.5, 1], hilo: [2, 1], totalCo
 const money = n => `NGN ${n.toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 const rate = n => n == null ? '--' : `${n}%`;
 
-export default function GameplayPlan({ markets, game, onGameChange, base, onBaseChange }) {
+export default function GameplayPlan({ markets, game, onGameChange, base, onBaseChange, automationWindow, automationDisabled }) {
   const market = markets.find(m => m.key === game);
   if (!market) return null;
   const plan = market.gameplay, economics = ECONOMICS[game];
@@ -45,6 +45,7 @@ export default function GameplayPlan({ markets, game, onGameChange, base, onBase
       <details><summary>Why this plan?</summary><p>{plan.reason}</p><p>Older results: {plan.training.wins} wins / {plan.training.losses} losses ({rate(plan.training.winRate)}). Newer results: {plan.validation.wins} wins / {plan.validation.losses} losses ({rate(plan.validation.winRate)}). Playing every eligible pick on newer results: {rate(plan.baseline.winRate)}.</p><p>Worst played losing run: {worst}, including losses across pauses. Current observed run in this window: {market.currentLosses}. This is not your personal betting state or a live entry signal.</p><p>Rules are ranked by older-sample win rate, then shorter losing runs, then sample size. This compares results, not profit.</p></details>
       <details><summary>How the amounts work</summary><p>The table uses a fixed base-profit target and one winning selection at {economics ? economics[0].toFixed(2) : "variable"} odds. It shows the historical played-loss run plus one attempt, capped at 12. It does not use your capital or personal loss budget.</p><p>Every row assumes earlier played attempts lost. Pauses and unplayed wins do not reset recovery. Skipped draws do not count as losses. Later stakes round up to whole naira. Fees, payout limits, partial bets and rollover modes are not included. These amounts do not change your extension settings.</p></details>
     </>}
+    {automationWindow && <div className="gameplay-automation-action"><h3>Use this plan with your extension</h3>{supported && !automationDisabled && Number.isSafeInteger(Number(base)) && Number(base)>=1 && Number(base)<=50000 ? <a className="btn btn-primary" href={`automation.html?suggestion=${encodeURIComponent(game)}&base=${Number(base)}&window=${automationWindow}`}>Preview automation setup</a> : <p>A supported plan, fresh history and a whole-naira base stake from 1 to 50,000 are needed to transfer settings.</p>}<p>Requires your linked extension access. Preview first, then apply to the form and save while stopped.</p></div>}
     <p className="resource-note">Past results do not guarantee future wins. No bets or settings are changed here.</p>
   </section>;
 }
