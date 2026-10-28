@@ -5,6 +5,7 @@ let IS_UNIFIED_MODE = false;
 let CURRENT_STAKES = { betzero: 500, bet49: 500, rainbow: 500, hilo: 500, totalColor: 500, totalColor2: 500 };
 let isBettingActive = false;
 let websiteController = false;
+let lastDashboardResetAt = 0;
 let dashboardRevision = -1;
 let currentPlacementReport = null;
 let lastExecutionReceipt = null;
@@ -1049,6 +1050,13 @@ async function pollOverlayData() {
         const stats = statsRes.ok ? await statsRes.json() : null;
         const control = stats?.automationControl;
         if (control) {
+            if (control.resetAt && control.resetAt > lastDashboardResetAt) {
+                lastDashboardResetAt = control.resetAt;
+                if (!control.running) {
+                    resetRuntimeClock();
+                    await chrome.storage.sync.set({ running: false });
+                }
+            }
             const wasWebsite = websiteController;
             websiteController = control.controller === 'website';
             if (websiteController) {

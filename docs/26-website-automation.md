@@ -34,6 +34,10 @@ Activity begins with this update; older placements are not reconstructed.
   Partial batches pause for review and are not automatically replayed.
 - An explicit extension session wipe clears this activity list and execution state,
   retaining saved setup. Switching controllers does not wipe activity.
+- The website also offers Reset execution session. Stop first and wait for any
+  placement or unsettled bet to finish. Confirming clears session totals, activity,
+  martingale and sniper progression using the same worker reset as Wipe Execution.
+  Saved game settings and limits are retained. Start again explicitly when ready.
 
 ## Server requirements
 

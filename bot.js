@@ -671,7 +671,7 @@ lastGlobalDrawId = persistedState.lastGlobalDrawId ?? null;
 
 function snapshotSession(session) {
     return JSON.parse(JSON.stringify({
-        automationControl: { controller: automationControl.state(session).controller, revision: automationControl.state(session).revision },
+        automationControl: { controller: automationControl.state(session).controller, revision: automationControl.state(session).revision, resetAt: automationControl.state(session).resetAt || null },
         automationHistory: session.automationHistory || [],
         userTracker: session.userTracker,
         wallets: session.wallets,
@@ -5048,6 +5048,13 @@ async function handleHttpRequest(req, res) {
         });
     }
     else if (parsedUrl.pathname === '/reset' && req.method === 'POST') {
+        if (parsedUrl.searchParams.get('dashboardReset') === '1') {
+            const control = automationControl.state(session);
+            if (Number(parsedUrl.searchParams.get('revision')) !== control.revision) return sendJson(res, 409, { error: 'Session changed. Refresh the dashboard before resetting.' });
+            if (!session.stats.isHalted) return sendJson(res, 409, { error: 'Stop automation before resetting the execution session.' });
+            if (session.betExecutionClaim || session.lastBetDetails) return sendJson(res, 409, { error: 'Wait for the current placement and result to finish before resetting.' });
+        }
+        automationControl.state(session).resetAt = Date.now();
         session.martingaleState.u4 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         session.martingaleState.bet49 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         session.martingaleState.color = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
