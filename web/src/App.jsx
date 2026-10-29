@@ -173,6 +173,7 @@ export default function App() {
               ? <button className="footer-logout" type="button" onClick={signOut}>{session.admin ? 'Exit owner session' : 'Sign out'}</button>
               : <a href="login.html">Log in</a>}
             <a href="contact.html">Contact support</a>
+            <a href="privacy.html">Backup privacy policy</a>
           </div>
         </div>
         <div className="footer-bottom">

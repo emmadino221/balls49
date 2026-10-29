@@ -1,4 +1,5 @@
 import AutomationPage from './pages/AutomationPage.jsx';
+import PrivacyPage from './pages/PrivacyPage.jsx';
 import VerifyEmailPage from './pages/VerifyEmailPage.jsx';
 import FootballPage from './pages/FootballPage.jsx';
 import React from 'react';
@@ -19,6 +20,7 @@ import AccountPage from './pages/AccountPage.jsx';
 import AnalysisPage from './pages/AnalysisPage.jsx';
 
 export function getPageName() {
+  if (window.location.pathname === '/privacy.html') return 'privacy';
   const route = window.location.pathname.replace(/^\/|\/index.html$/g, '').replace(/^\/|\/$/, '');
   if (!route || route === 'index.html') return 'home';
   if (route === 'automation.html') return 'automation';
@@ -42,6 +44,7 @@ export function getPageName() {
 }
 
 export function PageRenderer({ page }) {
+  if (page === 'privacy') return <PrivacyPage />;
   if (page === 'automation') return <AutomationPage />;
   if (page === 'football') return <FootballPage />;
   if (page === 'analysis') return <AnalysisPage />;
