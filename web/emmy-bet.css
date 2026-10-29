@@ -1233,6 +1233,15 @@ h1, h2, h3 { font-family: Manrope, 'Segoe UI', sans-serif; }
 .site.cinematic-site:not(.dark-theme) .header-cta,
 .site.cinematic-site:not(.dark-theme) .header-cta:hover { border-color: #087653; color: #fff; background: #087653; }
 .site.cinematic-site:not(.dark-theme) .menu-toggle { border-color: #d4e2d6; color: #20382a; background: #fff; }
+@media (max-width: 980px) {
+  .site.cinematic-site:not(.dark-theme) .main-nav { border-top-color: var(--line); background: var(--surface); }
+  .site.cinematic-site:not(.dark-theme) .main-nav a { border-bottom-color: var(--line); }
+  .site.cinematic-site:not(.dark-theme) .main-nav .nav-group-trigger,
+  .site.cinematic-site:not(.dark-theme) .main-nav .mobile-logout { color: var(--muted); }
+  .site.cinematic-site:not(.dark-theme) .main-nav .nav-group-trigger.active,
+  .site.cinematic-site:not(.dark-theme) .main-nav .nav-group-trigger:hover,
+  .site.cinematic-site:not(.dark-theme) .main-nav .mobile-logout:hover { color: var(--green); }
+}
 .site.cinematic-site:not(.dark-theme) .page-intro .overline,
 .site.cinematic-site:not(.dark-theme) .section-kicker,
 .site.cinematic-site:not(.dark-theme) .guide-section-heading .overline { color: #087653; }
