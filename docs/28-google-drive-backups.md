@@ -8,6 +8,48 @@ status is enabled. Previously disclosed OAuth client secrets still need retiring
 The script below is prepared; no application backup schedule or 30-day automatic
 retention is installed by adding these files.
 
+Operator subsequently confirmed manual archive and database checks, successful
+decryption of three website records, and a working daily systemd timer at 02:30
+Africa/Lagos. The worker backup contained no encrypted records to validate its
+vault against. Automatic retention and a full service restore remain pending.
+
+## Email failure alerts
+
+Uses the existing RESEND_API_KEY and SITE_EMAIL_FROM from site.env. No emails are
+sent merely by installing the files. Once enabled, systemd invokes the notifier
+when the backup service fails, including a timeout or nonzero exit. It sends only
+a generic message and journal inspection instructions, never exception details.
+
+After deploying this update to the worker checkout:
+
+```sh
+sudo install -m 644 deploy/balls49-backup-alert.service /etc/systemd/system/
+sudo install -d -m 755 /etc/systemd/system/balls49-backup.service.d
+sudo install -m 644 deploy/balls49-backup-alert.conf /etc/systemd/system/balls49-backup.service.d/alert.conf
+sudo install -m 600 /dev/null /etc/balls49/backup-alert.env
+sudo nano /etc/balls49/backup-alert.env
+```
+
+Set BACKUP_ALERT_TO to the owner's chosen email (one address). Do not put an API
+key in the unit file or repository. Preserve existing backup-alert.env on later
+updates instead of rerunning the install-from-/dev/null command.
+
+```sh
+sudo systemctl daemon-reload
+systemctl show balls49-backup.service -p OnFailure
+```
+
+No bot/site restart is necessary. A deliberate notification check can be performed
+with `sudo systemctl start balls49-backup-alert.service`; this sends a failure
+message even without a failed backup, so only do so when explicitly testing email
+delivery. Resend acceptance is not proof of inbox delivery. The notifier retries
+temporary failures up to three times using the same idempotency key.
+
+If the VPS is offline, the timer is disabled, or networking/Resend is unavailable,
+this on-server alert cannot guarantee notification. Independently check for stale
+backups. Alert failures remain visible in the backup-alert service journal. No
+automatic archive deletion is enabled by this change.
+
 ## First manual backup on the VPS
 
 After pulling this update into `/home/balls49/balls49`, run:
