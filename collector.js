@@ -13,6 +13,8 @@ const RESET_FILE = path.join(__dirname, 'collector_daily_reset.json');
 
 const PROXY_PORT  = 3000;
 const STATIC_PORT = 8080;
+// Internal worker services must not listen on public network interfaces.
+const LISTEN_HOST = '127.0.0.1';
 const DRAWS_FILE  = path.join(__dirname, 'draws.json');
 const COOKIES_FILE = path.join(__dirname, 'cookies.txt');
 const MAX_DRAWS   = 1000;
@@ -261,7 +263,7 @@ const proxyServer = http.createServer(function(req, res) {
   proxyReq.on('error', () => { res.writeHead(502); res.end(); });
 });
 
-proxyServer.listen(PROXY_PORT, () => console.log(`[Server] Proxy running on port ${PROXY_PORT}`));
+proxyServer.listen(PROXY_PORT, LISTEN_HOST, () => console.log(`[Server] Proxy running on ${LISTEN_HOST}:${PROXY_PORT}`));
 
 // Serve the legacy dashboard entry point and its dedicated public asset folder only.
 const STATIC_ROOT = path.resolve(__dirname);
@@ -306,4 +308,4 @@ const staticServer = http.createServer(function(req, res) {
     }
   });
 });
-staticServer.listen(STATIC_PORT, () => console.log(`[Server] Dashboard running on port ${STATIC_PORT}`));
+staticServer.listen(STATIC_PORT, LISTEN_HOST, () => console.log(`[Server] Dashboard running on ${LISTEN_HOST}:${STATIC_PORT}`));

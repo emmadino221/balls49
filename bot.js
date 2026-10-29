@@ -2368,7 +2368,7 @@ function apiPost(path, body) {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify(Object.assign({ tmp: nowISO() }, body));
         const req = http.request({
-            hostname: 'localhost', port: 3000, path: path, method: 'POST',
+            hostname: '127.0.0.1', port: 3000, path: path, method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
         }, (res) => {
             let data = ''; res.on('data', c => data += c);
@@ -2380,7 +2380,7 @@ function apiPost(path, body) {
 
 function apiGet(path) {
     return new Promise((resolve) => {
-        http.get({ hostname: 'localhost', port: 3000, path: path }, (res) => {
+        http.get({ hostname: '127.0.0.1', port: 3000, path: path }, (res) => {
             let data = ''; res.on('data', c => data += c);
             res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { resolve({ draws: [] }); } });
         }).on('error', () => resolve({ draws: [] }));
