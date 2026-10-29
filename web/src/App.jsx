@@ -174,6 +174,7 @@ export default function App() {
               : <a href="login.html">Log in</a>}
             <a href="contact.html">Contact support</a>
             <a href="privacy.html">Backup privacy policy</a>
+            <a href="terms.html">Backup terms of service</a>
           </div>
         </div>
         <div className="footer-bottom">

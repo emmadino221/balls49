@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const pages = new Set(['privacy.html', 'index.html', 'account.html', 'analysis.html', 'about.html',
+const pages = new Set(['terms.html', 'privacy.html', 'index.html', 'account.html', 'analysis.html', 'about.html',
     'automation.html', 'football.html', 'pricing.html', 'predictions.html', 'history.html', 'guide.html', 'calculator.html',
     'testimonials.html', 'suggestions.html', 'videos.html', 'contact.html', 'free-trial.html', 'login.html', 'signup.html', 'verify-email.html']);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
