@@ -1,5 +1,4 @@
-import OwnerSecurity from '../components/OwnerSecurity';
-import OwnerVideos from '../components/OwnerVideos';
+import OwnerTools from '../components/OwnerTools';
 import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import '../../../balls49-extension/tc1-staking.js';
 import React, { useEffect, useState } from 'react';
@@ -22,81 +21,6 @@ const games = [
 ];
 
 
-function OwnerTools({ onSession }) {
-  const [unlocked, setUnlocked] = useState(false);
-  const [key, setKey] = useState('');
-  const [ownerCode, setOwnerCode] = useState('');
-  const [email, setEmail] = useState('');
-  const [tier, setTier] = useState('trial');
-  const [access, setAccess] = useState('predictions');
-  const [issuedKey, setIssuedKey] = useState('');
-  const [deletingUser, setDeletingUser] = useState('');
-  const [months, setMonths] = useState('1');
-  const [gamesSelected, setGamesSelected] = useState(['betzero']);
-  const [notice, setNotice] = useState('');
-  const [users, setUsers] = useState([]);
-  const [resettingStats, setResettingStats] = useState(false);
-  useEffect(() => {
-    apiRequest('/admin/preview')
-      .then(plan => { setUnlocked(true); onSession('admin', plan); })
-      .catch(() => apiRequest('/auth/me')
-        .then(() => onSession('account', null))
-        .catch(() => onSession('', null)));
-  }, []);
-  async function login(event) {
-    event.preventDefault();
-    try { await apiRequest('/admin/session', { method: 'POST', body: JSON.stringify({ key, code:ownerCode }) }); window.location.reload(); }
-    catch (error) { setNotice(error.message); }
-  }
-  async function loadUsers() {
-    try { const result = await apiRequest('/admin/users'); setUsers(result.users); }
-    catch (error) { setNotice(error.message); }
-  }
-  async function deleteUser(userEmail) {
-    const confirmed = window.prompt(`Delete ${userEmail}? This removes their website account, signs them out and revokes member extension access. Already placed bets cannot be undone. Type their exact email to confirm.`);
-    if (confirmed !== userEmail) return;
-    setDeletingUser(userEmail);
-    setIssuedKey('');
-    try {
-      await apiRequest('/admin/delete-user', { method: 'POST', body: JSON.stringify({ email: userEmail, confirmEmail: confirmed }) });
-      setNotice(`${userEmail} deleted.`);
-      setUsers(current => current.filter(user => user.email !== userEmail));
-      if (email === userEmail) setEmail('');
-    } catch (error) { setNotice(error.message); }
-    finally { setDeletingUser(''); }
-  }
-  async function approve(event) {
-    event.preventDefault();
-    setIssuedKey('');
-    if (!window.confirm('Have you personally confirmed this person through a phone, WhatsApp, or Telegram contact you already trust?')) return;
-    try {
-      const result = await apiRequest('/admin/approve', { method: 'POST', body: JSON.stringify({ email, tier, months, access, games: gamesSelected, identityConfirmed: true }) });
-      setNotice(`${result.user.email}: ${access} approved for ${months} month(s), starting today.`);
-      setIssuedKey(result.extensionKey || '');
-      loadUsers();
-    } catch (error) { setNotice(error.message); }
-  }
-  async function preview(previewTier) {
-    try { const result = await apiRequest('/admin/preview', { method: 'POST', body: JSON.stringify({ tier: previewTier, games: gamesSelected }) }); setNotice(`Preview mode: ${previewTier}. The prediction feed now uses that plan.`); onSession('admin', { tier: result.tier, games: result.games }); }
-    catch (error) { setNotice(error.message); }
-  }
-  async function logout() {
-    try { await apiRequest('/admin/logout', { method: 'POST' }); }
-    catch { /* Reload to re-check the cookie session if the API is unavailable. */ }
-    finally { window.location.reload(); }
-  }
-  async function resetMarketStats() {
-    if (!window.confirm('Restart current tracking steps, maximum losing streaks and Summary ENTER/HOLD streaks for every game? History and extension martingale amounts will be kept.')) return;
-    setResettingStats(true);
-    try {
-      const result = await apiRequest('/admin/reset-market-stats', { method: 'POST' });
-      setNotice(`Streak tracking restarted ${new Date(result.resetAt).toLocaleString()}. History and extension martingale amounts are preserved. Telegram syncs on the next successful bot feed update.`);
-    } catch (error) { setNotice(error.message); }
-    finally { setResettingStats(false); }
-  }
-  if (!unlocked) return <section className="content-card owner-tools"><h2>Owner tools</h2><p>Sign in with the server-side admin key to approve accounts or preview each plan. This key must never be placed in website code.</p><form className="auth-form" onSubmit={login}><label htmlFor="owner-key">Site admin key</label><input id="owner-key" type="password" value={key} onChange={(event) => setKey(event.target.value)} autoComplete="off" required /><label htmlFor="owner-code">Authenticator or recovery code (if 2FA is enabled)</label><input id="owner-code" value={ownerCode} onChange={e=>setOwnerCode(e.target.value)} autoComplete="one-time-code" maxLength="32" /><button className="btn btn-secondary">Unlock owner tools</button>{notice && <p role="status">{notice}</p>}</form></section>;
-  return <section className="content-card owner-tools"><div className="prediction-section-heading"><div><span className="overline">OWNER CONTROLS</span><h2>Approvals &amp; plan preview</h2></div><button className="btn btn-secondary" type="button" onClick={logout}>End owner session</button></div><p>Preview mode changes only this owner session. Approvals change the selected user account.</p><div className="owner-preview-actions"><button className="btn btn-secondary" onClick={() => preview('trial')}>Preview Free Trial</button><button className="btn btn-secondary" onClick={() => preview('premium')}>Preview Premium</button><button className="btn btn-primary" onClick={() => preview('elite')}>Preview Elite</button></div><div className="owner-stats-reset"><div><h3>Prediction statistics</h3><p>Restart current tracking steps, maximum losses and Summary ENTER/HOLD streaks for all games. History and extension martingale amounts are preserved. The VPS and website synchronize on the next successful feed update.</p></div><button className="btn btn-secondary" type="button" onClick={resetMarketStats} disabled={resettingStats}>{resettingStats ? 'Restarting…' : 'Reset all prediction streaks'}</button></div><form className="auth-form" onSubmit={approve}><h3>Manually approve an account</h3><label htmlFor="approval-email">Registered account email</label><input id="approval-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /><label htmlFor="approval-access">Access to approve</label><select id="approval-access" value={access} onChange={e=>setAccess(e.target.value)}><option value="predictions">Predictions only</option><option value="extension">Extension only</option><option value="both">Predictions + extension</option></select>{access!=='predictions' && <p>Extension: NGN 80,000 per 30 days. Confirm payment before approving. Prediction fees are separate.</p>}<label htmlFor="approval-tier">Prediction plan (used for predictions or both)</label><select id="approval-tier" disabled={access==='extension'} value={tier} onChange={(event) => setTier(event.target.value)}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select><label htmlFor="approval-months">Duration (months)</label><input id="approval-months" type="number" min="1" max="12" value={months} onChange={(event) => setMonths(event.target.value)} /><fieldset className="premium-game-picker"><legend>Premium games / preview selection</legend>{games.map(game => <label key={game.id}><input type="checkbox" checked={gamesSelected.includes(game.id)} onChange={() => setGamesSelected(current => current.includes(game.id) ? current.filter(id => id !== game.id) : [...current, game.id])} /><span>{game.name}</span></label>)}</fieldset><button className="btn btn-primary">Save manual approval</button>{issuedKey && <label>Extension access key - share privately with this user<input readOnly type="text" value={issuedKey} onFocus={e=>e.target.select()} /><button type="button" className="btn btn-secondary" onClick={()=>setIssuedKey('')}>Hide key</button></label>}<button className="btn btn-secondary" type="button" onClick={loadUsers}>Refresh account list</button>{notice && <p role="status">{notice}</p>}</form>{users.length > 0 && <div className="owner-user-list"><h3>Accounts</h3>{users.map(user => <p key={user.email}><strong>{user.email}</strong> · {user.plan?.tier || 'trial'} · {user.expiresAt > Date.now() ? new Date(user.expiresAt).toLocaleDateString() : 'expired / trial'} ·     Extension: {user.extensionExpiresAt > Date.now() ? `active until ${new Date(user.extensionExpiresAt).toLocaleDateString()}` : 'not active'} / {user.approvalStatus === 'approved' ? 'Approved' : user.approvalStatus === 'expired' ? 'Plan expired' : 'Pending owner approval'} <button type="button" className="btn btn-secondary" disabled={!!deletingUser} onClick={()=>deleteUser(user.email)}>{deletingUser===user.email?'Deleting...':'Delete user'}</button></p>)}</div>}<OwnerSecurity /><OwnerVideos /></section>;
-}
 
 function formatCountdown(seconds) {
   if (seconds === null) return '--:--';
@@ -403,7 +327,7 @@ export default function PredictionsPage() {
         <a className="btn btn-secondary" href="pricing.html">Compare plans</a>
       </section>
 
-      <details className="owner-tools-disclosure"><summary>Site owner tools</summary><OwnerTools onSession={(kind, plan) => { setSessionKind(kind); setPreviewPlan(plan || null); if (kind !== 'account') setAccountPlan(null); }} /></details>
+      <details className="owner-tools-disclosure"><summary>Site owner tools</summary><OwnerTools games={games} onSession={(kind, plan) => { setSessionKind(kind); setPreviewPlan(plan || null); if (kind !== 'account') setAccountPlan(null); }} /></details>
 
       {(!accountPlan || accountPlan.tier === 'trial') && !previewPlan && <p className="trial-page-link"><a className="btn btn-secondary" href="free-trial.html">Open the Free Trial page</a></p>}
 
