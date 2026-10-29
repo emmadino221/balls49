@@ -22,5 +22,26 @@
 .welcome-shortcuts p { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
 .welcome-shortcuts strong { color: var(--green-bright); font-size: 14px; }
 .welcome-dashboard a:focus-visible { outline: 3px solid #65be8e; outline-offset: 4px; }
+.home-site:not(.dark-theme) .welcome-banner { color: #172923; border-color: #c9ddc9; background: radial-gradient(ellipse at top left, #dcebd4, transparent 70%), linear-gradient(135deg, #f7faf3, #edf5e9); }
+.home-site:not(.dark-theme) .welcome-banner h1,
+.home-site:not(.dark-theme) .welcome-feature h2 { color: #172923; }
+.home-site:not(.dark-theme) .welcome-time { color: #346044; }
+.home-site:not(.dark-theme) .welcome-time > span { background: #087653; }
+.home-site:not(.dark-theme) .welcome-copy > p:not(.welcome-time),
+.home-site:not(.dark-theme) .welcome-feature p { color: #52695c; }
+.home-site:not(.dark-theme) .welcome-feature { border-color: #c9ddc9; background: #ffffffcc; }
+.home-site:not(.dark-theme) .welcome-feature .overline { color: #52695c; }
+.home-site:not(.dark-theme) .welcome-feature a,
+.home-site:not(.dark-theme) .welcome-shortcuts strong { color: #087653; }
+.home-site:not(.dark-theme) .welcome-actions .btn-primary { color: #fff; border-color: #087653; background: #087653; }
+.home-site:not(.dark-theme) .welcome-actions .btn-primary:hover { border-color: #065c40; background: #065c40; }
+.home-site:not(.dark-theme) .welcome-actions .btn-secondary { color: #243c2d; border-color: #b7d4bf; background: #fff; }
+.home-site:not(.dark-theme) .welcome-actions .btn-secondary:hover { border-color: #087653; background: #e1f5eb; }
+.home-site:not(.dark-theme) .welcome-shortcuts > a { color: #172923; border-color: #d7e4d8; background: #fff; }
+.home-site:not(.dark-theme) .welcome-shortcuts h2 { color: #172923; }
+.home-site:not(.dark-theme) .welcome-shortcuts > a > span,
+.home-site:not(.dark-theme) .welcome-shortcuts p { color: #52695c; }
+.home-site:not(.dark-theme) .welcome-shortcuts > a:hover { border-color: #9fc9ac; background: #f7faf3; }
+.home-site:not(.dark-theme) .welcome-dashboard a:focus-visible { outline-color: #087653; }
 @media (max-width: 760px) { .welcome-banner { grid-template-columns: 1fr; gap: 24px; border-radius: 20px; } .welcome-shortcuts { grid-template-columns: 1fr; } .welcome-shortcuts > a { padding: 20px; } .welcome-feature { padding: 20px; } }
 @media (max-width: 400px) { .welcome-actions { flex-direction: column; } .welcome-actions .btn { width: 100%; text-align: center; } }
