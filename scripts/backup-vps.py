@@ -2,7 +2,7 @@
 """Create a private SQLite/state backup and verify its encrypted Drive upload.
 
 Run as root on the VPS. Uses the balls49 user's existing rclone configuration.
-Does not stop services, restore live files, or delete old backups.
+Does not stop services or restore live files. Prunes old archives only after verification.
 """
 import datetime
 import fcntl
@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import sqlite3
 import subprocess
 import tarfile
@@ -22,6 +23,45 @@ USER = 'balls49'
 WORKER = Path('/home/balls49/balls49')
 SITE = Path('/home/balls49/balls49-site')
 DESTINATION = 'gdrive_backup:application-backups/'
+ARCHIVE_NAME = re.compile(r'backup-(\d{8}T\d{6}Z)\.tar\.gz')
+
+
+def retention_candidates(items, current_name, now):
+    """Fail closed on ambiguous listings; keep the current archive and newest seven."""
+    archives = []
+    seen = set()
+    for item in items:
+        name = item.get('Path', '')
+        match = ARCHIVE_NAME.fullmatch(name)
+        if item.get('IsDir') or not match:
+            continue
+        if name in seen:
+            raise RuntimeError('Duplicate archive names; retention stopped')
+        seen.add(name)
+        created = datetime.datetime.strptime(match[1], '%Y%m%dT%H%M%SZ').replace(tzinfo=datetime.timezone.utc)
+        modified = datetime.datetime.fromisoformat(item['ModTime'].replace('Z', '+00:00'))
+        if modified.tzinfo is None or created > now or modified > now:
+            raise RuntimeError('Unexpected archive timestamps; retention stopped')
+        archives.append((name, created, modified))
+    if current_name not in seen:
+        raise RuntimeError('Verified archive not in remote listing; retention stopped')
+    keep = {item[0] for item in sorted(archives, key=lambda item: item[1], reverse=True)[:7]}
+    keep.add(current_name)
+    cutoff = now - datetime.timedelta(days=30)
+    return [name for name, created, modified in archives
+            if name not in keep and created < cutoff and modified < cutoff]
+
+
+def prune_archives(rclone, current_name):
+    items = json.loads(subprocess.check_output(
+        rclone + ['lsjson', DESTINATION, '--files-only', '--max-depth', '1'],
+        text=True, timeout=180))
+    candidates = retention_candidates(items, current_name, datetime.datetime.now(datetime.timezone.utc))
+    for name in candidates:
+        # Exact single-file deletes only; never purge/sync or empty the Drive trash.
+        subprocess.run(rclone + ['deletefile', DESTINATION + name, '--drive-use-trash=true'],
+                       check=True, timeout=180)
+    print(f'Retention complete: {len(candidates)} archives older than 30 days moved to Drive trash. Newest seven retained.')
 STATE_NAMES = (
     'session_state.json', 'site_users.json', 'draws.json', 'predictions.json',
     'last_prediction.json', 'streaks.json', 'win_steps.json', 'ml_streaks.json',
@@ -146,6 +186,11 @@ def main():
                 add_file(f'/etc/systemd/system/{service}.service')
                 for path in Path(f'/etc/systemd/system/{service}.service.d').glob('*.conf'):
                     add_file(path)
+            for name in ('balls49-backup.service', 'balls49-backup.timer', 'balls49-backup-alert.service'):
+                add_file(Path('/etc/systemd/system') / name, optional=True)
+            for path in Path('/etc/systemd/system/balls49-backup.service.d').glob('*.conf'):
+                add_file(path)
+            add_file('/etc/balls49/backup-alert.env', optional=True)
             for cwd in (SITE, WORKER):
                 manifest.setdefault('commits', {})[str(cwd)] = subprocess.check_output(
                     ['runuser', '-u', USER, '--', 'git', '-C', str(cwd), 'rev-parse', 'HEAD'], text=True).strip()
@@ -172,7 +217,8 @@ def main():
             raise RuntimeError('Downloaded backup checksum did not match')
         print(f'Backup uploaded and download verified: {remote}', flush=True)
         print(f'Files: {len(manifest["files"])}; optional files absent: {len(manifest["missingOptional"])}')
-        print('No live files were restored. No old backups were deleted.')
+        print('No live files were restored.', flush=True)
+        prune_archives(rclone, archive.name)
 
 
 if __name__ == '__main__':
