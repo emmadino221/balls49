@@ -1,3 +1,4 @@
+const automationStrategy = require('./automation-strategy');
 const automationControl = require('./automation-control');
 const { createAutomationBridge } = require('./automation-bridge');
 const { createSiteEmail } = require('./site-email');
@@ -436,6 +437,8 @@ function getSniperSettings(config, trackerKey) {
 }
 
 function sniperAllowsEntry(session, trackerKey) {
+    const suggested = automationStrategy.allows(session, trackerKey);
+    if (suggested !== null) return suggested;
     const settings = getSniperSettings(session.config, trackerKey);
     if (!settings.enabled || settings.step < 1 || settings.resetLosses < 1) return true;
 
@@ -1998,6 +2001,8 @@ function runLiveStyleBacktest(gameKey, capital, basePercent, profile, drawWindow
 
 function getMartingaleStake(clientId, key, localStep, mlScore = 0) {
     const session = getSession(clientId);
+    const suggested = automationStrategy.stake(session, key);
+    if (suggested) return suggested;
     const walletConfig = session.wallets[key];
     let initialBaseUnit = session.config.initialStakes[key] || 0;
 
@@ -2097,6 +2102,8 @@ function getMartingaleStake(clientId, key, localStep, mlScore = 0) {
 
 function getUnifiedMasterStake(clientId, targetGameKey, mlScore = 0) {
     const session = getSession(clientId);
+    const suggested = automationStrategy.stake(session, targetGameKey);
+    if (suggested) return suggested.stake;
     const odds = session.wallets[targetGameKey].odds;
     let baseUnit = session.config.initialStakes[targetGameKey] || 500;
     const mState = session.masterState;
@@ -3212,6 +3219,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
             }
         });
     }
+    automationStrategy.settle(session, pLogItem, details, predictionLog);
 }
 
 let tickInProgress = false;
@@ -3403,6 +3411,8 @@ async function tick() {
             }
         }
 
+        for (const session of Object.values(userSessions)) automationStrategy.observe(session, predictionLog);
+
         if (lastPrediction && nextId && Number(nextId) >= Number(lastPrediction.drawId) + 2) { lastPrediction = null; try { fs.unlinkSync(LAST_PRED_FILE); } catch (e) {} }
 
         const stillNeeded = new Set(Object.values(userSessions).flatMap(session => [session.lastBetDrawId, session.betExecutionClaim?.drawId]).filter(Boolean).map(String));
@@ -3466,6 +3476,7 @@ async function tick() {
                 const session = userSessions[clientId];
                 
                 if (enforceSessionLimits(session) || session.pendingBetPayload || session.balanceVerification.pendingWinSync) continue;
+                if (session.config.suggestionStrategy && (session.lastBetDetails || session.betExecutionClaim)) continue;
                 if (session.lastBetDetails && dailyPendingSettlements.some(record => String(record.drawId) === String(session.lastBetDrawId))) continue;
                 if (session.lastBetDrawId === String(nextId) || session.balanceVerification.skippedDraw === String(nextId)) continue;
                 if (session.failedBetRecovery && String(session.failedBetRecovery.payload?.drawId) === String(nextId)) continue;
@@ -4724,6 +4735,7 @@ async function handleHttpRequest(req, res) {
         const payload = session.pendingBetPayload;
         if (!payload || dailyPendingSettlements.some(record => String(record.drawId) === String(payload.drawId))) return res.end(JSON.stringify({ action: 'WAIT' }));
         if (payload.action !== 'EXECUTE_BET') return res.end(JSON.stringify(payload));
+        if (!automationStrategy.checkExposure(session, payload, getBetPayloadExposure(payload))) { persistSessions(); return res.end(JSON.stringify({ action: 'WAIT', reason: session.stats.haltReason })); }
         if (Array.isArray(payload.bet49) && payload.bet49.length && parsedUrl.searchParams.get('bet49Batch') !== '1') {
             return res.end(JSON.stringify({ action: 'WAIT', reason: 'Reload the updated extension for multi-number Bet49.' }));
         }
@@ -5076,6 +5088,7 @@ async function handleHttpRequest(req, res) {
             if (!session.stats.isHalted) return sendJson(res, 409, { error: 'Stop automation before resetting the execution session.' });
             if (session.betExecutionClaim || session.lastBetDetails) return sendJson(res, 409, { error: 'Wait for the current placement and result to finish before resetting.' });
         }
+        if (session.config.suggestionStrategy) session.config.suggestionStrategy.needsReview = true;
         automationControl.state(session).resetAt = Date.now();
         session.martingaleState.u4 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         session.martingaleState.bet49 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
@@ -5125,8 +5138,8 @@ async function handleHttpRequest(req, res) {
         req.on('end', () => {
             try {
                 let cfg = JSON.parse(body);
-                const controlResult = automationControl.command(session, cfg, presetSessionBusy(session));
-                if (controlResult?.done) { enforceSessionLimits(session); persistSessions(); return sendJson(res, 200, { ok: true }); }
+                const controlResult = automationControl.command(session, cfg, presetSessionBusy(session), predictionLog);
+                if (controlResult?.done) { enforceSessionLimits(session); persistSessions(); return sendJson(res, 200, { ok: true, ...controlResult.result }); }
                 if (controlResult?.config) cfg = controlResult.config;
                 const validateNumber = (val, min = 0, max = null, defaultVal = 0) => {
                     const num = parseInt(val, 10);

@@ -1,4 +1,5 @@
 "use strict";
+const strategy = require('./automation-strategy');
 const { getTotalColorOutcome } = require('./total-color');
 const { presetSessionBusy } = require('./preset-history');
 const aliases = { u4: 'betzero', bet49: 'bet49', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1' };
@@ -13,7 +14,7 @@ function settings(s) {
  for (const key of ['takeProfit','stopLoss','hiloMultiplier','tc1ProfitMode','flatBetting','unifiedMode','sniperSettings','summaryModelMarkets','summaryModelTargets','bzRbRollover','hiloRollover','tc3Rollover','tc3RolloverTarget','cbMaxLosses','cbCooldown','shadowMode','weightedStaking']) out[key] = s.config[key];
  return out;
 }
-function view(s) { guard(s); const c = state(s); return { controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
+function view(s) { guard(s); const c = state(s); return { suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
 function normalize(input) {
  const out = {};
  for (const [field,max] of [['stakes',50000],['gameSteps',1000]]) { out[field] = {}; for (const key of Object.values(aliases)) { const n = Number(input[field]?.[key]); if (!Number.isSafeInteger(n) || n < 0 || n > max) throw fail(`Invalid ${field} for ${key}.`); out[field][key] = n; } }
@@ -29,16 +30,24 @@ function normalize(input) {
  for (const key of ['u4','color','sum','totalColor']) { out.summaryModelMarkets[key] = input.summaryModelMarkets?.[key] === true; out.summaryModelTargets[key] = input.summaryModelTargets?.[key] === 'HOLD' ? 'HOLD' : 'ENTER'; }
  return out;
 }
-function command(s, cfg, busy) {
+function command(s, cfg, busy, records = []) {
  const c = state(s), action = cfg.dashboardAction;
  if (!action) { if (c.controller === 'website') { if (cfg.running === false) { stop(s); c.revision++; return { done: true }; } throw fail('Website controls this session. Stop or switch back to extension control first.'); } return null; }
  if (action === 'stop') { stop(s); c.revision++; return { done: true }; }
- if (action === 'extension') { stop(s); c.controller = 'extension'; c.revision++; return { done: true }; }
+ if (action === 'extension') { stop(s); if (s.config.suggestionStrategy) s.config.suggestionStrategy.needsReview = true; c.controller = 'extension'; c.revision++; return { done: true }; }
  if (cfg.revision !== c.revision) throw fail('Settings changed. Refresh the dashboard before continuing.');
  if (action === 'website') { stop(s); c.controller = 'website'; c.revision++; return { done: true }; }
  if (c.controller !== 'website') throw fail('Switch to website control first.');
- if (action === 'start') { if (Date.now() - c.executorAt > 10000) throw fail('Open Bet9ja with the updated extension connected first.'); if (s.betExecutionClaim || s.lastBetDetails) throw fail('Wait for the placed bet to settle.'); if (!Object.keys(aliases).some(k => s.config.enabledGames[k] && s.config.initialStakes[k] > 0)) throw fail('Enable a game and save a stake first.'); c.revision++; return { config: { running: true } }; }
- if (action === 'save') { if (!s.stats.isHalted || busy) throw fail('Stop and finish the active recovery sequence before changing settings. Progression is preserved.'); const config = normalize(cfg.settings || {}); c.revision++; return { config: { ...config, running: false } }; }
+ if (action === 'strategy-preview' || action === 'strategy-apply') {
+  const plan = strategy.preview(cfg.settings || {}, records);
+  if (action === 'strategy-preview') return { done: true, result: { preview: plan } };
+  if (!s.stats.isHalted || busy || strategy.recovery(s)) throw fail('Stop and finish recovery before applying a suggestion.');
+  if (cfg.settings?.token !== plan.token) throw fail('History or settings changed. Preview the plan again.');
+  strategy.install(s, plan); c.revision++;
+  return { done: true };
+ }
+ if (action === 'start') { if (s.config.suggestionStrategy?.needsReview) throw fail('Review and reapply the strategy after resetting execution.'); if (Date.now() - c.executorAt > 10000) throw fail('Open Bet9ja with the updated extension connected first.'); if (s.betExecutionClaim || s.lastBetDetails) throw fail('Wait for the placed bet to settle.'); if (!Object.keys(aliases).some(k => s.config.enabledGames[k] && s.config.initialStakes[k] > 0)) throw fail('Enable a game and save a stake first.'); c.revision++; return { config: { running: true } }; }
+ if (action === 'save') { if (!s.stats.isHalted || busy) throw fail('Stop and finish the active recovery sequence before changing settings. Progression is preserved.'); const config = normalize(cfg.settings || {}); if (strategy.recovery(s)) throw fail('Finish the suggested recovery before changing settings.'); delete s.config.suggestionStrategy; c.revision++; return { config: { ...config, running: false } }; }
  throw fail('Unknown dashboard action.');
 }
 function record(s, drawId, details, prediction) {

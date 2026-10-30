@@ -41,3 +41,9 @@
 .automation-page :is(button,input,select,summary,a,.automation-table):focus-visible { outline:2px solid var(--green); outline-offset:3px; }
 @media(max-width:800px) { .automation-hero,.automation-control-bar,.automation-section-title { flex-direction:column; align-items:flex-start; } .automation-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .automation-game-grid { grid-template-columns:1fr; } }
 @media(max-width:420px) { .automation-fields { grid-template-columns:1fr; } .automation-actions { width:100%; } .automation-actions .btn { width:100%; } .automation-metrics article { padding:14px; } .automation-metrics strong { font-size:19px; } }
+
+.automation-suggestion fieldset { min-width:0; border:1px solid var(--line); border-radius:12px; padding:16px; margin:16px 0; }
+.strategy-game-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+.strategy-preview { margin-top:20px; }
+.automation-suggestion input, .automation-suggestion select { max-width:100%; min-width:0; }
+.automation-suggestion fieldset:disabled { opacity:.65; }

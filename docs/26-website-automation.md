@@ -22,19 +22,53 @@ Activity begins with this update; older placements are not reconstructed.
 
 ### Transfer a strategy suggestion
 
-On Suggestions, choose a game, history window and whole-naira base stake from
-1 to 50,000. Supported plans offer Preview automation setup. In Automation,
-preview the latest history, then apply to the setup form while stopped and free
-of active recovery. Game setup opens for review; Save settings is still required.
-No transfer starts betting or wipes progression. New history invalidates a preview
-before it is applied. Unsupported or insufficient samples cannot be transferred.
+On Suggestions, use Preview automation setup to open the linked Automation
+page. Suggested strategies is also available directly in Automation. Select one
+or more individual games, or Unified by itself. Choose the draw window and either
+a whole-naira base stake (50?50,000) or allocated capital (50?10,000,000).
 
-The preview lists the selected game, base stake, maximum steps and sniper values.
-Unified enables supported games except Winning Color. Stop loss, take profit,
-circuit breaker and shadow settings remain in place. Existing live staking and
-sniper rules apply; their prediction-history entry steps are not an exact replay
-of the suggestion's played-bet illustration. The illustrated reserve does not
-replace the user's loss limit.
+Preview reads the worker's current history. Each selected game must pass the
+existing training and validation checks; insufficient or weaker plans display a
+reason instead of being silently transferred. The preview shows entry losses,
+played-loss pause, recovery attempt limit, base stake and reserve for each game.
+Save these plans keeps automation paused. History or settings changes invalidate
+the preview. Start remains a separate explicit action. The existing member
+extension authentication and subscription checks apply.
+
+The worker now executes the actual entry/pause/resume rules instead of translating
+them to a different sniper rule. Observation starts with a fresh win. Played
+losses count toward the pause; unplayed wins permit re-entry but do not erase
+recovery debt. Recovery stakes use the fixed base-profit target and round up to
+whole naira. Gaps restart entry observation, preserving actual recovery debt.
+Unified uses its four currently supported execution markets (BetZero, Rainbow,
+High/Low, and Total Color 3-way) and reserves for the most expensive path at each
+attempt. Individual Bet49 plans require six numbers.
+
+Capital sizing selects the largest common base that can fund the sum of all
+selected plans' bounded recovery reserves. Every stake must stay within 50,000;
+insufficient capital at the minimum base blocks saving. The allocation is a bot
+ledger, not a bank balance or deposit. Settled losses reduce available capital.
+After a settled win completes all active recovery, capital includes net results
+(including previous losses), and capital-mode stakes are resized. There is no
+resizing during an unfinished recovery. The entire allocation can be lost.
+
+The optional automatic strategy switch is off by default. When on, the worker
+reviews fresh history after recovery wins, keeping the selected games/window.
+If no eligible affordable plan is available, it pauses for review. When off,
+capital mode still resizes stakes using the existing rules. No refresh restarts
+a halted session, clears stop-loss totals, or changes the user's risk limits.
+All this runs in the worker and survives closing the dashboard. State is included
+in the existing persisted session configuration.
+
+Saving a suggested plan disables rollover, flat/weighted/dynamic staking and
+separate sniper, summary and alternate-strategy filters. Stop loss, take profit,
+circuit breaker, cooldown and shadow settings remain in force and may stop a
+plan earlier. Saving the manual Game setup replaces the suggested strategy and
+turns off its updates. Reset execution or switching to extension control marks
+the suggested plan for review; reapply it before returning to website automation.
+
+Deploy both worker and website code together. This feature uses the existing
+website-controlled extension protocol; no new extension package is required.
 
 - Stop works from either interface. Switching controllers pauses the session.
 - Switching or stopping preserves recovery and sniper progression. Settings edits
