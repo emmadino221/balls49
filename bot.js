@@ -1,3 +1,4 @@
+const { createAutomationReports } = require('./automation-reports');
 const automationStrategy = require('./automation-strategy');
 const automationControl = require('./automation-control');
 const { createAutomationBridge } = require('./automation-bridge');
@@ -253,6 +254,7 @@ function getSiteUsers() {
     return listSiteUsersStatement.all().map(row => JSON.parse(row.user_json));
 }
 const siteEmail = createSiteEmail(siteDb, { apiKey: RESEND_API_KEY, from: SITE_EMAIL_FROM, publicUrl: SITE_PUBLIC_URL });
+const automationReports = createAutomationReports(siteDb, automationBridge, getSiteUser, siteEmail);
 function sendJson(res, status, data) {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(data));
@@ -3219,6 +3221,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
             }
         });
     }
+    session.stats.settledDraws = (session.stats.settledDraws || 0) + 1;
     automationStrategy.settle(session, pLogItem, details, predictionLog);
 }
 
@@ -3745,7 +3748,7 @@ async function handleHttpRequest(req, res) {
         if (!login) return sendJson(res, 401, { error: 'Sign in to access automation.' });
         const account = login.admin ? '__owner__' : login.email;
         try {
-            if (req.method === 'GET' && parsedUrl.pathname === '/account/automation') return sendJson(res, 200, await automationBridge.status(account));
+            if (req.method === 'GET' && parsedUrl.pathname === '/account/automation') return sendJson(res, 200, { ...await automationBridge.status(account), emailReports: automationReports.view(account) });
             if (req.method === 'POST') {
                 if (!allowSiteAuthAttempt(req, res, [{ scope: 'automation-command', identity: account, limit: 60, windowMs: 60000 }])) return;
                 const data = await readRequestJson(req);
@@ -3754,7 +3757,12 @@ async function handleHttpRequest(req, res) {
                     return sendJson(res, 200, { key: automationBridge.credential(account) });
                 }
                 if (parsedUrl.pathname === '/account/automation/link') return sendJson(res, 200, await automationBridge.link(account, String(data.key || '')));
-                if (parsedUrl.pathname === '/account/automation/command') return sendJson(res, 200, await automationBridge.command(account, data));
+                if (parsedUrl.pathname === '/account/automation/command' && data.action === 'email-reports') return sendJson(res, 200, { emailReports: await automationReports.configure(account, data) });
+                if (parsedUrl.pathname === '/account/automation/command') {
+                    const result = await automationBridge.command(account, data);
+                    if (data.action === 'unlink') siteDb.prepare('DELETE FROM site_automation_reports WHERE account=?').run(account);
+                    return sendJson(res, 200, result);
+                }
             }
             return sendJson(res, 404, { error: 'Not found.' });
         } catch (error) { return sendJson(res, error.status || 503, { error: error.status ? error.message : 'Automation service unavailable.' }); }
@@ -4198,6 +4206,7 @@ async function handleHttpRequest(req, res) {
             try {
                 siteDb.prepare("DELETE FROM site_sessions WHERE json_extract(session_json, '$.email') = ? AND COALESCE(json_extract(session_json, '$.admin'), 0) = 0").run(email);
                 deleteEmailVerificationStatement.run(email);
+                siteDb.prepare('DELETE FROM site_automation_reports WHERE account = ?').run(email);
                 siteDb.prepare('DELETE FROM site_automation_links WHERE account = ?').run(email);
                 siteDb.prepare('DELETE FROM site_users WHERE email = ?').run(email);
                 setSiteSettingStatement.run('legacy_users_migrated', 'true');
@@ -5123,6 +5132,7 @@ async function handleHttpRequest(req, res) {
         session.stats.initialVirtualBalance = session.stats.liveAccountBalance > 0 ? session.stats.liveAccountBalance : null;
         session.stats.virtualBalance = session.stats.initialVirtualBalance || 0;
         session.stats.totalReturned = 0; 
+        session.stats.settledDraws = 0;
         session.stats.wins = 0; session.stats.losses = 0; session.stats.betsPlaced = 0;
         session.automationHistory = [];
         automationControl.state(session).revision++;
@@ -5739,6 +5749,7 @@ setInterval(() => {
 }, 1000);
        
 if (SITE_PUBLIC_MODE) {
+    automationReports.start();
     footballService.start();
     console.log('[PredictionFeed] Public API ready; waiting for authenticated worker snapshots.');
 } else {

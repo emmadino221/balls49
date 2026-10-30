@@ -12,10 +12,10 @@ function createSiteEmail(db, { apiKey, from, publicUrl }) {
     const byEmail = db.prepare('SELECT * FROM site_email_codes WHERE email = ?');
     const byChallenge = db.prepare('SELECT * FROM site_email_codes WHERE challenge_hash = ?');
     function failure(message, status = 400) { return Object.assign(new Error(message), { status }); }
-    async function send(to, subject, text, html) {
+    async function send(to, subject, text, html, idempotencyKey) {
         if (!apiKey || !from) throw failure('Email delivery is not configured. Please contact the site owner.', 503);
         const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
             body: JSON.stringify({ from, to: [to], subject, text, html }), signal: AbortSignal.timeout(10000)
         });
         if (!response.ok) {
@@ -73,6 +73,25 @@ function createSiteEmail(db, { apiKey, from, publicUrl }) {
             `Welcome, ${name}!\nYour email is verified and your account is ready.\nView your account: ${url}\nPremium and Elite plans still require owner approval.`,
             `<div style="font-family:Arial,sans-serif;max-width:520px;padding:28px;background:#f3f8f5;color:#173a2b;border-radius:18px"><h2>Welcome to Emmy-Bet</h2><p>Hi ${escapeHtml(name)}, your email is verified and your account is ready.</p><p><a href="${escapeHtml(url)}">View your account</a></p><p>Premium and Elite plans still require owner approval.</p></div>`);
     }
-    return { issue, read, check, consume, welcome, pending: email => byEmail.get(email) };
+    async function report(to, r, id) {
+        const money = value => value == null ? 'Not available' : `NGN ${Number(value).toLocaleString('en-NG')}`;
+        const lines = [
+            'Your automation progress report',
+            `${r.since} newly settled played draws; ${r.draws} tracked settled draws.`,
+            `Game/sequence record: ${r.wins} wins / ${r.losses} losses`,
+            `Session net profit/loss: ${money(r.profit)}`,
+            `Current losing streak: ${r.currentLossStreak} played draws`,
+            `Worst losing streak: ${r.maxLossStreak} played draws`,
+            `Reported bookmaker balance: ${money(r.balance)}`,
+            `Balance observed: ${r.balanceAt ? new Date(r.balanceAt).toISOString() : 'Not available'}`,
+            `Automation: ${r.running ? 'Running' : 'Paused'}. ${r.reason || ''}`,
+            'A losing draw means none of its placed games won. Skipped draws do not count.',
+            'Totals cover this execution session, not just this email interval.',
+            'Manage or disable progress emails on your Automation dashboard.'
+        ];
+        await send(to, 'Your Emmy-Bet automation progress', lines.join('\n'),
+            `<div style="font-family:Arial,sans-serif;max-width:560px">${lines.map(line => `<p>${escapeHtml(line)}</p>`).join('')}</div>`, `automation-report-${id}`);
+    }
+    return { issue, read, check, consume, welcome, report, configured: !!(apiKey && from), pending: email => byEmail.get(email) };
 }
 module.exports = { createSiteEmail };

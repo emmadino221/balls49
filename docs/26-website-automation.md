@@ -166,3 +166,32 @@ provide the heartbeat needed to start website control.
 JavaScript syntax checks and the production website build are the local checks.
 Account linking, browser interaction and live execution still need end-to-end
 verification in a demo session before real-money use.
+
+## Session streaks and email progress reports
+
+The dashboard shows the existing worker current and maximum losing streaks.
+A losing draw has no winning game among the bets actually submitted. Mixed draws
+with any winner break this streak, even if their combined money result is negative.
+Skipped draws do not count. These are execution-session metrics, not historical
+prediction streaks. Reset execution clears the streaks.
+
+Verified members with active extension access can opt into email reports every
+1?10,000 settled played draws (default 10). Recipients are taken from the signed-in
+account; arbitrary addresses cannot be supplied. Owner-only sessions have no
+verified member recipient and must use a verified member login for this feature.
+Saving starts the interval at the current counter. Execution reset starts a new
+counter. Existing sessions start tracking the new draw counter upon upgrade.
+
+The website process polls enabled schedules every 30 seconds, independently of
+open browser tabs. Reports include session profit/loss, existing game/sequence
+wins and losses, current/worst losing streak, reported balance and its timestamp,
+and running/paused status. These are session totals, not interval-only totals.
+Multiple delayed intervals coalesce; sends are at least 60 seconds apart per user.
+The existing website Resend environment is reused; the worker needs no email key.
+
+Schedules and pending reports are persisted in SQLite. Retries reuse an
+idempotency key for up to 23 hours. Expired reports are skipped with a dashboard
+error. Provider acceptance is shown separately from confirmed inbox delivery.
+Disabling cancels queued reports, but cannot recall an in-flight email. Unlinking
+or deleting an account removes its schedule. Expired or unverified memberships
+are excluded from delivery. Failure emails never change or stop betting.
