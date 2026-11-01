@@ -4,6 +4,7 @@ const automationControl = require('./automation-control');
 const { createAutomationBridge } = require('./automation-bridge');
 const { createSiteEmail } = require('./site-email');
 const { createFootballService } = require('./football-service');
+const { createVirtualFootball } = require('./virtual-football');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, bet49Numbers } = require('./bet49');
@@ -100,6 +101,7 @@ siteDb.exec(`
     );
 `);
 const footballService = createFootballService(siteDb);
+const virtualFootball = createVirtualFootball(siteDb);
 const siteVault = require('./site-vault').createSiteVault(process.env.SITE_VAULT_KEY_FILE || `${SITE_DATABASE_FILE}.security-key`);
 const automationBridge = createAutomationBridge(siteDb, SITE_ADMIN_KEY, siteVault);
 const ownerSecurity = require('./owner-security').createOwnerSecurity(siteDb, siteVault, SITE_ADMIN_KEY);
@@ -230,12 +232,12 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /account/automation', 'POST /account/automation/link', 'POST /account/automation/command', 'POST /account/automation/key',
     'GET /public-suggestions-status', 'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
-    'POST /internal/prediction-snapshot',
+    'POST /internal/prediction-snapshot', 'POST /internal/virtual-football-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
     'GET /admin/security', 'POST /admin/security', 'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/delete-user', 'POST /admin/reset-market-stats',
-    'GET /public-football-combinations', 'POST /admin/football-combinations', 'GET /public-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
+    'GET /public-football-combinations', 'POST /admin/football-combinations', 'GET /public-football', 'GET /public-virtual-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
 function isAllowedApiOrigin(origin) {
@@ -3717,13 +3719,17 @@ async function handleHttpRequest(req, res) {
     const extensionError = authorizeExtensionRequest(req, parsedUrl);
     if (extensionError) return sendJson(res, extensionError.status, { error: extensionError.error });
     const isPredictionIngest = req.method === 'POST' && parsedUrl.pathname === '/internal/prediction-snapshot';
+    const isVirtualFootballIngest = req.method === 'POST' && parsedUrl.pathname === '/internal/virtual-football-snapshot';
     if (isPredictionIngest && origin) {
         return sendJson(res, 403, { error: 'Prediction ingestion is server-to-server only.' });
+    }
+    if (isVirtualFootballIngest && origin) {
+        return sendJson(res, 403, { error: 'Virtual football ingestion is server-to-server only.' });
     }
     if (origin && !isAllowedApiOrigin(origin)) {
         return sendJson(res, 403, { error: 'Origin is not allowed.' });
     }
-    if (SITE_PUBLIC_MODE && req.method !== 'GET' && req.method !== 'OPTIONS' && !origin && !isPredictionIngest) {
+    if (SITE_PUBLIC_MODE && req.method !== 'GET' && req.method !== 'OPTIONS' && !origin && !isPredictionIngest && !isVirtualFootballIngest) {
         return sendJson(res, 403, { error: 'A trusted website origin is required.' });
     }
     if (origin) {
@@ -3766,6 +3772,17 @@ async function handleHttpRequest(req, res) {
             }
             return sendJson(res, 404, { error: 'Not found.' });
         } catch (error) { return sendJson(res, error.status || 503, { error: error.status ? error.message : 'Automation service unavailable.' }); }
+    }
+
+    if (isVirtualFootballIngest && SITE_PUBLIC_MODE) {
+        let rawBody;
+        try { rawBody = await readRequestText(req, 2 * 1024 * 1024); }
+        catch { return sendJson(res, 413, { error: 'Virtual football snapshot is too large or unreadable.' }); }
+        try {
+            return sendJson(res, 200, virtualFootball.ingest(rawBody, req.headers));
+        } catch (error) {
+            return sendJson(res, error.status || 400, { error: error.status ? error.message : 'Invalid virtual football snapshot.' });
+        }
     }
 
     if (isPredictionIngest && SITE_PUBLIC_MODE) {
@@ -4284,6 +4301,10 @@ async function handleHttpRequest(req, res) {
     if (parsedUrl.pathname === '/public-football' && req.method === 'GET') {
         const football = footballService.read(parsedUrl.searchParams.get('league') || 'PL');
         return sendJson(res, 200, { ...football, error: football.error ? 'Football updates are temporarily unavailable. Saved data may be out of date.' : null });
+    }
+
+    if (parsedUrl.pathname === '/public-virtual-football' && req.method === 'GET') {
+        return sendJson(res, 200, virtualFootball.view());
     }
 
     if (parsedUrl.pathname === '/admin/football' && req.method === 'GET') {

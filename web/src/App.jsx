@@ -7,6 +7,7 @@ const navLinks = [
   { label: 'Predictions', id: 'predictions', children: [
     { path: 'predictions.html', page: 'predictions', label: '49ja predictions' },
     { path: 'football.html', page: 'football', label: 'Football' },
+    { path: 'virtual-football.html', page: 'virtual-football', label: 'Virtual Football' },
     { path: 'free-trial.html', page: 'free-trial', label: '49ja free trial' }
   ] },
   { label: 'Tools & history', id: 'tools', children: [

@@ -30,6 +30,7 @@ sudo install -d -m 700 /etc/balls49
 sudo python3 - <<'PY'
 import os, secrets
 secret = secrets.token_hex(32)
+virtual_secret = secrets.token_hex(32)
 files = {
     '/etc/balls49/site.env': '\n'.join([
         'NODE_ENV=production', 'SITE_PUBLIC_MODE=true', 'SITE_SERVE_WEB=true',
@@ -38,7 +39,8 @@ files = {
         'SITE_PUBLIC_URL=https://159.65.25.30',
         'SITE_ALLOWED_ORIGINS=https://159.65.25.30',
         'SITE_ADMIN_KEY=' + secrets.token_hex(32),
-        'PREDICTION_INGEST_SECRET=' + secret, '']),
+        'PREDICTION_INGEST_SECRET=' + secret,
+        'VIRTUAL_FEED_SECRET=' + virtual_secret, '']),
     '/etc/balls49/site-publisher.env': '\n'.join([
         'PREDICTION_INGEST_URL=https://159.65.25.30/internal/prediction-snapshot',
         'PREDICTION_INGEST_SECRET=' + secret, ''])

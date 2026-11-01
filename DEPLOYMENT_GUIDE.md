@@ -94,3 +94,18 @@ when the returned history cards are paginated.
 The last attempted automated SSH connection was blocked by a changed host key.
 Before reusing that connection, verify the server identity through the hosting
 console. Do not disable SSH host-key checking to bypass the mismatch.
+
+## Virtual Football website feed
+
+The separate `virtualFootball` worker publishes sanitized match snapshots to
+`POST /internal/virtual-football-snapshot`. The website validates a timestamped
+HMAC signature using `VIRTUAL_FEED_SECRET`; the public page reads
+`GET /public-virtual-football`. Keep the same randomly generated secret in the
+website and virtual worker environment files. Never put it in the frontend or
+GitHub.
+
+The virtual worker's VPS installer adds Nginx routes for the signed feed and
+the extension's HTTPS `/virtual-api/` endpoint. Update the Balls49 site code
+and build its same-origin frontend before installing or restarting the virtual
+worker. The worker stores its runtime database under
+`/var/lib/balls49-virtual`, separate from the Git checkout.

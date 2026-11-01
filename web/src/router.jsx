@@ -3,6 +3,7 @@ import PrivacyPage from './pages/PrivacyPage.jsx';
 import TermsPage from './pages/TermsPage.jsx';
 import VerifyEmailPage from './pages/VerifyEmailPage.jsx';
 import FootballPage from './pages/FootballPage.jsx';
+import VirtualFootballPage from './pages/VirtualFootballPage.jsx';
 import React from 'react';
 import HomePage from './pages/HomePage.jsx';
 import AboutPage from './pages/AboutPage.jsx';
@@ -27,6 +28,7 @@ export function getPageName() {
   if (!route || route === 'index.html') return 'home';
   if (route === 'automation.html') return 'automation';
   if (route === 'football.html') return 'football';
+  if (route === 'virtual-football.html') return 'virtual-football';
   if (route === 'about.html') return 'about';
   if (route === 'pricing.html') return 'pricing';
   if (route === 'testimonials.html' || route === 'suggestions.html') return 'suggestions';
@@ -50,6 +52,7 @@ export function PageRenderer({ page }) {
   if (page === 'privacy') return <PrivacyPage />;
   if (page === 'automation') return <AutomationPage />;
   if (page === 'football') return <FootballPage />;
+  if (page === 'virtual-football') return <VirtualFootballPage />;
   if (page === 'analysis') return <AnalysisPage />;
   if (page === 'account') return <AccountPage />;
   if (page === 'about') return <AboutPage />;
