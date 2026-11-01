@@ -12,7 +12,7 @@ const navLinks = [
   ] },
   { label: 'Tools & history', id: 'tools', children: [
     { path: 'history.html', page: 'history', label: '49ja history' },
-    { path: 'analysis.html', page: 'analysis', label: '49ja analysis' },
+    { path: 'predictions.html#analysis', page: 'predictions', label: '49ja analysis' },
     { path: 'automation.html', page: 'automation', label: 'Automation dashboard' },
     { path: 'calculator.html', page: 'calculator', label: 'Calculator' },
     { path: 'suggestions.html', page: 'suggestions', label: 'Strategy suggestions' }
@@ -160,7 +160,7 @@ export default function App() {
             <a href="predictions.html">49ja predictions</a>
             <a href="football.html">Football</a>
             <a href="history.html">Prediction history</a>
-            <a href="analysis.html">Prediction analysis</a>
+            <a href="predictions.html#analysis">Prediction analysis</a>
             <a href="guide.html">Prediction guide</a>
             <a href="calculator.html">Martingale calculator</a>
             <a href="suggestions.html">Strategy suggestions</a>

@@ -1,8 +1,10 @@
 # Subscriber prediction analysis
 
-`analysis.html` provides historical support for current picks and recent market
-results. It is not a calibrated confidence or next-draw probability model.
-Current selection logic is unchanged.
+Prediction analysis is available in the Analysis subtab of each market on
+`predictions.html`; the legacy `analysis.html` route remains available. It
+provides historical support for current picks and recent market results. It is
+not a calibrated confidence or next-draw probability model. Current selection
+logic is unchanged.
 
 `GET /account/analysis` authenticates the cookie session before reading prediction
 data. Elite receives all seven markets; Premium receives only its approved games.
@@ -11,7 +13,7 @@ Expired accounts and Free Trial receive 403, signed-out visitors 401. Optional
 tier and games. UI locks supplement server enforcement; unauthorized analysis is
 never included in that endpoint's response.
 
-The page refreshes every 10 seconds. Current picks require a fresh, matching draw
+The analysis subtab refreshes current market data every five seconds. Current picks require a fresh, matching draw
 clock with time remaining; stale/closed draws show a waiting state. Errors clear
 the previous payload. Displayed market data contains only selected picks, sample
 counts and aggregate results. It contains no strategy labels, coefficients,

@@ -4,6 +4,7 @@ import '../../../balls49-extension/tc1-staking.js';
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
 import PredictionMarketStats from '../components/PredictionMarketStats.jsx';
+import PredictionAnalysisPanel from '../components/PredictionAnalysisPanel.jsx';
 import TotalColorPick from '../components/TotalColorPick.jsx';
 
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
@@ -156,6 +157,7 @@ export default function PredictionsPage() {
   const [accountPlan, setAccountPlan] = useState(null);
   const [previewPlan, setPreviewPlan] = useState(null);
   const [activeMarketId, setActiveMarketId] = useState('betzero');
+  const [activeDetailTabs, setActiveDetailTabs] = useState(() => window.location.hash === '#analysis' ? { betzero: 'analysis' } : {});
   const [compactTabs, setCompactTabs] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');
@@ -301,6 +303,7 @@ export default function PredictionsPage() {
 
   const currentPrediction = Object.values(marketPredictions).find(record => record && clock?.drawId === record.drawId) || null;
   const activeGame = games.find(game => game.id === activeMarketId) || games[0];
+  const activeDetailTab = activeDetailTabs[activeGame.id] || 'prediction';
   const activeMarketPrediction = clock?.drawId === marketPredictions[activeGame.id]?.drawId ? marketPredictions[activeGame.id] : null;
   const activeMarketHasAccess = previewPlan?.tier === 'elite' || accountPlan?.tier === 'elite' || (previewPlan?.tier === 'premium' && previewPlan.games.includes(activeGame.id)) || (accountPlan?.tier === 'premium' && accountPlan.games.includes(activeGame.id));
   const activeMarketReveal = Boolean(activeMarketPrediction && activeMarketHasAccess);
@@ -354,6 +357,24 @@ export default function PredictionsPage() {
           <article className="prediction-game-card prediction-market-panel clean-prediction-card" id="prediction-market-panel" role="tabpanel" aria-labelledby={`market-tab-${activeGame.id}`}>
             <div className="prediction-game-heading"><span className="prediction-game-icon" aria-hidden="true">✦</span><span className={`locked-label${activeMarketHasAccess ? ' prediction-active-label' : ''}`}>{activeMarketHasAccess ? 'YOUR PLAN' : 'PREMIUM ACCESS'}</span></div>
             <h3>{activeGame.name}</h3>
+            <div className="prediction-detail-tabs" role="tablist" aria-label={`${activeGame.name} details`} onKeyDown={event => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+              const currentIndex = tabs.indexOf(event.target);
+              const nextIndex = event.key === 'Home' ? 0
+                : event.key === 'End' ? tabs.length - 1
+                  : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+              setActiveDetailTabs(current => ({ ...current, [activeGame.id]: nextIndex === 1 ? 'analysis' : 'prediction' }));
+              tabs[nextIndex]?.focus();
+            }}>
+              <button id={`prediction-detail-tab-${activeGame.id}`} type="button" role="tab" aria-selected={activeDetailTab === 'prediction'} aria-controls={`prediction-detail-panel-${activeGame.id}`} className={activeDetailTab === 'prediction' ? 'is-active' : ''} onClick={() => setActiveDetailTabs(current => ({ ...current, [activeGame.id]: 'prediction' }))}>Prediction</button>
+              <button id={`analysis-detail-tab-${activeGame.id}`} type="button" role="tab" aria-selected={activeDetailTab === 'analysis'} aria-controls={`prediction-detail-panel-${activeGame.id}`} className={activeDetailTab === 'analysis' ? 'is-active' : ''} onClick={() => setActiveDetailTabs(current => ({ ...current, [activeGame.id]: 'analysis' }))}>Analysis</button>
+            </div>
+            <div id={`prediction-detail-panel-${activeGame.id}`} className="prediction-detail-panel" role="tabpanel" aria-labelledby={`${activeDetailTab === 'analysis' ? 'analysis' : 'prediction'}-detail-tab-${activeGame.id}`}>
+            {activeDetailTab === 'analysis'
+              ? <PredictionAnalysisPanel market={activeGame.id} hasAccess={activeMarketHasAccess} signedIn={sessionKind === 'account' || sessionKind === 'admin'} />
+              : <>
             <div className="prediction-card-draw"><span>{activeMarketReveal ? `Draw #${activeMarketPrediction.drawId}` : 'Waiting for prediction'}</span><span>{formatCountdown(secondsLeft)}</span></div>
             <p className="prediction-market-description">{activeGame.detail}</p>
             <div className={`live-prediction-value${activeMarketReveal ? ' is-revealed' : ' is-hidden'}`}>
@@ -403,7 +424,8 @@ export default function PredictionsPage() {
               <summary><span>Maximum losing streaks</span><span className="streaks-toggle" aria-hidden="true">+</span></summary>
               <PredictionMarketStats stats={activeMarketPrediction.marketStats} marketName={activeGame.name} showStep={false} />
             </details>}
-
+              </>}
+            </div>
           </article>
         </div>
       </section>
