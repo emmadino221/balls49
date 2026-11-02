@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
-const { applyPreviousDrawRule, singleColorPrediction } = require('./total-color');
+const { totalColor3WayPrediction, singleColorPrediction } = require('./total-color');
 const { predictHighLow } = require('./high-low');
 const { predictBetZero } = require('./betzero');
 
@@ -49,7 +49,7 @@ const end = source.indexOf('\nfunction processUpdates', start);
 if (start < 0 || end <= start) throw new Error('Cannot locate the current prediction generator.');
 const generator = source.slice(start, end);
 const replayPredictions = [];
-const context = vm.createContext({ getBallColor: color, applyPreviousDrawRule, singleColorPrediction,
+const context = vm.createContext({ getBallColor: color, totalColor3WayPrediction, singleColorPrediction,
     predictHighLow, predictBetZero, predictionLog: replayPredictions, getDailyHistoryResetAt: () => 0,
     getBet49Prediction: () => null }); // Bet49 is outside this comparison; no persistent target state.
 vm.runInContext(generator, context, { timeout: 1000 });

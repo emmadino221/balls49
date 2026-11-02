@@ -30,7 +30,7 @@ const {
     SUMMARY_MODEL_MARKETS, makeDefaultSummaryModelMarkets, normalizeSummaryModelTargets,
     getSummaryGateTarget, summaryGateAllows, getIssuedSummaryLabels, applySummaryGateConfig
 } = require('./summary-gate');
-const { getTotalColorOutcome, applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
+const { getTotalColorOutcome, totalColor3WayPrediction, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
 const { predictHighLowFromBet49 } = require('./high-low');
 const { nigeriaMidnightBoundary } = require('./daily-reset');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
@@ -2526,8 +2526,8 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         weighted: selectedColorName ? weightedColorCounts[selectedColorName] : 0 };
 
 
-    // Total Color 3-way depends only on the previous completed outcome.
-    var totalColorPred = applyPreviousDrawRule(null, histRaw?.data?.draws, targetDrawId);
+    // Total Color 3-way adds No Winning Color to the active 2-way selection.
+    var totalColorPred = totalColor3WayPrediction(totalColor2Pred);
 
     const highLow = predictHighLowFromBet49(bet49Prediction);
     var hiloStatus = highLow.status;

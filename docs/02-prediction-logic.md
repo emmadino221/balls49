@@ -15,7 +15,7 @@ The public prediction/history surfaces expose seven markets:
 | BetZero | `betzero` | Take the first four numbers from the same draw's active Bet49 selection, in its recency order. Skip when Bet49 skips. Win if none of the four appear in the draw. |
 | Bet49 | `bet49` | Use the last 10 consecutive completed draws. Use the two colors in the same draw's active Total Color 2-way prediction, and take up to six most-recent numbers from those colors that appeared at least twice. Skip whenever Total Color 2-way skips. Skip if fewer than four qualify. Any selected number appearing wins. Each number is a separate 7.80-odds bet. |
 | Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
-| Total Color (3-way) | `totalColor` | Exclude the previous completed outcome; pick the other three of Red, Blue, Green and DRAW. No frequency selection. |
+| Total Color (3-way) | `totalColor` | Reuse the two colors selected by Total Color 2-way, then add DRAW (No Winning Color). Skip when Total Color 2-way is inactive. |
 | Total Color (2-way) | `totalColor2` | Select two colors; a tie outcome is represented as black. |
 | High/Low | `hilo` | Use weighted 20/50/100-draw HIGH/LOW counts, with LOW on ties. Always pick with valid history; MID loses for either side. |
 | Unified | `unified` | A wrapper around the chosen supported market; its result follows that market. |

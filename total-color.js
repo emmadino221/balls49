@@ -17,18 +17,18 @@ function getTotalColorOutcome(numbers) {
     return winners.length === 1 ? winners[0] : 'black';
 }
 
-function applyPreviousDrawRule(prediction, draws, targetDrawId) {
-    const target = Number(targetDrawId);
+function totalColor3WayPrediction(twoWayPrediction) {
     const skipped = { status: 'SKIP', topColors: [], noWinColor: null, confidence: 0, gap: 0,
-        selectionRule: 'EXCLUDE_PREVIOUS_OUTCOME', skipReason: 'Previous completed draw unavailable' };
-    if (!Number.isSafeInteger(target) || target <= 0 || !Array.isArray(draws)) return skipped;
-    const previous = draws.find(draw => Number(draw?.id) === target - 1);
-    const numbers = typeof previous?.dr === 'string' ? previous.dr.split(',').map(Number) : [];
-    const outcome = getTotalColorOutcome(numbers);
-    if (!outcome) return skipped;
+        selectionRule: 'TOTAL_COLOR_2_WAY_PLUS_NO_WIN', skipReason: 'Total Color 2-way is not active' };
+    const top2 = twoWayPrediction?.top2;
+    if (twoWayPrediction?.status !== 'ACTIVE' || !Array.isArray(top2) || top2.length !== 2
+        || new Set(top2).size !== 2 || top2.some(color => !COLORS.includes(color))) return skipped;
+    const noWinColor = COLORS.find(color => !top2.includes(color));
     return {
-        status: 'ACTIVE', topColors: OUTCOMES.filter(color => color !== outcome), noWinColor: outcome,
-        confidence: 0, gap: 0, selectionRule: 'EXCLUDE_PREVIOUS_OUTCOME', sourceDrawId: String(previous.id)
+        status: 'ACTIVE', topColors: [...top2, 'black'], noWinColor,
+        confidence: Number.isFinite(twoWayPrediction.confidence) ? twoWayPrediction.confidence : 0,
+        gap: Number.isFinite(twoWayPrediction.gap) ? twoWayPrediction.gap : 0,
+        selectionRule: 'TOTAL_COLOR_2_WAY_PLUS_NO_WIN'
     };
 }
 
@@ -65,4 +65,4 @@ function singleColorWins(prediction, numbers) {
         && outcome !== null && prediction.top1[0] === outcome;
 }
 
-module.exports = { getTotalColorOutcome, applyPreviousDrawRule, getTotalColorTargets, totalColorWins, totalColorName, singleColorPrediction, singleColorWins };
+module.exports = { getTotalColorOutcome, totalColor3WayPrediction, getTotalColorTargets, totalColorWins, totalColorName, singleColorPrediction, singleColorWins };

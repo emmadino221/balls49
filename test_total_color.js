@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { getTotalColorOutcome, applyPreviousDrawRule, getTotalColorTargets, totalColorWins } = require('./total-color');
+const { getTotalColorOutcome, totalColor3WayPrediction, getTotalColorTargets, totalColorWins } = require('./total-color');
 const { singleColorPrediction } = require('./total-color');
 const { predictBet49 } = require('./bet49');
 const { predictHighLowFromBet49 } = require('./high-low');
@@ -15,8 +15,8 @@ const red = [1, 4, 7, 2, 3, 6];
 const blue = [2, 5, 8, 1, 3, 6];
 const green = [3, 6, 9, 1, 2, 5];
 const normal = { status: 'ACTIVE', topColors: ['red', 'blue'], noWinColor: 'green', gap: 0.1, confidence: 0.1 };
+const twoWay = { status: 'ACTIVE', top2: ['red', 'blue'], gap: 0.1, confidence: 0.1 };
 const draw = (id, numbers) => ({ id, dr: numbers.join(','), total: numbers.reduce((sum, n) => sum + n, 0) });
-const afterTie = () => applyPreviousDrawRule(normal, [draw(100, tie)], 101);
 
 test('outcome detection handles sole winners, two/three-color ties, and number 49', () => {
     assert.equal(getTotalColorOutcome(red), 'red');
@@ -31,44 +31,45 @@ test('outcome detection handles sole winners, two/three-color ties, and number 4
     }
 });
 
-test('the immediately preceding completed outcome is excluded; unavailable results skip', () => {
-    const pick = afterTie();
+test('three-way reuses the active two-way colors and adds No Winning Color', () => {
+    const pick = totalColor3WayPrediction(twoWay);
     assert.equal(pick.status, 'ACTIVE');
-    assert.equal(pick.noWinColor, 'black');
-    assert.deepEqual(getTotalColorTargets(pick), ['red', 'blue', 'green']);
+    assert.equal(pick.noWinColor, 'green');
+    assert.deepEqual(getTotalColorTargets(pick), ['red', 'blue', 'black']);
     assert.deepEqual(normal.topColors, ['red', 'blue']);
-    for (const draws of [[], [draw(99, tie)], [draw(101, tie)], [draw(100, [1, 2, 3])]]) {
-        assert.equal(applyPreviousDrawRule(normal, draws, 101).status, 'SKIP');
-    }
-    for (const [numbers, excluded] of [[red, 'red'], [blue, 'blue'], [green, 'green']]) {
-        const selection = applyPreviousDrawRule(normal, [draw(100, numbers)], 101);
-        assert.equal(selection.noWinColor, excluded);
-        assert.deepEqual(getTotalColorTargets(selection), ['red', 'blue', 'green', 'black'].filter(color => color !== excluded));
-        assert.equal(totalColorWins(selection, numbers), false);
-        assert.equal(totalColorWins(selection, tie), true);
+    assert.equal(pick.selectionRule, 'TOTAL_COLOR_2_WAY_PLUS_NO_WIN');
+    assert.deepEqual(getTotalColorTargets(totalColor3WayPrediction({ ...twoWay, top2: ['blue', 'green'] })), ['blue', 'green', 'black']);
+});
+
+test('three-way skips when the source two-way pick is inactive or invalid', () => {
+    for (const prediction of [
+        null,
+        { ...twoWay, status: 'SKIP' },
+        { ...twoWay, top2: ['red', 'red'] },
+        { ...twoWay, top2: ['red', 'black'] },
+        { ...twoWay, top2: ['red', 'blue', 'green'] }
+    ]) {
+        assert.equal(totalColor3WayPrediction(prediction).status, 'SKIP');
+        assert.deepEqual(getTotalColorTargets(totalColor3WayPrediction(prediction)), []);
     }
 });
 
-test('after DRAW: each sole color wins and another DRAW loses', () => {
-    const pick = afterTie();
-    for (const numbers of [red, blue, green]) assert.equal(totalColorWins(pick, numbers), true);
-    assert.equal(totalColorWins(pick, tie), false);
-    assert.equal(totalColorWins(pick, [1, 4, 7, 2, 5, 8]), false);
+test('three-way wins for either selected color or No Winning Color', () => {
+    const pick = totalColor3WayPrediction(twoWay);
+    assert.equal(totalColorWins(pick, red), true);
+    assert.equal(totalColorWins(pick, blue), true);
+    assert.equal(totalColorWins(pick, tie), true);
+    assert.equal(totalColorWins(pick, green), false);
     assert.equal(totalColorWins(pick, []), false);
 });
 
-test('consecutive DRAWs keep the three colors; a sole color is excluded next', () => {
-    const next = applyPreviousDrawRule(normal, [draw(101, tie), draw(100, tie)], 102);
-    assert.deepEqual(getTotalColorTargets(next), ['red', 'blue', 'green']);
-    assert.deepEqual(getTotalColorTargets(applyPreviousDrawRule(normal, [draw(102, green), draw(101, tie)], 103)), ['red', 'blue', 'black']);
-});
-
-test('historical two-color picks still include DRAW and lose only to the eliminated color', () => {
+test('historical picks retain their saved selections and excluded outcome', () => {
     assert.deepEqual(getTotalColorTargets(normal), ['red', 'blue', 'black']);
     assert.equal(totalColorWins(normal, tie), true);
     assert.equal(totalColorWins(normal, red), true);
     assert.equal(totalColorWins(normal, green), false);
-    const persisted = JSON.parse(JSON.stringify(afterTie()));
+    const persisted = JSON.parse(JSON.stringify({ status: 'ACTIVE', topColors: ['red', 'blue', 'green'], noWinColor: 'black' }));
+    assert.equal(totalColorWins(persisted, green), true);
     assert.equal(totalColorWins(persisted, tie), false);
 });
 
@@ -79,13 +80,13 @@ test('invalid or skipped selections cannot become valid three-way bets', () => {
     }
 });
 
-test('actual generator selects from the previous outcome independently of the rainbow filter', () => {
+test('actual generator builds three-way from the active two-way prediction', () => {
     const source = fs.readFileSync(path.join(__dirname, 'bot.js'), 'utf8');
     const start = source.indexOf('function computePredictions(');
     const end = source.indexOf('\nfunction processUpdates', start);
     assert.ok(start >= 0 && end > start);
     const context = vm.createContext({
-        applyPreviousDrawRule,
+        totalColor3WayPrediction,
         getDailyHistoryResetAt: () => 0,
         getBallColor: number => number === 49 ? 'yellow' : number % 3 === 1 ? 'red' : number % 3 === 2 ? 'blue' : 'green',
         predictBet49,
@@ -93,11 +94,17 @@ test('actual generator selects from the previous outcome independently of the ra
         singleColorPrediction
     });
     vm.runInContext(source.slice(start, end), context);
-    const predict = numbers => context.computePredictions({ data: { draws: [draw(100, numbers)] } }, null, null, null, null, null, 101);
-    const prediction = predict(tie);
-    assert.equal(prediction.rainbowStatus, 'SKIP');
-    assert.deepEqual(getTotalColorTargets(prediction.totalColorPred), ['red', 'blue', 'green']);
-    assert.deepEqual(getTotalColorTargets(predict(red).totalColorPred), ['blue', 'green', 'black']);
+    const predict = numbers => {
+        const draws = Array.from({ length: 20 }, (_, index) => draw(100 - index, numbers));
+        return context.computePredictions({ data: { draws } }, null, null, null, null, null, 101);
+    };
+    const tiedPrediction = predict(tie);
+    assert.equal(tiedPrediction.totalColor2Pred.status, 'SKIP');
+    assert.equal(tiedPrediction.totalColorPred.status, 'SKIP');
+    const prediction = predict(red);
+    assert.equal(prediction.totalColor2Pred.status, 'ACTIVE');
+    assert.deepEqual(getTotalColorTargets(prediction.totalColorPred), [...prediction.totalColor2Pred.top2, 'black']);
+    assert.equal(prediction.totalColorPred.noWinColor, 'blue');
 });
 
 function extensionHarness({ missingButton = null, placementSuccess = true } = {}) {
@@ -125,10 +132,10 @@ function extensionHarness({ missingButton = null, placementSuccess = true } = {}
     return { run: context.runTotalColor, placed };
 }
 
-test('extension places exactly red, blue, green after DRAW and never adds a black bet', async () => {
+test('extension places the two selected colors and No Winning Color', async () => {
     const extension = extensionHarness();
-    assert.equal(await extension.run(getTotalColorTargets(afterTie()), 100), true);
-    assert.deepEqual(extension.placed, ['red', 'blue', 'green'].map(color => ({ color, stake: 100 })));
+    assert.equal(await extension.run(getTotalColorTargets(totalColor3WayPrediction(twoWay)), 100), true);
+    assert.deepEqual(extension.placed, ['red', 'blue', 'black'].map(color => ({ color, stake: 100 })));
 });
 
 test('extension supports normal explicit payloads and older two-color payloads', async () => {

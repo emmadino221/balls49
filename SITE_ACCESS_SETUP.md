@@ -30,15 +30,14 @@ The person enters their name, email, and password at **Sign up**. New accounts w
 - In local mode, the API accepts browser requests from the Bet9ja game page and Chrome extension pages so the browser extension can receive live signals. Keep the API on loopback; the extension and bot need to run on the same computer.
 - Prediction broadcasts read `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` when `bot.js` starts. Add the bot as an administrator with permission to post in the channel. Pick messages are written to the worker's `telegram_prediction_outbox.json` before delivery; failures are logged and retried with backoff. Keep this local runtime file on persistent storage and out of source control. A result can arrive while its pick is waiting for a retry.
 
-## Total Color 3-way: exclude the previous outcome
+## Total Color 3-way: two-way colors plus No Winning Color
 
-The next pick contains the three outcomes other than the immediately preceding
-completed draw's result. DRAW selects Red + Blue + Green; Red selects Blue +
-Green + DRAW; Blue selects Red + Green + DRAW; Green selects Red + Blue + DRAW.
-No frequency or Rainbow confidence filter selects this market. Missing or
-incomplete previous results produce SKIP. A repeated outcome loses; any other
-valid outcome wins. Historical picks keep their saved selections and grading.
-Telegram displays only the selected outcomes. Existing automation gates apply.
+The next pick uses the same two colors selected by Total Color 2-way, plus DRAW
+(No Winning Color). The remaining color is omitted. If Total Color 2-way is
+inactive, Total Color 3-way also produces SKIP. A valid result wins when it is
+one of the selected colors or DRAW. Historical picks keep their saved selections
+and grading. Telegram displays only the selected outcomes. Existing automation
+gates apply.
 
 ## High/Low: rolling analysis without signal-based skips
 

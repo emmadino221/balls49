@@ -18,7 +18,7 @@ const markets = [
   },
   {
     name: 'Total Color (3-way)',
-    pick: 'Exclude the previous completed draw outcome and select the other three: Red, Blue, Green or No Winning Color. No frequency filter is used. Missing or incomplete previous results produce no pick.',
+    pick: 'Use the same two colors selected by Total Color 2-way, plus No Winning Color. The remaining color is omitted. If Total Color 2-way is inactive, this market has no pick.',
     result: 'A win means the actual outcome is one of the three selections. A tie for the most frequent color is DRAW / No Winning Color. When that outcome is eliminated, another DRAW is a loss.',
   },
   {

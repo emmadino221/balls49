@@ -1,8 +1,9 @@
 # Winning Color
 
 Market key: `totalColor1`. The prediction is the single outcome not selected by
-Total Color 3-way: red, blue, green or black (No Winning Color). The existing
-three-way rule is unchanged. Missing valid three-way picks produce a skipped
+Total Color 3-way selects two colors from the active Total Color 2-way pick,
+plus black (No Winning Color). Winning Color remains the single color omitted
+from that three-way selection. Missing valid three-way picks produce a skipped
 one-way pick. A settled six-ball draw wins only if its winning color outcome
 matches the issued one-way pick. Ties use No Winning Color.
 
