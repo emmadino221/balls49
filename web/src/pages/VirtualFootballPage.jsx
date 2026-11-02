@@ -285,16 +285,8 @@ export default function VirtualFootballPage({ showResults = false }) {
             </button>;
           })}
         </div>}
-        {visibleMatches.length === 0
-          ? <div className="vf-empty-state"><span aria-hidden="true">{showResults ? '✓' : activeMarket === 'over' ? '1.5' : '⚽'}</span>
-            <h3>{showResults ? 'No reported results yet' : activeMarket === 'over' ? 'Over 1.5 picks not available' : 'No picks available for this market'}</h3>
-            <p>{showResults
-              ? 'No virtual match scores have been reported by the feed yet.'
-              : activeMarket === 'over'
-                ? 'No Over/Under 1.5 picks or GG predictions are currently available in the feed.'
-                : 'No published virtual fixtures currently include a prediction for this market.'}</p></div>
-          : showResults
-            ? <div className="vf-results-markets">
+        {showResults
+          ? <div className="vf-results-markets">
               {predictionMarkets.map(market => {
                 const weekGroups = getMarketWeekGroups(visibleMatches, market.id);
                 const count = weekGroups.reduce((total, group) => total + group.rows.length, 0);
@@ -324,6 +316,12 @@ export default function VirtualFootballPage({ showResults = false }) {
                 </section>;
               })}
             </div>
+          : visibleMatches.length === 0
+            ? <div className="vf-empty-state"><span aria-hidden="true">{activeMarket === 'over' ? '1.5' : '⚽'}</span>
+              <h3>{activeMarket === 'over' ? 'Over 1.5 picks not available' : 'No picks available for this market'}</h3>
+              <p>{activeMarket === 'over'
+                ? 'No Over/Under 1.5 picks or GG predictions are currently available in the feed.'
+                : 'No published virtual fixtures currently include a prediction for this market.'}</p></div>
             : <div className="vf-match-grid">{visibleMatches.map(match => <MatchCard key={match.id} match={match} market={activeMarket} />)}</div>}
       </section>
 
