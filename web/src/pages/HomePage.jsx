@@ -1,6 +1,7 @@
 import React from 'react';
 import WelcomePanel from '../components/WelcomePanel.jsx';
 import './home-light.css';
+import './home-page.css';
 
 const featureCards = [
   {
@@ -31,11 +32,11 @@ export default function HomePage() {
       <section className="home-proof-strip" aria-label="Platform highlights">
         <div className="page-container proof-strip-inner">
           <div className="proof-brand"><span className="proof-brand-mark">E</span><span>THE GAME, IN A CLEARER LIGHT.</span></div>
-          <div className="proof-item"><strong>08</strong><span>Markets to explore</span></div>
+          <div className="proof-item"><strong>08</strong><span>Casino markets</span></div>
           <span className="proof-separator" aria-hidden="true" />
-          <div className="proof-item"><strong>LIVE</strong><span>Draw context</span></div>
+          <div className="proof-item"><strong>02</strong><span>Football experiences</span></div>
           <span className="proof-separator" aria-hidden="true" />
-          <div className="proof-item"><strong>FULL</strong><span>Result history</span></div>
+          <div className="proof-item"><strong>TRACKED</strong><span>Recorded outcomes</span></div>
         </div>
       </section>
 

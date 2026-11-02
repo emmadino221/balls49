@@ -6,7 +6,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { getTotalColorOutcome, applyPreviousDrawRule, getTotalColorTargets, totalColorWins } = require('./total-color');
-const { predictHighLow } = require('./high-low');
+const { singleColorPrediction } = require('./total-color');
+const { predictBet49 } = require('./bet49');
+const { predictHighLowFromBet49 } = require('./high-low');
 
 const tie = [1, 4, 2, 5, 3, 6];
 const red = [1, 4, 7, 2, 3, 6];
@@ -82,7 +84,14 @@ test('actual generator selects from the previous outcome independently of the ra
     const start = source.indexOf('function computePredictions(');
     const end = source.indexOf('\nfunction processUpdates', start);
     assert.ok(start >= 0 && end > start);
-    const context = vm.createContext({ applyPreviousDrawRule, predictHighLow });
+    const context = vm.createContext({
+        applyPreviousDrawRule,
+        getDailyHistoryResetAt: () => 0,
+        getBallColor: number => number === 49 ? 'yellow' : number % 3 === 1 ? 'red' : number % 3 === 2 ? 'blue' : 'green',
+        predictBet49,
+        predictHighLowFromBet49,
+        singleColorPrediction
+    });
     vm.runInContext(source.slice(start, end), context);
     const predict = numbers => context.computePredictions({ data: { draws: [draw(100, numbers)] } }, null, null, null, null, null, 101);
     const prediction = predict(tie);
@@ -109,6 +118,7 @@ function extensionHarness({ missingButton = null, placementSuccess = true } = {}
         safeClick(button) { selected = button.color; },
         sleep: async () => {},
         Event: class {},
+        currentPlacementReport: null,
         placeBet: async () => { placed.push({ color: selected, stake: input.value }); return placementSuccess; }
     });
     vm.runInContext(source.slice(start, end), context);

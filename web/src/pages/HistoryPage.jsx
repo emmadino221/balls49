@@ -4,6 +4,7 @@ import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TotalColorPick from '../components/TotalColorPick.jsx';
 import { apiRequest } from '../auth.js';
+import './history-page.css';
 
 const PAGE_SIZE = 200;
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
@@ -280,6 +281,10 @@ export default function HistoryPage() {
             </label>
           </div>
         </div>
+        <div className="history-market-shortcuts" role="group" aria-label="Quick filter history by market">
+          <button type="button" aria-pressed={marketFilter === 'all'} className={marketFilter === 'all' ? 'is-active' : ''} onClick={() => setMarketFilter('all')}>All markets</button>
+          {markets.map(market => <button type="button" key={market.id} aria-pressed={marketFilter === market.id} className={marketFilter === market.id ? 'is-active' : ''} onClick={() => setMarketFilter(market.id)}>{market.label}</button>)}
+        </div>
       </section>
 
       <HistorySimulator />
@@ -294,7 +299,9 @@ export default function HistoryPage() {
       </section>
 
       <section className="history-record-strip" aria-label="Loaded results breakdown">
-        <div><span className="overline">YOUR SELECTED RESULTS</span><h2>{summary.rate === null ? '--' : `${summary.rate}%`} <small>of settled picks won</small></h2></div>
+        <div className="history-record-overview"><div><span className="overline">YOUR SELECTED RESULTS</span><h2>{summary.rate === null ? '--' : `${summary.rate}%`} <small>of settled picks won</small></h2></div>
+          <div className="history-rate-ring" role="img" aria-label={summary.rate === null ? 'Win rate unavailable: no settled picks' : `Win rate ${summary.rate} percent`} style={{ '--history-rate': `${summary.rate ?? 0}%` }}><span>{summary.rate === null ? '—' : `${summary.rate}%`}</span></div>
+        </div>
         <p>{visiblePredictions.length.toLocaleString()} loaded draws{query.trim() ? ' matching your search' : ''} &middot; {marketFilter === 'all' ? 'All markets' : visibleMarkets[0]?.label}</p>
         <div className="history-outcome-track" role="img" aria-label={`${summary.wins} wins, ${summary.losses} losses, ${summary.skipped} skipped`}>
           <span style={{width: `${summary.settled ? summary.wins / summary.settled * 100 : 0}%`}} />
@@ -342,7 +349,14 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {loading && !predictions.length && !error && <div className="history-state">Loading prediction history…</div>}
+        {loading && !predictions.length && !error && <div className="history-loading-skeleton" role="status" aria-busy="true" aria-label="Loading prediction history">
+          <span className="sr-only">Loading prediction history…</span>
+          {[0, 1, 2].map(item => <article className="history-skeleton-card" key={item} aria-hidden="true">
+            <div className="history-skeleton-heading"><span /><span /></div>
+            <div className="history-skeleton-result"><span /><div><i /><i /><i /><i /><i /></div></div>
+            <div className="history-skeleton-markets"><span /><span /><span /><span /></div>
+          </article>)}
+        </div>}
 
         {!loading && !error && predictions.length === 0 && (
           <div className="history-state history-empty">
@@ -358,7 +372,7 @@ export default function HistoryPage() {
               <article className="history-draw" key={record.drawId}>
                 <header className="draw-heading">
                   <div><span className="draw-id-label">DRAW</span><h3>#{record.drawId}</h3>{record.status === 'PENDING' && <span className="draw-pending-label">LIVE · PENDING</span>}</div>
-                  <time>{formatDate(record.drawDate)}</time>
+                  <time dateTime={record.drawDate || undefined}>{formatDate(record.drawDate)}</time>
                 </header>
                 <div className="actual-result">
                   <div className="actual-label"><span>Actual draw</span><strong>{record.status === 'PENDING' ? 'Awaiting draw result' : `${record.result?.total ?? '—'} total · ${record.result?.range || '—'}`}</strong></div>

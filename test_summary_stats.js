@@ -103,8 +103,8 @@ test('all markets support saved summary labels, without borrowing labels from an
 test('Telegram distinguishes zero losses from no data and includes the saved draw label', () => {
     const stats = calculateSummaryLossStats([record(1, 'ENTER', 'WIN')], markets);
     const text = formatTelegramSummaryStats({ betzero: 'ENTER' }, stats, 'betzero');
-    assert.match(text, /Summary ENTER/);
-    assert.match(text, /ENTER 0 \| HOLD —/);
-    assert.match(formatTelegramSummaryStats({}, stats, 'bet49'), /ENTER — \| HOLD —/);
+    assert.match(text, /Summary: 🟢 <b>ENTER<\/b>/);
+    assert.match(text, /ENTER <b>0<\/b> · 🟠 HOLD <b>—<\/b>/);
+    assert.equal(formatTelegramSummaryStats({}, stats, 'bet49'), '');
     assert.doesNotMatch(formatTelegramSummaryStats({ betzero: '<b>invalid</b>' }, stats, 'betzero'), /<b>/);
 });

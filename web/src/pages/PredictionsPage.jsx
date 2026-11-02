@@ -6,6 +6,7 @@ import { apiRequest } from '../auth.js';
 import PredictionMarketStats from '../components/PredictionMarketStats.jsx';
 import PredictionAnalysisPanel from '../components/PredictionAnalysisPanel.jsx';
 import TotalColorPick from '../components/TotalColorPick.jsx';
+import './predictions-page.css';
 
 const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
 const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-clock');
