@@ -45,6 +45,40 @@ function getMarketPrediction(match, market) {
   return null;
 }
 
+function getMarketSettlement(match, market) {
+  const score = typeof match.score === 'string' ? match.score.match(/^(\d{1,2})-(\d{1,2})$/) : null;
+  if (!score) return 'NO SCORE';
+  const homeGoals = Number(score[1]);
+  const awayGoals = Number(score[2]);
+  let won;
+
+  if (market === 'win') {
+    const outcome = homeGoals > awayGoals ? 'HOME' : homeGoals < awayGoals ? 'AWAY' : 'DRAW';
+    won = match.pick === outcome;
+  } else if (market === 'over') {
+    const pick = match.goals15 || (match.btts === 'GG' ? 'OVER' : null);
+    if (!pick) return 'NO PICK';
+    won = pick === (homeGoals + awayGoals >= 2 ? 'OVER' : 'UNDER');
+  } else {
+    const outcome = homeGoals > 0 && awayGoals > 0 ? 'GG' : 'NG';
+    won = match.btts === outcome;
+  }
+
+  return won ? 'WIN' : 'LOSS';
+}
+
+function getMarketWeekGroups(matches, market) {
+  const weeks = new Map();
+  for (const match of matches) {
+    const prediction = getMarketPrediction(match, market);
+    if (!prediction) continue;
+    const week = String(match.week || 'Week unavailable');
+    if (!weeks.has(week)) weeks.set(week, []);
+    weeks.get(week).push({ match, prediction });
+  }
+  return [...weeks].map(([week, rows]) => ({ week, rows }));
+}
+
 function Jersey({ variant }) {
   return <svg className={`vf-jersey vf-jersey-${variant}`} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
     <path d="m21 8-13 7 6 13 7-3v29h22V25l7 3 6-13-13-7-5 7h-12l-5-7Z" />
@@ -158,7 +192,8 @@ export default function VirtualFootballPage({ showResults = false }) {
   const reportedCount = matches.filter(match => match.status === 'REPORTED').length;
   const upcomingCount = matches.filter(match => match.status === 'UPCOMING').length;
   const visibleMatches = showResults
-    ? matches.filter(match => match.status === 'REPORTED')
+    ? matches.filter(match => match.status === 'REPORTED'
+      && predictionMarkets.some(market => getMarketPrediction(match, market.id)))
     : matches.filter(match => match.status !== 'REPORTED' && getMarketPrediction(match, activeMarket));
 
   return <main className="page-wrap resource-page vf-page">
@@ -258,7 +293,38 @@ export default function VirtualFootballPage({ showResults = false }) {
               : activeMarket === 'over'
                 ? 'No Over/Under 1.5 picks or GG predictions are currently available in the feed.'
                 : 'No published virtual fixtures currently include a prediction for this market.'}</p></div>
-          : <div className="vf-match-grid">{visibleMatches.map(match => <MatchCard key={match.id} match={match} market={showResults ? null : activeMarket} />)}</div>}
+          : showResults
+            ? <div className="vf-results-markets">
+              {predictionMarkets.map(market => {
+                const weekGroups = getMarketWeekGroups(visibleMatches, market.id);
+                const count = weekGroups.reduce((total, group) => total + group.rows.length, 0);
+                return <section className="vf-results-market" key={market.id} aria-labelledby={`vf-results-${market.id}`}>
+                  <div className="vf-results-market-heading">
+                    <h3 id={`vf-results-${market.id}`}>{market.label}</h3>
+                    <span>{count} {count === 1 ? 'prediction' : 'predictions'}</span>
+                  </div>
+                  <div className="vf-results-table-scroll">
+                    <table className="vf-results-table">
+                      <thead><tr><th scope="col">Fixture</th><th scope="col">Prediction</th><th scope="col">Score</th><th scope="col">Result</th></tr></thead>
+                      {weekGroups.map(group => <tbody key={group.week}>
+                        <tr className="vf-results-week"><th scope="rowgroup" colSpan="4">{group.week}</th></tr>
+                        {group.rows.map(({ match, prediction }) => {
+                          const settlement = getMarketSettlement(match, market.id);
+                          return <tr key={match.id}>
+                            <td><strong>{match.home} vs {match.away}</strong><small>{formatTime(match.createdAt)}</small></td>
+                            <td>{prediction.value}</td>
+                            <td className="vf-results-score">{match.score || '—'}</td>
+                            <td><span className={`vf-results-outcome vf-results-outcome-${settlement.toLowerCase().replace(' ', '-')}`}>{settlement}</span></td>
+                          </tr>;
+                        })}
+                      </tbody>)}
+                      {!weekGroups.length && <tbody><tr><td colSpan="4" className="vf-results-no-picks">No reported predictions for this market.</td></tr></tbody>}
+                    </table>
+                  </div>
+                </section>;
+              })}
+            </div>
+            : <div className="vf-match-grid">{visibleMatches.map(match => <MatchCard key={match.id} match={match} market={activeMarket} />)}</div>}
       </section>
 
       <p className="vf-responsible-note">Predictions are uncertain and are shown for information only. Review results carefully and bet responsibly.</p>

@@ -27,4 +27,8 @@ The web receiver validates and stores the optional market but does not calculate
 predictions.
 
 `/virtual-football.html` shows available upcoming predictions grouped by Win,
-Over 1.5, NG, and GG. `/virtual-results.html` lists reported fixtures only.
+Over 1.5, NG, and GG. `/virtual-results.html` shows separate tables for those
+markets, grouped by each fixture's supplied week label. Each table grades the
+saved pick against the reported score; matches without a usable score are
+marked `NO SCORE`. Over 1.5 is graded from the explicit goals pick, or from the
+existing GG-derived Over pick when the goals pick is absent.
