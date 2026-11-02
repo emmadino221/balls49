@@ -1,7 +1,7 @@
 .site .history-dashboard {
-  --history-win: #16835d;
+  --history-win: var(--success);
   --history-win-soft: color-mix(in srgb, var(--history-win) 13%, var(--surface));
-  --history-loss: #bd4d47;
+  --history-loss: var(--error);
   --history-loss-soft: color-mix(in srgb, var(--history-loss) 11%, var(--surface));
   --history-shadow: 0 18px 48px rgba(8, 24, 17, .08);
   padding-bottom: 48px;
@@ -269,11 +269,11 @@
 }
 
 .site .history-dashboard .history-outcome-track span:first-child {
-  background: linear-gradient(90deg, #11744f, #3cc181);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--success) 75%, #064b35), var(--success));
 }
 
 .site .history-dashboard .history-outcome-track span:last-child {
-  background: linear-gradient(90deg, #a83d39, #e8796d);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--error) 76%, #601f29), var(--error));
 }
 
 .site .history-dashboard .history-record-counts {

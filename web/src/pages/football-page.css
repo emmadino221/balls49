@@ -141,7 +141,7 @@
 .real-football-page .rf-stage-meta strong { display: block; color: var(--text-secondary); font-size: 10px; line-height: 1.45; }
 .real-football-page .football-market-tabs { margin: 0 -2px; padding: 4px 2px 11px; }
 .real-football-page .football-market-tabs button { min-height: 38px; padding: 8px 13px; border-radius: 100px; color: var(--text-secondary); background: var(--surface-soft); font-size: 10px; font-weight: 700; }
-.real-football-page .football-market-tabs button[aria-pressed="true"] { border-color: var(--green); color: #fff; background: var(--green); }
+.real-football-page .football-market-tabs button[aria-pressed="true"] { border-color: var(--green-bright); color: #052e25; background: var(--green-bright); }
 
 .real-football-page .football-pitch {
   min-height: 310px;

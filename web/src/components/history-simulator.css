@@ -19,7 +19,7 @@
 .simulator-net { display: grid; gap: 7px; min-width: 0; }
 .simulator-net span { font-size: 12px; color: var(--muted); }
 .simulator-net strong { font-size: clamp(22px, 3vw, 34px); color: var(--green); overflow-wrap: anywhere; }
-.simulator-net.negative strong { color: #d24e48; }
+.simulator-net.negative strong { color: var(--error); }
 .simulator-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 16px 0; }
 .simulator-metrics article { min-width: 0; display: grid; gap: 10px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; }
 .simulator-metrics span { font-size: 12px; color: var(--muted); }
