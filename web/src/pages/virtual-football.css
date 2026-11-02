@@ -231,6 +231,17 @@
 .vf-fixtures { scroll-margin-top: 94px; margin-top: 42px; }
 .vf-fixtures-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 17px; }
 .vf-fixture-count { padding: 7px 10px; border: 1px solid var(--line); border-radius: 100px; color: var(--muted); background: var(--surface); font-size: 10px; font-weight: 700; }
+.vf-market-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 14px; }
+.vf-market-tab { display: flex; min-width: 0; min-height: 58px; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--text-secondary); background: var(--surface); cursor: pointer; text-align: left; transition: border-color .18s ease, color .18s ease, background .18s ease, transform .18s ease; }
+.vf-market-tab:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--green) 42%, var(--line)); }
+.vf-market-tab > span { display: grid; min-width: 0; gap: 3px; }
+.vf-market-tab strong { color: var(--ink); font-size: 12px; }
+.vf-market-tab small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.vf-market-tab b { display: grid; min-width: 25px; height: 25px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: var(--muted); background: var(--surface-soft); font-size: 10px; }
+.vf-market-tab.is-active { border-color: color-mix(in srgb, var(--green-bright) 40%, var(--line)); background: color-mix(in srgb, var(--green-soft) 55%, var(--surface)); box-shadow: inset 3px 0 var(--green-bright); }
+.vf-market-tab.is-active strong,
+.vf-market-tab.is-active b { color: var(--green); }
+.vf-market-tab.is-active b { background: var(--surface); }
 .vf-match-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
 .vf-match-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 8px 24px rgba(15, 23, 42, .04); transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; animation: vf-card-in .4s ease both; }
 .vf-match-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--green) 35%, var(--line)); box-shadow: var(--shadow); }
@@ -287,7 +298,7 @@
 .vf-empty-state p { max-width: 330px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .vf-responsible-note { margin: 22px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; text-align: center; }
 
-.vf-page :is(a, summary):focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+.vf-page :is(a, button, summary):focus-visible { outline: 3px solid var(--green-bright); outline-offset: 3px; }
 
 @keyframes vf-spin { to { transform: rotate(360deg); } }
 @keyframes vf-card-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -334,6 +345,10 @@
   .vf-fixtures-heading { margin-bottom: 12px; }
   .vf-fixtures-heading h2 { font-size: 22px; }
   .vf-fixture-count { padding: 6px 8px; font-size: 9px; }
+  .vf-market-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .vf-market-tab { min-height: 54px; padding: 8px 9px; }
+  .vf-market-tab strong { font-size: 11px; }
+  .vf-market-tab small { font-size: 8px; }
   .vf-match-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .vf-match-card { padding: 15px; border-radius: 15px; }
   .vf-matchup { min-height: 132px; }
@@ -342,7 +357,7 @@
 }
 
 @media (max-width: 359px) {
-  .vf-page { width: calc(100% - 22px); }
+  .vf-page { width: calc(100% - 32px); }
   .vf-hero { padding-inline: 17px; }
   .vf-eyebrow { font-size: 9px; }
   .vf-overview-stats { gap: 5px; }

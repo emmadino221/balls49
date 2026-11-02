@@ -10,6 +10,7 @@ export const primaryNavigation = [
 ];
 
 export const moreNavigation = [
+  { path: 'virtual-results.html', page: 'virtual-results', label: 'Virtual Football results' },
   { path: 'free-trial.html', page: 'free-trial', label: '49ja free trial' },
   { path: 'pricing.html', page: 'pricing', label: 'Pricing' },
   { path: 'guide.html', page: 'guide', label: 'Prediction guide' },
@@ -43,6 +44,7 @@ const pageTitles = {
   terms: 'Terms of Service',
   'verify-email': 'Verify email',
   'virtual-football': 'Virtual Football',
+  'virtual-results': 'Virtual Football Results',
   videos: 'Video Library',
 };
 

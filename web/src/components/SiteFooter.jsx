@@ -15,6 +15,7 @@ export default function SiteFooter({ session, onSignOut }) {
         <a href="pricing.html">Pricing</a>
         <a href="predictions.html">49ja predictions</a>
         <a href="virtual-football.html">Virtual Football</a>
+        <a href="virtual-results.html">Virtual Football results</a>
         <a href="football.html">Football</a>
         <a href="history.html">Prediction history</a>
         <a href="predictions.html#analysis">Prediction analysis</a>

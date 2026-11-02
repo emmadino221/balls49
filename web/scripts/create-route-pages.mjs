@@ -7,7 +7,7 @@ const indexFile = path.join(outputDirectory, 'index.html');
 const pageFiles = [
   'privacy.html',
   'terms.html',
-  'automation.html', 'football.html', 'virtual-football.html',
+  'automation.html', 'football.html', 'virtual-football.html', 'virtual-results.html',
   'account.html',
   'analysis.html',
   'about.html',

@@ -29,6 +29,7 @@ export function getPageName() {
   if (route === 'automation.html') return 'automation';
   if (route === 'football.html') return 'football';
   if (route === 'virtual-football.html') return 'virtual-football';
+  if (route === 'virtual-results.html') return 'virtual-results';
   if (route === 'about.html') return 'about';
   if (route === 'pricing.html') return 'pricing';
   if (route === 'testimonials.html' || route === 'suggestions.html') return 'suggestions';
@@ -53,6 +54,7 @@ export function PageRenderer({ page }) {
   if (page === 'automation') return <AutomationPage />;
   if (page === 'football') return <FootballPage />;
   if (page === 'virtual-football') return <VirtualFootballPage />;
+  if (page === 'virtual-results') return <VirtualFootballPage showResults />;
   if (page === 'analysis') return <AnalysisPage />;
   if (page === 'account') return <AccountPage />;
   if (page === 'about') return <AboutPage />;

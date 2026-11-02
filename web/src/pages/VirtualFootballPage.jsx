@@ -17,6 +17,32 @@ function getPickLabel(pick, match) {
   return 'Not available';
 }
 
+const predictionMarkets = [
+  { id: 'win', label: 'Win', description: 'Home, draw, or away' },
+  { id: 'over', label: 'Over 1.5', description: 'Total goals' },
+  { id: 'ng', label: 'NG', description: 'BTTS: No' },
+  { id: 'gg', label: 'GG', description: 'BTTS: Yes' },
+];
+
+function getMarketPrediction(match, market) {
+  if (market === 'win' && match.pick) {
+    return { label: 'Match winner', value: getPickLabel(match.pick, match) };
+  }
+  if (market === 'over' && (match.goals15 === 'OVER' || match.goals15 === 'UNDER')) {
+    return { label: 'Total goals · 1.5 line', value: match.goals15 === 'OVER' ? 'Over 1.5 goals' : 'Under 1.5 goals' };
+  }
+  if (market === 'over' && match.goals15 == null && match.btts === 'GG') {
+    return { label: 'Derived from both teams to score', value: 'Over 1.5 goals · GG signal' };
+  }
+  if (market === 'ng' && match.btts === 'NG') {
+    return { label: 'Both teams to score', value: 'No · NG' };
+  }
+  if (market === 'gg' && match.btts === 'GG') {
+    return { label: 'Both teams to score', value: 'Yes · GG' };
+  }
+  return null;
+}
+
 function Jersey({ variant }) {
   return <svg className={`vf-jersey vf-jersey-${variant}`} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
     <path d="m21 8-13 7 6 13 7-3v29h22V25l7 3 6-13-13-7-5 7h-12l-5-7Z" />
@@ -25,12 +51,13 @@ function Jersey({ variant }) {
   </svg>;
 }
 
-function MatchCard({ match }) {
+function MatchCard({ match, market }) {
   const confidence = Number.isFinite(match.confidence) ? match.confidence : null;
   const statusLabel = match.status === 'REPORTED'
     ? 'Result reported'
     : match.status === 'EXPIRED' ? 'Past fixture' : 'Upcoming';
   const pickLabel = getPickLabel(match.pick, match);
+  const marketPrediction = market ? getMarketPrediction(match, market) : null;
 
   return <article className="vf-match-card">
     <div className="vf-match-card-topline">
@@ -60,8 +87,8 @@ function MatchCard({ match }) {
     </div>
 
     <div className="vf-pick-highlight">
-      <span className="vf-pick-icon" aria-hidden="true">↗</span>
-      <span><small>1X2 prediction</small><strong>{pickLabel}</strong></span>
+      <span className="vf-pick-icon" aria-hidden="true">{market === 'over' ? '1.5' : market === 'gg' || market === 'ng' ? 'BT' : '↗'}</span>
+      <span><small>{marketPrediction?.label || '1X2 prediction'}</small><strong>{marketPrediction?.value || pickLabel}</strong></span>
     </div>
 
     <details className="vf-match-details">
@@ -70,6 +97,16 @@ function MatchCard({ match }) {
         <div className="vf-detail-item">
           <span>Match outcome</span>
           <strong>{pickLabel}</strong>
+        </div>
+        <div className="vf-detail-item">
+          <span>Total goals · 1.5 line</span>
+          <strong>{match.goals15 === 'OVER'
+            ? 'Over 1.5'
+            : match.goals15 === 'UNDER'
+              ? 'Under 1.5'
+              : match.goals15 == null && match.btts === 'GG'
+                ? 'Over 1.5 · derived from GG'
+                : 'Not provided by feed'}</strong>
         </div>
         <div className="vf-detail-item">
           <span>Both teams to score</span>
@@ -87,9 +124,10 @@ function MatchCard({ match }) {
   </article>;
 }
 
-export default function VirtualFootballPage() {
+export default function VirtualFootballPage({ showResults = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [activeMarket, setActiveMarket] = useState('win');
 
   useEffect(() => {
     let active = true;
@@ -117,14 +155,21 @@ export default function VirtualFootballPage() {
   const matches = Array.isArray(data?.matches) ? data.matches : [];
   const reportedCount = matches.filter(match => match.status === 'REPORTED').length;
   const upcomingCount = matches.filter(match => match.status === 'UPCOMING').length;
+  const visibleMatches = showResults
+    ? matches.filter(match => match.status === 'REPORTED')
+    : matches.filter(match => match.status !== 'REPORTED' && getMarketPrediction(match, activeMarket));
 
   return <main className="page-wrap resource-page vf-page">
     <section className="vf-hero">
       <div className="vf-hero-copy">
-        <span className="vf-eyebrow"><i aria-hidden="true" /> Virtual football · Match center</span>
-        <h1>Every match.<br /><span>One clear view.</span></h1>
-        <p>Explore the latest virtual fixtures, model picks, and reported scores from your prediction feed.</p>
-        <a className="vf-hero-link" href="#virtual-matches">Explore match feed <span aria-hidden="true">↓</span></a>
+        <span className="vf-eyebrow"><i aria-hidden="true" /> Virtual football · {showResults ? 'Results archive' : 'Match center'}</span>
+        <h1>{showResults ? <>Virtual results.<br /><span>Reported scores.</span></> : <>Every match.<br /><span>One clear view.</span></>}</h1>
+        <p>{showResults
+          ? 'Review completed virtual fixtures and the scores reported by the match feed.'
+          : 'Explore virtual fixtures and the available Win, Over 1.5, NG, and GG picks from your prediction feed.'}</p>
+        <a className="vf-hero-link" href={showResults ? 'virtual-football.html' : 'virtual-results.html'}>
+          {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">{showResults ? '→' : '↓'}</span>
+        </a>
       </div>
       <div className="vf-hero-art" aria-hidden="true">
         <div className="vf-art-pitch"><span /><i /><b /></div>
@@ -157,7 +202,7 @@ export default function VirtualFootballPage() {
         <span className="vf-refresh-note"><i aria-hidden="true" /> Auto-refresh · 30 sec</span>
       </section>
 
-      <section className="vf-overview" aria-label="Feed overview">
+      {!showResults && <section className="vf-overview" aria-label="Feed overview">
         <div className="vf-overview-heading">
           <span className="vf-section-eyebrow">YOUR MATCH CENTER</span>
           <h2>Feed overview</h2>
@@ -179,20 +224,39 @@ export default function VirtualFootballPage() {
             <strong>{upcomingCount}</strong>
           </article>
         </div>
-      </section>
+      </section>}
 
       <section className="vf-fixtures" id="virtual-matches">
         <div className="vf-fixtures-heading">
           <div>
-            <span className="vf-section-eyebrow">LATEST FROM THE FEED</span>
-            <h2>Match predictions</h2>
-            <p>Team labels and match details come from the feed; jersey colors are decorative.</p>
+            <span className="vf-section-eyebrow">{showResults ? 'COMPLETED FIXTURES' : 'LATEST FROM THE FEED'}</span>
+            <h2>{showResults ? 'Reported results' : 'Match predictions'}</h2>
+            <p>{showResults
+              ? 'Scores are shown only after the feed reports a result.'
+              : activeMarket === 'over'
+                ? 'Feed Over/Under 1.5 picks take precedence; when unavailable, GG implies Over 1.5.'
+                : 'Team labels and predictions come from the feed; jersey colors are decorative.'}</p>
           </div>
-          <span className="vf-fixture-count">{matches.length} {matches.length === 1 ? 'match' : 'matches'}</span>
+          <span className="vf-fixture-count">{visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'}</span>
         </div>
-        {matches.length === 0
-          ? <div className="vf-empty-state"><span aria-hidden="true">⚽</span><h3>No matches yet</h3><p>No virtual matches have been published. Check back soon for updates.</p></div>
-          : <div className="vf-match-grid">{matches.map(match => <MatchCard key={match.id} match={match} />)}</div>}
+        {!showResults && <div className="vf-market-tabs" role="group" aria-label="Filter virtual predictions by market">
+          {predictionMarkets.map(item => {
+            const count = matches.filter(match => match.status !== 'REPORTED' && getMarketPrediction(match, item.id)).length;
+            return <button key={item.id} type="button" className={`vf-market-tab${activeMarket === item.id ? ' is-active' : ''}`}
+              aria-pressed={activeMarket === item.id} onClick={() => setActiveMarket(item.id)}>
+              <span><strong>{item.label}</strong><small>{item.description}</small></span><b>{count}</b>
+            </button>;
+          })}
+        </div>}
+        {visibleMatches.length === 0
+          ? <div className="vf-empty-state"><span aria-hidden="true">{showResults ? '✓' : activeMarket === 'over' ? '1.5' : '⚽'}</span>
+            <h3>{showResults ? 'No reported results yet' : activeMarket === 'over' ? 'Over 1.5 picks not available' : 'No picks available for this market'}</h3>
+            <p>{showResults
+              ? 'No virtual match scores have been reported by the feed yet.'
+              : activeMarket === 'over'
+                ? 'No Over/Under 1.5 picks or GG predictions are currently available in the feed.'
+                : 'No published virtual fixtures currently include a prediction for this market.'}</p></div>
+          : <div className="vf-match-grid">{visibleMatches.map(match => <MatchCard key={match.id} match={match} market={showResults ? null : activeMarket} />)}</div>}
       </section>
 
       <p className="vf-responsible-note">Predictions are uncertain and are shown for information only. Review results carefully and bet responsibly.</p>

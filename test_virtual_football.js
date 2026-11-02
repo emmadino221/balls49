@@ -31,7 +31,7 @@ test('virtual feed authenticates snapshots and keeps published picks immutable',
         sourceAt: createdAt,
         matches: [{
             id: 1, home: 'Home', away: 'Away', week: 'Week 1', createdAt,
-            pick: 'HOME', btts: 'GG', confidence: 70, status: 'UPCOMING', score: null
+            pick: 'HOME', goals15: 'OVER', btts: 'GG', confidence: 70, status: 'UPCOMING', score: null
         }]
     };
     const sign = (timestamp, body) => crypto.createHmac('sha256', secret)
@@ -48,11 +48,22 @@ test('virtual feed authenticates snapshots and keeps published picks immutable',
     }), { ok: true, received: 1 });
 
     const nextTimestamp = String(Number(firstTimestamp) + 1);
+    const invalidSnapshot = {
+        ...firstSnapshot,
+        sourceAt: createdAt + 1,
+        matches: [{ ...firstSnapshot.matches[0], goals15: 'OVER_2_5' }]
+    };
+    const invalidBody = JSON.stringify(invalidSnapshot);
+    assert.throws(() => virtualFootball.ingest(invalidBody, {
+        'x-virtual-timestamp': nextTimestamp,
+        'x-virtual-signature': sign(nextTimestamp, invalidBody)
+    }), { status: 400 });
+
     const updatedSnapshot = {
         ...firstSnapshot,
         sourceAt: createdAt + 1,
         matches: [{
-            ...firstSnapshot.matches[0], pick: 'AWAY', btts: 'NG',
+            ...firstSnapshot.matches[0], pick: 'AWAY', goals15: 'UNDER', btts: 'NG',
             status: 'REPORTED', score: '1 - 0'
         }]
     };
@@ -67,5 +78,6 @@ test('virtual feed authenticates snapshots and keeps published picks immutable',
     assert.equal(view.matches[0].status, 'REPORTED');
     assert.equal(view.matches[0].score, '1-0');
     assert.equal(view.matches[0].pick, 'HOME');
+    assert.equal(view.matches[0].goals15, 'OVER');
     assert.equal(view.matches[0].btts, 'GG');
 });

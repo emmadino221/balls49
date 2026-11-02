@@ -24,10 +24,11 @@ function createVirtualFootball(db) {
             for (const key of ['home', 'away', 'week']) if (typeof m[key] !== 'string' || !m[key].trim() || m[key].length > 100) throw error('Invalid match label.');
             if (!Number.isSafeInteger(m.createdAt) || m.createdAt < 0 || m.createdAt > Date.now() + 60000) throw error('Invalid match time.');
             if (!['HOME', 'DRAW', 'AWAY', null].includes(m.pick) || !['GG', 'NG', null].includes(m.btts)) throw error('Invalid pick.');
+            if (m.goals15 !== undefined && !['OVER', 'UNDER', null].includes(m.goals15)) throw error('Invalid Over/Under 1.5 pick.');
             if (!['UPCOMING', 'REPORTED'].includes(m.status)) throw error('Invalid status.');
             const score = typeof m.score === 'string' && /^\d{1,2}\s*-\s*\d{1,2}$/.test(m.score) ? m.score.replace(/\s/g, '') : null;
             const confidence = typeof m.confidence === 'number' && Number.isFinite(m.confidence) && m.confidence >= 0 && m.confidence <= 100 ? m.confidence : null;
-            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, btts: m.btts, confidence, status: m.status, score: m.status === 'REPORTED' ? score : null };
+            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, status: m.status, score: m.status === 'REPORTED' ? score : null };
         });
         db.exec('BEGIN IMMEDIATE');
         try {
