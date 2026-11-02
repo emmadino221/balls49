@@ -9,7 +9,7 @@ export default function SiteFooter({ session, onSignOut }) {
         </a>
         <p>Clearer information for a more considered betting workflow.</p>
       </div>
-      <div className="footer-col">
+      <div className="footer-col footer-col-explore">
         <h2>Explore</h2>
         <a href="about.html">About</a>
         <a href="pricing.html">Pricing</a>
@@ -24,7 +24,7 @@ export default function SiteFooter({ session, onSignOut }) {
         <a href="suggestions.html">Strategy suggestions</a>
         <a href="videos.html">Video library</a>
       </div>
-      <div className="footer-col">
+      <div className="footer-col footer-col-start">
         <h2>Get started</h2>
         <a href="account.html">My account</a>
         <a href="free-trial.html">Free trial</a>

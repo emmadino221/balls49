@@ -24,6 +24,8 @@ const predictionMarkets = [
   { id: 'gg', label: 'GG', description: 'BTTS: Yes' },
 ];
 
+const FEED_REFRESH_INTERVAL_MS = 10000;
+
 function getMarketPrediction(match, market) {
   if (market === 'win' && match.pick) {
     return { label: 'Match winner', value: getPickLabel(match.pick, match) };
@@ -142,7 +144,7 @@ export default function VirtualFootballPage({ showResults = false }) {
       } catch (requestError) {
         if (active) setError(requestError.message);
       } finally {
-        if (active) timer = setTimeout(load, 30000);
+        if (active) timer = setTimeout(load, FEED_REFRESH_INTERVAL_MS);
       }
     }
     load();
@@ -199,7 +201,7 @@ export default function VirtualFootballPage({ showResults = false }) {
             {data.sourceAt && ` · Source updated ${formatTime(data.sourceAt)}`}
           </p>
         </div>
-        <span className="vf-refresh-note"><i aria-hidden="true" /> Auto-refresh · 30 sec</span>
+        <span className="vf-refresh-note"><i aria-hidden="true" /> Auto-refresh · 10 sec</span>
       </section>
 
       {!showResults && <section className="vf-overview" aria-label="Feed overview">

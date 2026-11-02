@@ -22,7 +22,7 @@
   background:
     radial-gradient(ellipse at 2% 2%, color-mix(in srgb, var(--green-bright) 21%, transparent), transparent 49%),
     radial-gradient(ellipse at 100% 96%, rgba(35, 122, 76, .17), transparent 39%),
-    linear-gradient(125deg, #142238, #0b1422 72%);
+    linear-gradient(125deg, #14251b, #0b1711 72%);
   box-shadow: var(--home-panel-shadow);
 }
 
@@ -134,7 +134,7 @@
   border-radius: 18px;
   background:
     radial-gradient(ellipse at 50% 35%, rgba(55, 116, 67, .2), transparent 48%),
-    linear-gradient(145deg, rgba(11, 25, 41, .72), rgba(14, 29, 46, .92));
+    linear-gradient(145deg, rgba(11, 25, 17, .72), rgba(14, 30, 20, .92));
   box-shadow: inset 0 1px rgba(255, 255, 255, .045);
   text-align: center;
 }

@@ -4,13 +4,13 @@ export const primaryNavigation = [
   { path: 'football.html', page: 'football', label: 'Real Football', icon: 'football' },
   { path: 'predictions.html', page: 'predictions', label: '49ja Casino', icon: 'casino' },
   { path: 'history.html', page: 'history', label: 'Prediction History', icon: 'history' },
+  { path: 'virtual-results.html', page: 'virtual-results', label: 'Virtual Results', icon: 'history' },
   { path: 'predictions.html#analysis', page: 'predictions', hash: 'analysis', label: 'Performance Analytics', icon: 'analytics' },
   { path: 'account.html', page: 'account', label: 'Account', icon: 'account' },
   { path: 'automation.html', page: 'automation', label: 'Automation & Settings', icon: 'settings' },
 ];
 
 export const moreNavigation = [
-  { path: 'virtual-results.html', page: 'virtual-results', label: 'Virtual Football results' },
   { path: 'free-trial.html', page: 'free-trial', label: '49ja free trial' },
   { path: 'pricing.html', page: 'pricing', label: 'Pricing' },
   { path: 'guide.html', page: 'guide', label: 'Prediction guide' },

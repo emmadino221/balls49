@@ -25,11 +25,11 @@ export default function Sidebar({ page, collapsed, onToggle }) {
     </div>
     <p className="app-sidebar-section-label">Workspace</p>
     <nav className="app-sidebar-nav" aria-label="Main navigation">
-      {primaryNavigation.slice(0, 6).map(item => <NavigationLink key={item.path} item={item} page={page} collapsed={collapsed} />)}
+      {primaryNavigation.slice(0, 7).map(item => <NavigationLink key={item.path} item={item} page={page} collapsed={collapsed} />)}
     </nav>
     <p className="app-sidebar-section-label app-sidebar-account-label">Account</p>
     <nav className="app-sidebar-nav" aria-label="Account and settings">
-      {primaryNavigation.slice(6).map(item => <NavigationLink key={item.path} item={item} page={page} collapsed={collapsed} />)}
+      {primaryNavigation.slice(7).map(item => <NavigationLink key={item.path} item={item} page={page} collapsed={collapsed} />)}
     </nav>
     <div className="app-sidebar-bottom">
       <span className="app-sidebar-version">Emmy-Bet Pro</span>

@@ -269,6 +269,7 @@
 
 .app-main-content { min-width: 0; }
 .site .app-site-footer {
+  padding: 24px clamp(16px, 3vw, 32px) 12px;
   color: var(--text-secondary);
   background: var(--surface-soft);
 }
@@ -287,9 +288,19 @@
   color: var(--text-secondary);
   background: var(--surface-soft);
 }
-.app-site-footer .footer-inner { gap: clamp(24px, 4vw, 55px); }
+.app-site-footer .footer-inner {
+  grid-template-columns: minmax(160px, .8fr) minmax(0, 2fr) minmax(0, 1.2fr);
+  gap: clamp(18px, 3vw, 34px);
+  padding-bottom: 16px;
+}
+.app-site-footer .footer-brand-block p { margin-top: 8px; font-size: 11px; }
+.app-site-footer .footer-col { gap: 7px 16px; }
+.app-site-footer .footer-col h2 { grid-column: 1 / -1; margin: 0 0 2px; }
+.app-site-footer .footer-col-explore,
+.app-site-footer .footer-col-start { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
 .app-site-footer .footer-col a,
-.app-site-footer .footer-col .footer-logout { min-height: 24px; }
+.app-site-footer .footer-col .footer-logout { min-height: 20px; font-size: 11px; }
+.app-site-footer .footer-bottom { padding-top: 11px; }
 
 .app-mobile-bottom-nav,
 .app-mobile-more,
@@ -336,8 +347,14 @@
   .app-header-trial { display: none; }
   .app-header-more { display: inline-flex; }
   .app-main-content { padding-bottom: 20px; }
-  .site .app-site-footer { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-  .app-site-footer .footer-inner { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .site .app-site-footer { padding: 20px 16px calc(84px + env(safe-area-inset-bottom)); }
+  .app-site-footer .footer-inner { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; }
+  .app-site-footer .footer-brand-block { grid-column: 1 / -1; }
+  .app-site-footer .footer-brand-block p { max-width: 260px; margin-top: 6px; }
+  .app-site-footer .footer-col { gap: 6px 10px; }
+  .app-site-footer .footer-col-explore,
+  .app-site-footer .footer-col-start { grid-template-columns: minmax(0, 1fr); }
+  .app-site-footer .footer-col h2 { margin-bottom: 4px; }
   .app-site-footer .footer-bottom { align-items: flex-start; flex-direction: column; }
   .app-mobile-bottom-nav {
     position: fixed;
