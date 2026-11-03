@@ -10,14 +10,16 @@ const gameOptions = [
   ['unified', 'Unified'],
 ];
 const pricePerGame = 18000;
-const weeklyPremiumPrice = 30000;
+const weeklyPricePerGame = 5000;
 const naira = amount => `₦${amount.toLocaleString('en-NG')}`;
 
 export default function PricingPage() {
   const [selectedGames, setSelectedGames] = useState(['betzero']);
+  const [selectedWeeklyGames, setSelectedWeeklyGames] = useState(['betzero']);
   const premiumTotal = useMemo(() => selectedGames.length * pricePerGame, [selectedGames]);
-  function toggleGame(id) {
-    setSelectedGames(current => current.includes(id) ? current.filter(game => game !== id) : [...current, id]);
+  const weeklyTotal = useMemo(() => selectedWeeklyGames.length * weeklyPricePerGame, [selectedWeeklyGames]);
+  function toggleGame(setGames, id) {
+    setGames(current => current.includes(id) ? current.filter(game => game !== id) : [...current, id]);
   }
 
   return (
@@ -43,17 +45,21 @@ export default function PricingPage() {
           <p className="plan-card-summary">Choose monthly markets. Your total updates below. Need every market for one week? See Weekly Premium.</p>
           <fieldset className="pricing-game-picker">
             <legend>Select Premium games</legend>
-            {gameOptions.map(([id, label]) => <label key={id}><input type="checkbox" checked={selectedGames.includes(id)} onChange={() => toggleGame(id)} /><span>{label}</span><small>{naira(pricePerGame)}</small></label>)}
+            {gameOptions.map(([id, label]) => <label key={id}><input type="checkbox" checked={selectedGames.includes(id)} onChange={() => toggleGame(setSelectedGames, id)} /><span>{label}</span><small>{naira(pricePerGame)}</small></label>)}
           </fieldset>
           <div className="pricing-total"><span>{selectedGames.length} {selectedGames.length === 1 ? 'game' : 'games'} / 30 days</span><strong>{naira(premiumTotal)}</strong></div>
           <a className="btn btn-secondary" href="signup.html">Create account to request Premium</a>
         </article>
 
         <article className="price-card">
-          <div className="section-kicker">PREMIUM · WEEKLY ALL ACCESS</div>
-          <div className="price">{naira(weeklyPremiumPrice)}<small>/ 7 days</small></div>
-          <p className="plan-card-summary">A one-week pass to every prediction market.</p>
-          <ul><li>All eight prediction markets included</li><li>Access lasts 7 days from approval</li><li>Request weekly access from the owner</li></ul>
+          <div className="section-kicker">PREMIUM · WEEKLY</div>
+          <div className="price">{naira(weeklyPricePerGame)}<small>/ selected game / 7 days</small></div>
+          <p className="plan-card-summary">Choose the prediction markets you want for one week.</p>
+          <fieldset className="pricing-game-picker">
+            <legend>Select weekly Premium games</legend>
+            {gameOptions.map(([id, label]) => <label key={id}><input type="checkbox" checked={selectedWeeklyGames.includes(id)} onChange={() => toggleGame(setSelectedWeeklyGames, id)} /><span>{label}</span><small>{naira(weeklyPricePerGame)}</small></label>)}
+          </fieldset>
+          <div className="pricing-total"><span>{selectedWeeklyGames.length} {selectedWeeklyGames.length === 1 ? 'game' : 'games'} / 7 days</span><strong>{naira(weeklyTotal)}</strong></div>
           <a className="btn btn-secondary" href="signup.html">Create account to request weekly access</a>
         </article>
 
@@ -73,7 +79,7 @@ export default function PricingPage() {
         </article>
       </section>
 
-      <aside className="pricing-approval-note"><strong>Manual plan approval</strong><span>Create an account, then contact the owner to arrange payment and approval. Monthly plans last 30 days; Weekly Premium lasts 7 days and includes all markets. Elite + Extension is monthly-only. Payment processing and automatic Telegram invites are not connected yet.</span></aside>
+      <aside className="pricing-approval-note"><strong>Manual plan approval</strong><span>Create an account, then contact the owner to arrange payment and approval. Monthly plans last 30 days. Weekly Premium is ₦5,000 per selected game for 7 days. Elite + Extension is monthly-only. Payment processing and automatic Telegram invites are not connected yet.</span></aside>
       <p className="pricing-disclaimer">Prices are in Nigerian naira. Predictions are uncertain and do not guarantee results. Please bet responsibly.</p>
     </main>
   );

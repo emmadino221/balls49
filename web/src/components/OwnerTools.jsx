@@ -101,7 +101,7 @@ export default function OwnerTools({ onSession, games }) {
     ['security', 'Security', 'Authenticator and sessions'],
     ['videos', 'Videos', 'Manage your public library'],
   ];
-  const gamePicker = <fieldset className="premium-game-picker owner-game-grid"><legend>Select games</legend>{games.map(game => <label key={game.id}><input type="checkbox" checked={gamesSelected.includes(game.id)} onChange={() => setGamesSelected(current => current.includes(game.id) ? current.filter(id => id !== game.id) : [...current, game.id])} /><span>{game.name}</span></label>)}</fieldset>;
+  const gamePicker = (legend = 'Select games') => <fieldset className="premium-game-picker owner-game-grid"><legend>{legend}</legend>{games.map(game => <label key={game.id}><input type="checkbox" checked={gamesSelected.includes(game.id)} onChange={() => setGamesSelected(current => current.includes(game.id) ? current.filter(id => id !== game.id) : [...current, game.id])} /><span>{game.name}</span></label>)}</fieldset>;
   const visibleUsers = users.filter(user => user.email.toLowerCase().includes(search.trim().toLowerCase()));
   const date = value => value > Date.now() ? new Date(value).toLocaleDateString() : 'Not active';
   if (!unlocked) return <section className="content-card owner-tools owner-console owner-login">
@@ -136,11 +136,11 @@ export default function OwnerTools({ onSession, games }) {
             </select></label>
             {durationUnit==='month'&&<label>Months<select value={months} onChange={e=>setMonths(e.target.value)}>{Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1} {i===0?'month':'months'}</option>)}</select></label>}
             {access!=='extension'&&<label className="owner-full">Prediction plan<select value={tier} onChange={e=>{setTier(e.target.value);if(e.target.value!=='premium')setDurationUnit('month');}}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select></label>}
-            {access!=='extension'&&tier==='premium'&&durationUnit==='month'&&gamePicker}
-            {access!=='extension'&&tier==='premium'&&durationUnit==='week'&&<div className="owner-inline-note owner-full"><strong>Weekly Premium · NGN 30,000 / 7 days</strong><span>Includes all eight prediction markets. Confirm payment before approving.</span></div>}
+            {access!=='extension'&&tier==='premium'&&durationUnit==='month'&&gamePicker('Select monthly games')}
+            {access!=='extension'&&tier==='premium'&&durationUnit==='week'&&<>{gamePicker('Select weekly games · NGN 5,000 each')}<div className="owner-inline-note owner-full"><strong>Weekly Premium · NGN { (gamesSelected.length * 5000).toLocaleString('en-NG') } / 7 days</strong><span>{gamesSelected.length} selected {gamesSelected.length===1?'prediction':'predictions'} at NGN 5,000 each. Confirm payment before approving.</span></div></>}
             {access==='both'&&<div className="owner-inline-note owner-full"><strong>{tier==='elite'?'Elite + Extension · NGN 120,000 / 30 days':'Predictions + extension access'}</strong><span>{tier==='elite'?'Includes all prediction markets and extension access for 30 days.':'The listed all-access bundle is Elite plus extension for one month. Confirm the agreed access before approving.'}</span></div>}
             {access==='extension'&&<div className="owner-inline-note owner-full"><strong>Extension access · monthly only</strong><span>The published 30-day offer is Elite + Extension at NGN 120,000, including all prediction markets.</span></div>}
-            <div className="owner-form-footer owner-full"><span>Approval starts today.</span><button className="btn btn-primary" disabled={saving}>{saving?'Saving...':'Approve access'}</button></div>
+            <div className="owner-form-footer owner-full"><span>Approval starts today.</span><button className="btn btn-primary" disabled={saving||(access!=='extension'&&tier==='premium'&&!gamesSelected.length)}>{saving?'Saving...':'Approve access'}</button></div>
           </form>
           {issuedKey&&<div className="owner-issued-key auth-form"><label>Extension access key<input readOnly value={issuedKey} onFocus={e=>e.target.select()} /></label><small>Share privately with this user.</small><button type="button" className="btn btn-secondary" onClick={()=>setIssuedKey('')}>Hide key</button></div>}
         </section>
@@ -156,7 +156,7 @@ export default function OwnerTools({ onSession, games }) {
         <section id="owner-panel-predictions" hidden={section!=='predictions'} aria-label="Prediction controls">
           <div className="owner-section-title"><span className="overline">PREDICTION CONTROLS</span><h3>Preview the member experience</h3><p>View the feed with a selected plan. This applies only to your owner session.</p></div>
           <div className="owner-preview-actions">{[['trial','Free Trial'],['premium','Premium'],['elite','Elite']].map(([id,label])=><button key={id} className="btn btn-secondary" type="button" aria-pressed={activePreview===id} onClick={()=>preview(id)}>{label}</button>)}</div>
-          <details className="owner-preview-games"><summary>Choose games for Premium preview</summary><div className="auth-form">{gamePicker}</div><p>Choose games, then select Premium above to apply.</p></details>
+          <details className="owner-preview-games"><summary>Choose games for Premium preview</summary><div className="auth-form">{gamePicker('Select preview games')}</div><p>Choose games, then select Premium above to apply.</p></details>
           <div className="owner-reset-card"><span className="overline">STATISTICS</span><h3>Restart prediction streaks</h3><p>Resets tracking steps, maximum losses, and Summary ENTER/HOLD streaks for all games. History and extension martingale amounts stay saved. The website and Telegram synchronize on the next successful feed update.</p><button className="btn btn-secondary" type="button" onClick={resetMarketStats} disabled={resettingStats}>{resettingStats?'Restarting...':'Reset all prediction streaks'}</button></div>
         </section>
         <section id="owner-panel-security" hidden={section!=='security'} aria-label="Owner security"><OwnerSecurity /></section>

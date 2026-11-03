@@ -4248,9 +4248,8 @@ async function handleHttpRequest(req, res) {
             if (durationUnit === 'week' && (access !== 'predictions' || tier !== 'premium')) {
                 return sendJson(res, 400, { error: 'Weekly access is available only for Premium prediction access.' });
             }
-            const games = durationUnit === 'week'
-                ? [...siteMarkets]
-                : Array.isArray(data.games) ? [...new Set(data.games.filter(game => siteMarkets.includes(game)))] : [];
+            const games = Array.isArray(data.games)
+                ? [...new Set(data.games.filter(game => siteMarkets.includes(game)))] : [];
             if (!user) return sendJson(res, 404, { error: 'Create the user account before approving it.' });
             if (user.emailVerified !== true && data.identityConfirmed !== true) {
                 return sendJson(res, 400, { error: 'Confirm this person through a known contact method before approving the account.' });
@@ -4268,7 +4267,7 @@ async function handleHttpRequest(req, res) {
             if (access !== 'extension') {
                 user.plan = {
                     tier,
-                    games: tier === 'elite' || (tier === 'premium' && durationUnit === 'week') ? [...siteMarkets] : tier === 'premium' ? games : [],
+                    games: tier === 'elite' ? [...siteMarkets] : tier === 'premium' ? games : [],
                     expiresAt,
                     period: durationUnit,
                     telegram: tier === 'elite'
