@@ -4243,14 +4243,21 @@ async function handleHttpRequest(req, res) {
             const access = data.access || 'predictions';
             if (!['predictions', 'extension', 'both'].includes(access)) return sendJson(res, 400, { error: 'Choose an access type.' });
             const months = Math.max(1, Math.min(12, Number.parseInt(data.months, 10) || 1));
-            const games = Array.isArray(data.games) ? [...new Set(data.games.filter(game => siteMarkets.includes(game)))] : [];
+            const durationUnit = data.durationUnit === undefined ? 'month' : data.durationUnit;
+            if (!['week', 'month'].includes(durationUnit)) return sendJson(res, 400, { error: 'Choose a weekly or monthly duration.' });
+            if (durationUnit === 'week' && (access !== 'predictions' || tier !== 'premium')) {
+                return sendJson(res, 400, { error: 'Weekly access is available only for Premium prediction access.' });
+            }
+            const games = durationUnit === 'week'
+                ? [...siteMarkets]
+                : Array.isArray(data.games) ? [...new Set(data.games.filter(game => siteMarkets.includes(game)))] : [];
             if (!user) return sendJson(res, 404, { error: 'Create the user account before approving it.' });
             if (user.emailVerified !== true && data.identityConfirmed !== true) {
                 return sendJson(res, 400, { error: 'Confirm this person through a known contact method before approving the account.' });
             }
             if (access !== 'extension' && !['trial', 'premium', 'elite'].includes(tier)) return sendJson(res, 400, { error: 'Choose Trial, Premium, or Elite.' });
             if (access !== 'extension' && tier === 'premium' && !games.length) return sendJson(res, 400, { error: 'Select at least one Premium game.' });
-            const expiresAt = Date.now() + months * 30 * 86400000;
+            const expiresAt = Date.now() + (durationUnit === 'week' ? 7 : months * 30) * 86400000;
             let extensionKey;
             if (access !== 'predictions') {
                 try { extensionKey = (await automationBridge.subscription(email, expiresAt)).key; }
@@ -4259,7 +4266,13 @@ async function handleHttpRequest(req, res) {
             }
             user.emailVerified = true;
             if (access !== 'extension') {
-                user.plan = { tier, games: tier === 'elite' ? [...siteMarkets] : tier === 'premium' ? games : [], expiresAt, telegram: tier === 'elite' };
+                user.plan = {
+                    tier,
+                    games: tier === 'elite' || (tier === 'premium' && durationUnit === 'week') ? [...siteMarkets] : tier === 'premium' ? games : [],
+                    expiresAt,
+                    period: durationUnit,
+                    telegram: tier === 'elite'
+                };
                 user.expiresAt = expiresAt;
             }
             saveSiteUser(user);

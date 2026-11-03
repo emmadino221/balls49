@@ -9,7 +9,8 @@ const gameOptions = [
   ['hilo', 'High / Low'],
   ['unified', 'Unified'],
 ];
-const pricePerGame = 10000;
+const pricePerGame = 18000;
+const weeklyPremiumPrice = 30000;
 const naira = amount => `₦${amount.toLocaleString('en-NG')}`;
 
 export default function PricingPage() {
@@ -24,7 +25,7 @@ export default function PricingPage() {
       <section className="page-intro pricing-intro">
         <span className="overline">PLANS &amp; PRICING</span>
         <h1>Choose the access that fits you.</h1>
-        <p>Start with one free market, select Premium games individually, or get all eight predictions with Elite.</p>
+        <p>Start with one free market, choose Premium markets, or get all predictions with Elite.</p>
       </section>
 
       <section className="pricing-grid pricing-plan-grid" aria-label="Subscription plans">
@@ -38,35 +39,42 @@ export default function PricingPage() {
 
         <article className="price-card pricing-premium-card">
           <div className="section-kicker">PREMIUM</div>
-          <div className="price">{naira(pricePerGame)}<small>/ game / month</small></div>
-          <p className="plan-card-summary">Choose the markets you want. Your monthly total updates below.</p>
+          <div className="price">{naira(pricePerGame)}<small>/ game / 30 days</small></div>
+          <p className="plan-card-summary">Choose monthly markets. Your total updates below. Need every market for one week? See Weekly Premium.</p>
           <fieldset className="pricing-game-picker">
             <legend>Select Premium games</legend>
             {gameOptions.map(([id, label]) => <label key={id}><input type="checkbox" checked={selectedGames.includes(id)} onChange={() => toggleGame(id)} /><span>{label}</span><small>{naira(pricePerGame)}</small></label>)}
           </fieldset>
-          <div className="pricing-total"><span>{selectedGames.length} {selectedGames.length === 1 ? 'game' : 'games'} / month</span><strong>{naira(premiumTotal)}</strong></div>
+          <div className="pricing-total"><span>{selectedGames.length} {selectedGames.length === 1 ? 'game' : 'games'} / 30 days</span><strong>{naira(premiumTotal)}</strong></div>
           <a className="btn btn-secondary" href="signup.html">Create account to request Premium</a>
+        </article>
+
+        <article className="price-card">
+          <div className="section-kicker">PREMIUM · WEEKLY ALL ACCESS</div>
+          <div className="price">{naira(weeklyPremiumPrice)}<small>/ 7 days</small></div>
+          <p className="plan-card-summary">A one-week pass to every prediction market.</p>
+          <ul><li>All eight prediction markets included</li><li>Access lasts 7 days from approval</li><li>Request weekly access from the owner</li></ul>
+          <a className="btn btn-secondary" href="signup.html">Create account to request weekly access</a>
         </article>
 
         <article className="price-card pricing-elite-card">
           <div className="section-kicker">ELITE · ALL ACCESS</div>
-          <div className="price">{naira(40000)}<small>/ month</small></div>
-          <p className="plan-card-summary">The complete package for members who want every market.</p>
-          <ul><li>All eight prediction markets included</li><li>Predictions available as soon as they are generated</li><li>Elite Telegram access entitlement</li><li>Save {naira(40000)} vs. eight separate Premium games</li></ul>
+          <div className="price">{naira(80000)}<small>/ 30 days</small></div>
+          <p className="plan-card-summary">Every prediction market in one monthly plan.</p>
+          <ul><li>All eight prediction markets included</li><li>Predictions available as soon as they are generated</li><li>Elite Telegram access entitlement</li><li>Save {naira(64000)} vs. eight separate Premium games</li></ul>
           <a className="btn btn-primary" href="signup.html">Create account to request Elite</a>
         </article>
         <article className="price-card">
-          <div className="section-kicker">EXTENSION AUTOMATION</div>
-          <div className="price">{naira(80000)}<small>/ 30 days</small></div>
-          <p className="plan-card-summary">A separate subscription for the browser extension and connected automation dashboard.</p>
-          <ul><li>Manual extension or website controls</li><li>Game, stake and progression settings</li><li>Balance and session activity</li><li>Separate owner approval and expiry</li></ul>
-          <p>Prediction memberships are sold separately. Elite covers predictions; it does not include extension access.</p>
-          <a className="btn btn-primary" href="signup.html">Create account to request extension access</a>
+          <div className="section-kicker">ELITE + EXTENSION · ALL ACCESS</div>
+          <div className="price">{naira(120000)}<small>/ 30 days</small></div>
+          <p className="plan-card-summary">All predictions plus browser extension automation in one monthly plan.</p>
+          <ul><li>All eight prediction markets included</li><li>Browser extension and connected automation dashboard</li><li>Game, stake, progression and session controls</li><li>Owner approval and extension key included</li></ul>
+          <a className="btn btn-primary" href="signup.html">Create account to request All Access</a>
         </article>
       </section>
 
-      <aside className="pricing-approval-note"><strong>Manual plan approval</strong><span>Create an account, then contact the owner to arrange payment and approval for predictions, extension access, or both. Each subscription lasts 30 days per month purchased. Payment processing and automatic Telegram invites are not connected yet.</span></aside>
-      <p className="pricing-disclaimer">Prices are monthly in Nigerian naira. Predictions are uncertain and do not guarantee results. Please bet responsibly.</p>
+      <aside className="pricing-approval-note"><strong>Manual plan approval</strong><span>Create an account, then contact the owner to arrange payment and approval. Monthly plans last 30 days; Weekly Premium lasts 7 days and includes all markets. Elite + Extension is monthly-only. Payment processing and automatic Telegram invites are not connected yet.</span></aside>
+      <p className="pricing-disclaimer">Prices are in Nigerian naira. Predictions are uncertain and do not guarantee results. Please bet responsibly.</p>
     </main>
   );
 }

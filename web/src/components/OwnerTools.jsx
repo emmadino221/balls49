@@ -11,6 +11,7 @@ export default function OwnerTools({ onSession, games }) {
   const [email, setEmail] = useState('');
   const [tier, setTier] = useState('trial');
   const [access, setAccess] = useState('predictions');
+  const [durationUnit, setDurationUnit] = useState('month');
   const [issuedKey, setIssuedKey] = useState('');
   const [deletingUser, setDeletingUser] = useState('');
   const [months, setMonths] = useState('1');
@@ -65,8 +66,11 @@ export default function OwnerTools({ onSession, games }) {
     if (!window.confirm('Have you personally confirmed this person through a phone, WhatsApp, or Telegram contact you already trust?')) return;
     setSaving(true); setNotice('');
     try {
-      const result = await apiRequest('/admin/approve', { method: 'POST', body: JSON.stringify({ email, tier, months, access, games: gamesSelected, identityConfirmed: true }) });
-      setNotice(`${result.user.email}: ${access} approved for ${months} month(s), starting today.`);
+      const result = await apiRequest('/admin/approve', { method: 'POST', body: JSON.stringify({
+        email, tier, months, durationUnit, access, games: gamesSelected, identityConfirmed: true
+      }) });
+      const duration = durationUnit === 'week' ? '1 week' : `${months} ${Number(months) === 1 ? 'month' : 'months'}`;
+      setNotice(`${result.user.email}: ${access} approved for ${duration}, starting today.`);
       setIssuedKey(result.extensionKey || '');
       loadUsers();
     } catch (error) { setNotice(error.message); }
@@ -125,11 +129,17 @@ export default function OwnerTools({ onSession, games }) {
           <div className="owner-section-title"><span className="overline">USER ACCESS</span><h3>Approve an account</h3><p>Choose what this user can access and for how long.</p></div>
           <form className="auth-form owner-approval-form" onSubmit={approve}>
             <label className="owner-full">Registered email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@example.com" required /></label>
-            <label>Access<select value={access} onChange={e=>setAccess(e.target.value)}><option value="predictions">Predictions only</option><option value="extension">Extension only</option><option value="both">Predictions + extension</option></select></label>
-            <label>Duration<select value={months} onChange={e=>setMonths(e.target.value)}>{Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1} {i===0?'month':'months'}</option>)}</select></label>
-            {access!=='extension'&&<label className="owner-full">Prediction plan<select value={tier} onChange={e=>setTier(e.target.value)}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select></label>}
-            {access!=='extension'&&tier==='premium'&&gamePicker}
-            {access!=='predictions'&&<div className="owner-inline-note owner-full"><strong>Extension · NGN 80,000 / 30 days</strong><span>Confirm payment before approving. Prediction fees are separate.</span></div>}
+            <label>Access<select value={access} onChange={e=>{setAccess(e.target.value);setDurationUnit('month');}}><option value="predictions">Predictions only</option><option value="extension">Extension only</option><option value="both">Predictions + extension</option></select></label>
+            <label>Duration<select value={durationUnit} onChange={e=>setDurationUnit(e.target.value)}>
+              <option value="month">30 days per month</option>
+              {access==='predictions'&&tier==='premium'&&<option value="week">7 days · Weekly Premium</option>}
+            </select></label>
+            {durationUnit==='month'&&<label>Months<select value={months} onChange={e=>setMonths(e.target.value)}>{Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1} {i===0?'month':'months'}</option>)}</select></label>}
+            {access!=='extension'&&<label className="owner-full">Prediction plan<select value={tier} onChange={e=>{setTier(e.target.value);if(e.target.value!=='premium')setDurationUnit('month');}}><option value="trial">Free Trial</option><option value="premium">Premium</option><option value="elite">Elite</option></select></label>}
+            {access!=='extension'&&tier==='premium'&&durationUnit==='month'&&gamePicker}
+            {access!=='extension'&&tier==='premium'&&durationUnit==='week'&&<div className="owner-inline-note owner-full"><strong>Weekly Premium · NGN 30,000 / 7 days</strong><span>Includes all eight prediction markets. Confirm payment before approving.</span></div>}
+            {access==='both'&&<div className="owner-inline-note owner-full"><strong>{tier==='elite'?'Elite + Extension · NGN 120,000 / 30 days':'Predictions + extension access'}</strong><span>{tier==='elite'?'Includes all prediction markets and extension access for 30 days.':'The listed all-access bundle is Elite plus extension for one month. Confirm the agreed access before approving.'}</span></div>}
+            {access==='extension'&&<div className="owner-inline-note owner-full"><strong>Extension access · monthly only</strong><span>The published 30-day offer is Elite + Extension at NGN 120,000, including all prediction markets.</span></div>}
             <div className="owner-form-footer owner-full"><span>Approval starts today.</span><button className="btn btn-primary" disabled={saving}>{saving?'Saving...':'Approve access'}</button></div>
           </form>
           {issuedKey&&<div className="owner-issued-key auth-form"><label>Extension access key<input readOnly value={issuedKey} onFocus={e=>e.target.select()} /></label><small>Share privately with this user.</small><button type="button" className="btn btn-secondary" onClick={()=>setIssuedKey('')}>Hide key</button></div>}
@@ -140,7 +150,7 @@ export default function OwnerTools({ onSession, games }) {
           {!usersLoaded?<div className="owner-empty">{loadingUsers?'Loading accounts...':'Accounts could not be loaded. Select Refresh to try again.'}</div>:<>
             <p className="owner-result-count">{visibleUsers.length} of {users.length} accounts</p>
             {!visibleUsers.length&&<div className="owner-empty">{search?'No accounts match this email.':'New registrations will appear here.'}</div>}
-            <div className="owner-account-grid">{visibleUsers.map(user=><article key={user.email} className="owner-account-card"><div className="owner-account-heading"><span className="owner-avatar" aria-hidden="true">{user.email[0].toUpperCase()}</span><div><h4>{user.email}</h4><span className={`owner-badge ${user.approvalStatus==='approved'?'':'owner-badge-muted'}`}>{user.approvalStatus==='approved'?'Approved':user.approvalStatus==='expired'?'Plan expired':'Pending approval'}</span></div></div><dl><div><dt>Prediction plan</dt><dd>{user.plan?.tier||'trial'}</dd></div><div><dt>Prediction expiry</dt><dd>{date(user.expiresAt)}</dd></div><div><dt>Extension expiry</dt><dd>{date(user.extensionExpiresAt)}</dd></div></dl><div className="owner-account-actions"><button type="button" className="btn btn-secondary" onClick={()=>{setEmail(user.email);setIssuedKey('');setSection('approvals');}}>Manage access</button><button type="button" className="owner-danger-button" disabled={!!deletingUser} onClick={()=>deleteUser(user.email)}>{deletingUser===user.email?'Deleting...':'Delete user'}</button></div></article>)}</div>
+            <div className="owner-account-grid">{visibleUsers.map(user=><article key={user.email} className="owner-account-card"><div className="owner-account-heading"><span className="owner-avatar" aria-hidden="true">{user.email[0].toUpperCase()}</span><div><h4>{user.email}</h4><span className={`owner-badge ${user.approvalStatus==='approved'?'':'owner-badge-muted'}`}>{user.approvalStatus==='approved'?'Approved':user.approvalStatus==='expired'?'Plan expired':'Pending approval'}</span></div></div><dl><div><dt>Prediction plan</dt><dd>{user.plan?.tier||'trial'}{user.plan?.period==='week'?' · weekly':''}</dd></div><div><dt>Prediction expiry</dt><dd>{date(user.expiresAt)}</dd></div><div><dt>Extension expiry</dt><dd>{date(user.extensionExpiresAt)}</dd></div></dl><div className="owner-account-actions"><button type="button" className="btn btn-secondary" onClick={()=>{setEmail(user.email);setIssuedKey('');setSection('approvals');}}>Manage access</button><button type="button" className="owner-danger-button" disabled={!!deletingUser} onClick={()=>deleteUser(user.email)}>{deletingUser===user.email?'Deleting...':'Delete user'}</button></div></article>)}</div>
           </>}
         </section>
         <section id="owner-panel-predictions" hidden={section!=='predictions'} aria-label="Prediction controls">

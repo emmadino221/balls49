@@ -109,11 +109,14 @@ Keep the website database and server key persistent and backed up.
 ## Extension subscriptions
 
 Owner tools > Manually approve an account offers Predictions only, Extension only,
-and Predictions + extension. Extension access costs NGN 80,000 per 30 days; the
-prediction plan is priced separately. Verify payment before granting access.
-Approvals start the selected duration from today. Approving one service leaves
-the other service's existing expiry unchanged. Both grants each service for the
-selected duration; it does not bundle or discount their prices.
+and Predictions + extension. Premium weekly access is available for seven days
+and includes all eight prediction markets. Monthly Premium is NGN 18,000 per
+selected market for 30 days; Elite is NGN 80,000 per 30 days for all markets.
+The published Elite + Extension bundle is NGN 120,000 per 30 days and includes
+all markets plus extension access. Weekly Elite and weekly extension access are
+not offered. Verify payment before granting access. Approvals start the selected
+duration from today. Approving one service leaves the other service's existing
+expiry unchanged.
 
 Extension approval issues and links a member key automatically. The owner may
 share it privately, or the signed-in subscriber can reveal it on Automation.

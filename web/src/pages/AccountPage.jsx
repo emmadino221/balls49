@@ -73,7 +73,7 @@ export default function AccountPage() {
       <section className="account-overview" aria-label="Membership overview">
         <article className="content-card account-plan">
           <div className="account-card-heading"><span className="overline">CURRENT ACCESS</span><span className={`account-status${approved ? ' is-approved' : ''}`}>{status}</span></div>
-          <h2>{planNames[tier] || 'Free Trial'}</h2>
+          <h2>{tier === 'premium' && account.plan?.period === 'week' ? 'Premium · Weekly' : planNames[tier] || 'Free Trial'}</h2>
           <p>{paid ? 'Your approved markets are ready whenever new predictions arrive.' : 'Choose one market per draw. Your free pick appears in the final 10 seconds.'}</p>
           <div className="account-actions"><a className="btn btn-primary" href={paid ? 'predictions.html' : 'free-trial.html'}>{paid ? 'Open predictions' : 'Open free trial'}</a><a className="btn btn-secondary" href="history.html">View results</a></div>
         </article>
@@ -87,8 +87,8 @@ export default function AccountPage() {
 
       <section className="content-card account-markets">
         <h2>Extension membership</h2>
-        <p>NGN 80,000 per 30 days. Approved separately from predictions.</p>
-        <p>{account.extensionExpiresAt ? `${account.extensionExpiresAt > Date.now() ? 'Active until' : 'Expired on'} ${new Date(account.extensionExpiresAt).toLocaleString()}` : 'No monthly extension subscription approved.'}</p>
+        <p>The published Elite + Extension bundle is NGN 120,000 per 30 days and includes all prediction markets.</p>
+        <p>{account.extensionExpiresAt ? `${account.extensionExpiresAt > Date.now() ? 'Active until' : 'Expired on'} ${new Date(account.extensionExpiresAt).toLocaleString()}` : 'No extension access is currently approved.'}</p>
         <a className="btn btn-secondary" href="automation.html">Open automation &amp; access key</a>
       </section>
 
