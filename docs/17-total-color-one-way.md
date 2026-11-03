@@ -1,11 +1,10 @@
 # Winning Color
 
-Market key: `totalColor1`. The prediction is the single outcome not selected by
-Total Color 3-way selects two colors from the active Total Color 2-way pick,
-plus black (No Winning Color). Winning Color remains the single color omitted
-from that three-way selection. Missing valid three-way picks produce a skipped
-one-way pick. A settled six-ball draw wins only if its winning color outcome
-matches the issued one-way pick. Ties use No Winning Color.
+Market key: `totalColor1`. Winning Color directly predicts the one red, blue, or
+green color not selected by the active Total Color 2-way pick. If Total Color
+2-way is skipped or has an invalid selection, Winning Color also skips. A
+settled six-ball draw wins only if its winning color outcome matches the issued
+one-way pick. Ties use No Winning Color, so they do not match a color pick.
 
 New predictions, results and independent streaks appear in Telegram and the
 website. History starts with actually issued one-way picks; old records are not

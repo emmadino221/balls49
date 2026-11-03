@@ -17,7 +17,7 @@ const games = [
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },
-  { id: 'totalColor1', name: 'Winning Color', detail: 'One outcome: the selection excluded from Total Color 3-way.' },
+  { id: 'totalColor1', name: 'Winning Color', detail: 'The one red, blue, or green color not selected by Total Color 2-way.' },
   { id: 'hilo', name: 'High / Low', detail: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', detail: 'One selected pick from the available markets.' },
 ];

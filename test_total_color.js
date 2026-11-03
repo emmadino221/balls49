@@ -54,6 +54,23 @@ test('three-way skips when the source two-way pick is inactive or invalid', () =
     }
 });
 
+test('Winning Color predicts the one color not selected by Total Color 2-way', () => {
+    assert.deepEqual(singleColorPrediction(twoWay), { status: 'ACTIVE', top1: ['green'] });
+    assert.deepEqual(singleColorPrediction({ ...twoWay, top2: ['blue', 'green'] }), { status: 'ACTIVE', top1: ['red'] });
+});
+
+test('Winning Color skips when the Total Color 2-way pick is inactive or invalid', () => {
+    for (const prediction of [
+        null,
+        { ...twoWay, status: 'SKIP' },
+        { ...twoWay, top2: ['red', 'red'] },
+        { ...twoWay, top2: ['red', 'black'] },
+        { ...twoWay, top2: ['red', 'blue', 'green'] }
+    ]) {
+        assert.deepEqual(singleColorPrediction(prediction), { status: 'SKIP', top1: [] });
+    }
+});
+
 test('three-way wins for either selected color or No Winning Color', () => {
     const pick = totalColor3WayPrediction(twoWay);
     assert.equal(totalColorWins(pick, red), true);
@@ -105,6 +122,8 @@ test('actual generator builds three-way from the active two-way prediction', () 
     assert.equal(prediction.totalColor2Pred.status, 'ACTIVE');
     assert.deepEqual(getTotalColorTargets(prediction.totalColorPred), [...prediction.totalColor2Pred.top2, 'black']);
     assert.equal(prediction.totalColorPred.noWinColor, 'blue');
+    assert.deepEqual(prediction.totalColor1Pred.top1,
+        ['red', 'blue', 'green'].filter(color => !prediction.totalColor2Pred.top2.includes(color)));
 });
 
 function extensionHarness({ missingButton = null, placementSuccess = true } = {}) {

@@ -51,12 +51,13 @@ function totalColorName(color) {
     return color === 'black' ? 'NO WINNING COLOR' : String(color || '').toUpperCase();
 }
 
-function singleColorPrediction(threeWay) {
-    const targets = getTotalColorTargets(threeWay);
-    const excluded = OUTCOMES.filter(color => !targets.includes(color));
-    return targets.length === 3 && excluded.length === 1
-        ? { status: 'ACTIVE', top1: excluded }
-        : { status: 'SKIP', top1: [] };
+function singleColorPrediction(twoWayPrediction) {
+    const top2 = twoWayPrediction?.top2;
+    if (twoWayPrediction?.status !== 'ACTIVE' || !Array.isArray(top2) || top2.length !== 2
+        || new Set(top2).size !== 2 || top2.some(color => !COLORS.includes(color))) {
+        return { status: 'SKIP', top1: [] };
+    }
+    return { status: 'ACTIVE', top1: [COLORS.find(color => !top2.includes(color))] };
 }
 
 function singleColorWins(prediction, numbers) {

@@ -2549,7 +2549,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         topColor, rainbowStatus, rbSkipReason,
         totalColorPred, 
         totalColor2Pred,
-        totalColor1Pred: singleColorPrediction(totalColorPred),
+        totalColor1Pred: singleColorPrediction(totalColor2Pred),
         sumRange, hiloStatus, oppositeStreakLimit, hlSkipReason,
         brainData 
     };
