@@ -23,11 +23,16 @@ export const moreNavigation = [
   { path: 'terms.html', page: 'terms', label: 'Terms of service' },
 ];
 
+export const adminNavigation = [
+  { path: 'betzero-lab.html', page: 'betzero-lab', label: 'BetZero Testing Lab', icon: 'analytics' },
+];
+
 const pageTitles = {
   about: 'About',
   account: 'Account',
   analysis: 'Performance Analytics',
   automation: 'Automation & Settings',
+  'betzero-lab': 'BetZero Strategy Lab',
   calculator: 'Martingale Calculator',
   contact: 'Contact',
   football: 'Real Football',

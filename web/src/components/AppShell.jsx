@@ -38,7 +38,7 @@ export default function AppShell({ page, session, darkMode, onToggleTheme, onSig
   const accountHref = signedIn ? 'account.html' : 'login.html';
 
   return <div className={`app-shell${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
-    <Sidebar page={page} collapsed={sidebarCollapsed} onToggle={() => {
+    <Sidebar page={page} session={session} collapsed={sidebarCollapsed} onToggle={() => {
       sidebarPreferenceChanged.current = true;
       setSidebarCollapsed(value => !value);
     }} />

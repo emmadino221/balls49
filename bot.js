@@ -8,6 +8,7 @@ const { createVirtualFootball } = require('./virtual-football');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, bet49Numbers } = require('./bet49');
+const { createBetZeroLab } = require('./betzero-lab');
 ﻿'use strict';
 
 const https = require('https');
@@ -102,6 +103,12 @@ siteDb.exec(`
 `);
 const footballService = createFootballService(siteDb);
 const virtualFootball = createVirtualFootball(siteDb);
+let betzeroLab = null;
+try {
+    betzeroLab = createBetZeroLab(siteDb);
+} catch (error) {
+    console.error('[BetZeroLab] Lab storage could not be initialized; the lab API is unavailable.', error);
+}
 const siteVault = require('./site-vault').createSiteVault(process.env.SITE_VAULT_KEY_FILE || `${SITE_DATABASE_FILE}.security-key`);
 const automationBridge = createAutomationBridge(siteDb, SITE_ADMIN_KEY, siteVault);
 const ownerSecurity = require('./owner-security').createOwnerSecurity(siteDb, siteVault, SITE_ADMIN_KEY);
@@ -232,6 +239,8 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /account/automation', 'POST /account/automation/link', 'POST /account/automation/command', 'POST /account/automation/key',
     'GET /public-suggestions-status', 'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
+    'GET /admin/betzero-lab', 'GET /admin/betzero-lab/predictions', 'GET /admin/betzero-lab/backtests',
+    'POST /admin/betzero-lab/backtests', 'POST /admin/betzero-lab/strategy-config',
     'POST /internal/prediction-snapshot', 'POST /internal/virtual-football-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
@@ -3908,6 +3917,18 @@ async function handleHttpRequest(req, res) {
                 for (const item of normalizedHistoryUpdates) historyByDrawId.set(item.drawId, item.record);
                 predictionLog = [...historyByDrawId.values()].sort((left, right) => Number(right.drawId) - Number(left.drawId));
             }
+            if (betzeroLab) {
+                try {
+                    betzeroLab.ingestSnapshot({
+                        current: snapshot.current,
+                        clock: snapshot.clock,
+                        historyUpdates: normalizedHistoryUpdates.map(item => item.record),
+                        snapshotAt
+                    });
+                } catch (error) {
+                    console.error('[BetZeroLab] Could not process a prediction snapshot; the production feed was stored.', error);
+                }
+            }
             return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt() });
         } catch (error) {
             console.error('[PredictionFeed] Could not store an incoming snapshot.');
@@ -4128,6 +4149,84 @@ async function handleHttpRequest(req, res) {
             setSessionCookie(res, token, 8 * 3600);
             return sendJson(res, 200, { ok: true });
         } catch (error) { return sendJson(res, error.status || 400, { error: error.status ? error.message : 'Invalid admin request.' }); }
+    }
+
+    if (parsedUrl.pathname === '/admin/betzero-lab') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed.' });
+        if (!betzeroLab) return sendJson(res, 503, { error: 'BetZero lab storage is unavailable; check the server log.' });
+        return sendJson(res, 200, betzeroLab.overview());
+    }
+
+    if (parsedUrl.pathname === '/admin/betzero-lab/predictions' && req.method === 'GET') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        if (!betzeroLab) return sendJson(res, 503, { error: 'BetZero lab storage is unavailable; check the server log.' });
+        const strategyId = parsedUrl.searchParams.get('strategyId') || undefined;
+        const requestedLimit = parsedUrl.searchParams.get('limit');
+        const limit = requestedLimit === null ? 500 : Number(requestedLimit);
+        if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+            return sendJson(res, 400, { error: 'Prediction history limit must be between 1 and 500.' });
+        }
+        if (strategyId && !betzeroLab.strategies().some(strategy => strategy.id === strategyId)) {
+            return sendJson(res, 400, { error: 'Unknown BetZero lab strategy.' });
+        }
+        return sendJson(res, 200, { predictions: betzeroLab.listForwardPredictions({ strategyId, limit }) });
+    }
+
+    if (parsedUrl.pathname === '/admin/betzero-lab/backtests') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        if (!betzeroLab) return sendJson(res, 503, { error: 'BetZero lab storage is unavailable; check the server log.' });
+        if (req.method === 'GET') {
+            const runId = parsedUrl.searchParams.get('runId');
+            if (runId) {
+                const run = betzeroLab.getBacktestRun(runId, {
+                    limit: parsedUrl.searchParams.get('limit'),
+                    offset: parsedUrl.searchParams.get('offset')
+                });
+                return run ? sendJson(res, 200, run) : sendJson(res, 404, { error: 'Backtest run not found.' });
+            }
+            return sendJson(res, 200, { runs: betzeroLab.listBacktestRuns() });
+        }
+        if (req.method === 'POST') {
+            let request;
+            try { request = await readRequestJson(req); }
+            catch { return sendJson(res, 400, { error: 'Invalid backtest request.' }); }
+            if (!request || typeof request !== 'object' || Array.isArray(request)) {
+                return sendJson(res, 400, { error: 'Invalid backtest request.' });
+            }
+            try {
+                return sendJson(res, 200, betzeroLab.runBacktest(predictionLog, {
+                    window: request.window,
+                    seed: request.seed
+                }));
+            } catch (error) {
+                if (error.status) return sendJson(res, error.status, { error: error.message });
+                console.error('[BetZeroLab] Backtest failed:', error);
+                return sendJson(res, 500, { error: 'The BetZero lab backtest could not be completed.' });
+            }
+        }
+        return sendJson(res, 405, { error: 'Method not allowed.' });
+    }
+
+    if (parsedUrl.pathname === '/admin/betzero-lab/strategy-config' && req.method === 'POST') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        if (!betzeroLab) return sendJson(res, 503, { error: 'BetZero lab storage is unavailable; check the server log.' });
+        let request;
+        try { request = await readRequestJson(req); }
+        catch { return sendJson(res, 400, { error: 'Invalid strategy configuration.' }); }
+        if (!request || typeof request !== 'object' || Array.isArray(request)) {
+            return sendJson(res, 400, { error: 'Invalid strategy configuration.' });
+        }
+        try {
+            return sendJson(res, 200, {
+                strategy: betzeroLab.setStrategyConfig(String(request.strategyId || ''), {
+                    ...(Object.hasOwn(request, 'enabled') ? { enabled: request.enabled } : {}),
+                    ...(Object.hasOwn(request, 'alertThresholds') ? { alertThresholds: request.alertThresholds } : {})
+                })
+            });
+        } catch (error) {
+            return sendJson(res, error.status || 500, { error: error.status ? error.message : 'The strategy configuration could not be saved.' });
+        }
     }
 
     if (parsedUrl.pathname === '/public-suggestions-status' && req.method === 'GET') {

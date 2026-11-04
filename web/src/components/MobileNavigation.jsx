@@ -1,5 +1,5 @@
 import React from 'react';
-import { moreNavigation, primaryNavigation, isNavigationItemActive } from './navigation.js';
+import { adminNavigation, moreNavigation, primaryNavigation, isNavigationItemActive } from './navigation.js';
 import NavigationIcon from './NavigationIcon.jsx';
 
 const mobileItems = primaryNavigation.slice(0, 4);
@@ -8,6 +8,7 @@ export default function MobileNavigation({ page, session, moreOpen, onToggleMore
   const signedIn = Boolean(session.user || session.admin);
   const moreItems = [
     ...primaryNavigation.slice(4),
+    ...(session.admin ? adminNavigation : []),
     ...moreNavigation,
   ];
 

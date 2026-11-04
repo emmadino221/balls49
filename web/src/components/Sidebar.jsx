@@ -1,5 +1,5 @@
 import React from 'react';
-import { primaryNavigation, isNavigationItemActive } from './navigation.js';
+import { adminNavigation, primaryNavigation, isNavigationItemActive } from './navigation.js';
 import NavigationIcon from './NavigationIcon.jsx';
 
 function NavigationLink({ item, page, collapsed }) {
@@ -11,7 +11,7 @@ function NavigationLink({ item, page, collapsed }) {
   </a>;
 }
 
-export default function Sidebar({ page, collapsed, onToggle }) {
+export default function Sidebar({ page, session, collapsed, onToggle }) {
   return <aside className={`app-sidebar${collapsed ? ' is-collapsed' : ''}`} aria-label="Workspace navigation">
     <div className="app-sidebar-brand-row">
       <a className="brand app-sidebar-brand" href="index.html" aria-label="Emmy-Bet dashboard">
@@ -27,6 +27,11 @@ export default function Sidebar({ page, collapsed, onToggle }) {
     <nav className="app-sidebar-nav" aria-label="Main navigation">
       {primaryNavigation.slice(0, 7).map(item => <NavigationLink key={item.path} item={item} page={page} collapsed={collapsed} />)}
     </nav>
+    {session.admin && <><p className="app-sidebar-section-label">Owner tools</p>
+      <nav className="app-sidebar-nav" aria-label="Owner tools">
+        {adminNavigation.map(item => <NavigationLink key={item.path} item={item} page={page} collapsed={collapsed} />)}
+      </nav>
+    </>}
     <p className="app-sidebar-section-label app-sidebar-account-label">Account</p>
     <nav className="app-sidebar-nav" aria-label="Account and settings">
       {primaryNavigation.slice(7).map(item => <NavigationLink key={item.path} item={item} page={page} collapsed={collapsed} />)}

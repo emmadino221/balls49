@@ -10,6 +10,7 @@ const pageFiles = [
   'automation.html', 'football.html', 'virtual-football.html', 'virtual-results.html',
   'account.html',
   'analysis.html',
+  'betzero-lab.html',
   'about.html',
   'pricing.html',
   'predictions.html',

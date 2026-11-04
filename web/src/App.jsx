@@ -53,7 +53,7 @@ export default function App() {
       <a className="skip-link" href="#main-content">Skip to content</a>
       <AppShell page={page} session={session} darkMode={darkMode}
         onToggleTheme={() => setDarkMode(dark => !dark)} onSignOut={signOut}>
-        <PageRenderer page={page} />
+        <PageRenderer page={page} session={session} />
       </AppShell>
     </div>
   );
