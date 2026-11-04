@@ -40,6 +40,7 @@ The current installation has three separately updated components:
 | Component | Location | Update required |
 | --- | --- | --- |
 | Prediction worker | VPS, `~/balls49`, `balls49-bot.service` | Pull code and restart the service |
+| VPS-hosted website | VPS, `/home/balls49/balls49-site`, `balls49-site.service` | Pull code, rebuild `web/dist`, and restart the website service |
 | Website API | Render service `emmybet` | Deploy the latest GitHub commit |
 | React website | Render service `balls49` | Deploy and rebuild the latest GitHub commit |
 
@@ -53,7 +54,7 @@ For both `emmybet` and `balls49`, check whether automatic deployment has started
 Otherwise choose **Manual Deploy > Deploy latest commit**. Confirm that both
 services show the intended commit as live, then refresh the website.
 
-### VPS
+### VPS prediction worker
 
 From a trusted terminal logged in as the `balls49` user:
 
@@ -74,8 +75,27 @@ sudo journalctl -u balls49-bot.service -n 50 --no-pager
 ```
 
 Restart `balls49-collector.service` only when its code or configuration changes.
-The Render frontend build handles website assets; a VPS worker-only update does
-not require building the website on the VPS.
+
+### VPS-hosted website
+
+The separate website service serves `web/dist` from `/home/balls49/balls49-site`.
+When updating this VPS-hosted site, use a trusted terminal and rebuild the static
+pages before restarting its service:
+
+```bash
+cd /home/balls49/balls49-site
+git status --short
+git pull --ff-only origin main
+npm --prefix web ci
+npm --prefix web run build:same-origin
+sudo systemctl restart balls49-site.service
+sudo systemctl status balls49-site.service --no-pager -l
+curl -fsS http://127.0.0.1:3002/betzero-lab.html >/dev/null && echo "BetZero lab page is being served"
+```
+
+If `git status --short` shows unexpected changes, preserve them and resolve that
+before pulling. The worker and website are separate services; restart the worker
+only when its code needs updating.
 
 ### Streak reset synchronization
 
