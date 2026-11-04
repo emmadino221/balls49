@@ -101,7 +101,7 @@ function Jersey({ variant }) {
 }
 
 function MatchCard({ match, market }) {
-  const marketConfidence = market === 'win' ? match.confidence : match.bttsConfidence;
+  const marketConfidence = market === 'win' ? match.confidence : market === 'over' && match.goals15 != null ? match.over15Confidence : match.bttsConfidence;
   const confidence = Number.isFinite(marketConfidence) ? marketConfidence : null;
   const statusLabel = match.status === 'REPORTED'
     ? 'Result reported'
@@ -164,7 +164,7 @@ function MatchCard({ match, market }) {
           <strong>{match.btts === 'GG' ? 'Yes' : match.btts === 'NG' ? 'No' : 'Not available'}</strong>
         </div>
         {confidence !== null && <div className="vf-confidence">
-          <div className="vf-confidence-label"><span>{market === 'over' ? 'BTTS confidence supporting Over 1.5' : 'Model confidence'}</span><strong>{confidence.toFixed(1)}%</strong></div>
+          <div className="vf-confidence-label"><span>{market === 'over' ? (match.goals15 != null ? 'Over 1.5 model confidence' : 'Historical BTTS confidence') : 'Model confidence'}</span><strong>{confidence.toFixed(1)}%</strong></div>
           <div className="vf-confidence-track" role="img" aria-label={`Model confidence ${confidence.toFixed(1)} percent`}>
             <span style={{ width: `${confidence}%` }} />
           </div>
@@ -303,7 +303,7 @@ export default function VirtualFootballPage({ showResults = false }) {
             <p>{showResults
               ? 'Only the picks selected before each round: up to two for Over 1.5 and one each for GG, NG and Win. Older results without saved selections are excluded.'
               : activeMarket === 'over'
-                ? 'Exactly two GG-derived Over 1.5 picks, each with BTTS model confidence of at least 60%. If fewer than two qualify, we skip the round. This is not a separate goals model.'
+                ? 'Exactly two picks from the dedicated Over 1.5 model, each with model confidence of at least 60%. If fewer than two qualify, we skip the round. Confidence is an estimate, not a guarantee.'
                 : activeMarket === 'win' ? 'The highest-confidence qualifying winner with selection odds strictly above 1.70.' : 'One match with the highest available model confidence for this market. No qualifying match means no pick.'}</p>
           </div>
           <span className="vf-fixture-count">{visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'}</span>

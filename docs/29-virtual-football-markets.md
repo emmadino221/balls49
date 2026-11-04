@@ -44,16 +44,17 @@ the selected tab. Keyboard users can switch tabs with Left/Right, Home, and End.
 
 New rounds freeze their website selections before results are available:
 
-- Over 1.5: exactly two GG predictions with BTTS model confidence of at least
-  60%, ranked by that confidence, or no Over picks for that round if fewer than
-  two qualify. The prediction view also suppresses incomplete pairs. This is a GG-derived signal, not an independent
-  Over 1.5 probability estimate.
+- Over 1.5: exactly two predictions from the dedicated total-goals model with
+  model confidence of at least 60%, or no Over picks if fewer than two qualify.
+  This model learns OVER (two or more goals) versus UNDER from reported settled
+  scores and pre-match 1X2 odds. It does not use GG confidence.
 - GG: the highest-confidence GG prediction, at most one match.
 - NG: the highest-confidence NG prediction, at most one match.
 - Win: the highest-confidence HOME or AWAY prediction whose selected team's
   odds are strictly greater than 1.70, at most one match. Draws do not qualify.
 
-Unknown teams and failed model evaluations cannot qualify. Missing qualifying
+Failed model evaluations cannot qualify. Win/GG/NG also exclude unknown teams;
+the Over model uses odds rather than team encodings. Missing qualifying
 matches leave empty slots; Over 1.5 requires both slots or skips the round.
 A match may qualify in more than one market. Previously saved results remain
 unchanged; the two-or-skip rule applies to newly collected rounds.
@@ -72,3 +73,25 @@ Deploy the website receiver and frontend first, then update both collector and
 publisher in the virtual repository and restart their services. The collector
 adds its new SQLite columns on startup. A fresh collected round is required for
 the new prediction view; old feeds lack the required shortlist metadata.
+
+## Dedicated Over 1.5 rollout
+
+Deploy the receiver/frontend before the updated collector and publisher. From
+the virtual repository, using the service's Python environment and environment
+variables, run `python train_model_over15.py`. It reads the database without
+modifying it and atomically writes `ai_brain_over15.pkl`.
+`VIRTUAL_DB_PATH` and `VIRTUAL_AI_OVER15_MODEL_PATH` override the default paths.
+Restart collector and publisher after updating. The collector adds `goals15`
+and `confidence_over15` columns on startup and reloads the model during its loop.
+
+Training requires 200 settled matches with valid scores and odds. It reports
+chronological holdout accuracy and an always-Over baseline, then fits the saved
+model on all valid history. These scores do not establish profitability or
+calibrated probabilities. The source scores are reported by the collector,
+not independently verified final results. The existing auto-trainer runs the
+new trainer on its scheduled cycle if that process is running.
+
+Without a readable trained model, no Over picks qualify. The publisher sends
+`goals15` and `over15Confidence`; the receiver validates them and keeps picks
+immutable. Historical GG-derived picks remain readable. No GG fallback is used
+for new Over predictions.

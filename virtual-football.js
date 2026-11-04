@@ -31,6 +31,8 @@ function createVirtualFootball(db) {
             const selectedMarkets = m.selectedMarkets == null ? null : m.selectedMarkets;
             const roundId = m.roundId == null ? null : m.roundId;
             const bttsConfidence = m.bttsConfidence == null ? null : m.bttsConfidence;
+            const over15Confidence = m.over15Confidence == null ? null : m.over15Confidence;
+            if (over15Confidence !== null && (typeof over15Confidence !== "number" || !Number.isFinite(over15Confidence) || over15Confidence < 0 || over15Confidence > 100)) throw error("Invalid Over 1.5 confidence.");
             const winOdds = m.winOdds == null ? null : m.winOdds;
             if (bttsConfidence !== null && (typeof bttsConfidence !== 'number' || !Number.isFinite(bttsConfidence) || bttsConfidence < 0 || bttsConfidence > 100)) throw error('Invalid BTTS confidence.');
             if (winOdds !== null && (typeof winOdds !== 'number' || !Number.isFinite(winOdds) || winOdds <= 1 || winOdds > 10000)) throw error('Invalid winner odds.');
@@ -39,9 +41,13 @@ function createVirtualFootball(db) {
                 if (selectedMarkets.includes('win') && (!(winOdds > 1.70) || confidence === null || !['HOME', 'AWAY'].includes(m.pick))) throw error('Winner shortlist requires a team winner, odds above 1.70 and model confidence.');
                 if (selectedMarkets.includes('gg') && (m.btts !== 'GG' || bttsConfidence === null)) throw error('Invalid GG selection.');
                 if (selectedMarkets.includes('ng') && (m.btts !== 'NG' || bttsConfidence === null)) throw error('Invalid NG selection.');
-                if (selectedMarkets.includes('over') && (m.btts !== 'GG' || bttsConfidence === null || bttsConfidence < 60 || m.goals15 === 'UNDER')) throw error('Over shortlist requires a qualifying GG signal.');
+                if (selectedMarkets.includes('over')) {
+                    const dedicated = over15Confidence !== null && over15Confidence >= 60 && m.goals15 === 'OVER';
+                    const legacy = over15Confidence === null && m.goals15 == null && m.btts === 'GG' && bttsConfidence !== null && bttsConfidence >= 60;
+                    if (!dedicated && !legacy) throw error('Over shortlist requires qualifying market confidence.');
+                }
             }
-            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, bttsConfidence, winOdds, selectedMarkets, roundId, status: m.status, score: m.status === 'REPORTED' ? score : null };
+            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, bttsConfidence, over15Confidence, winOdds, selectedMarkets, roundId, status: m.status, score: m.status === 'REPORTED' ? score : null };
         });
         db.exec('BEGIN IMMEDIATE');
         try {
