@@ -18,7 +18,34 @@ enablement/configuration in `betzero_lab_strategy_configs`.
 | Maximum/Minimum | UNVERIFIED, disabled | The sequence and switching conditions are unresolved. |
 | Timing and Skip Filter | UNVERIFIED, disabled | Entry, wait, and pattern-switch conditions are unresolved. |
 | Combined Strategy | UNVERIFIED, disabled | Its components and combination conditions are unresolved. |
-| Simple Smallest-Number Add-10 | RESEARCH_ONLY, enabled | Research-only model: choose the smallest valid number in the immediately previous completed draw, add 10, and predict that one number absent from the next draw. Skip if the candidate exceeds 49. This is not the instructor-verified strategy. |
+| Single-number absence experiment — Smallest +10 | RESEARCH_ONLY, enabled by default | Original `simple_smallest_number_add_10`, version `1.0.0`, preserved. Choose the smallest number in the previous valid completed draw, add 10, and predict that one number absent. Skip if it exceeds 49. This is not a four-number BetZero prediction. |
+| Smallest +10 / Step-10 Four-Number Research | RESEARCH_ONLY, disabled by default | New `smallest_add10_step10_four`, version `1.0.0`. Start at smallest +10, skip if above 49, then append three successive +10 steps wrapping within 1–49. Newly designed research; not instructor-verified. |
+
+### Four-number calculation and contracts
+
+The source must contain six distinct integers from 1 through 49. Let `m` be
+its smallest number. The first selection is `m + 10`; if that exceeds 49,
+skip without wrapping it. Each subsequent selection is
+`((previous - 1 + 10) % 49) + 1`, until exactly four selections exist.
+
+Examples: minimum 3 produces `[13,23,33,43]`; minimum 12 produces
+`[22,32,42,3]`; minimum 39 produces `[49,10,20,30]`; minimum 40 skips.
+There are no random fillers, color conditions, or future-result inputs.
+The step and wrapping are research design choices, not evidence of an advantage.
+
+The original experiment retains its stored ID, version, original registry
+label, selections, configuration and historical results. Its clearer label is
+applied at read/display time. Its contract is exactly one number; the new
+strategy's contract is exactly four distinct integers in 1–49. Invalid counts
+cannot be settled as wins/losses. Unknown strategy versions are not generated
+or re-settled using another version's rules. `statsForVersion(id, version)` and
+`listForwardPredictions({strategyId, strategyVersion})` support isolated reads;
+default strategy-scoped history uses its current registered version.
+
+Initialization only inserts the new registry and disabled configuration rows
+into existing tables. No schema change, history rewrite, auto-enable, or reset
+is required. Rule changes must use a new version and retain old rule handlers
+if outstanding predictions still need settlement.
 
 Unverified strategies cannot be enabled through the lab configuration API and
 are recorded as skipped in forward testing and excluded from official
@@ -32,10 +59,10 @@ draw and its clock is active. The source settlement timestamp must be newer than
 the lab's start and last observed snapshot; missed opportunities are not
 backfilled and historical simulations are never presented as forward picks.
 
-The lab's isolated validator uses the existing BetZero outcome rule: a pick wins
+The lab's isolated validator uses the absence outcome rule: a pick wins
 only when none of its selected, distinct numbers occur among the six drawn
-numbers. The lab accepts one through four experimental selections, so the
-one-number research model is tested with the same absence outcome. Missing or
+numbers. It enforces exactly one for the original experiment or exactly four
+for the new research strategy, based on the saved strategy ID and version. Missing or
 invalid six-ball results are not losses. Duplicate result ingestion is
 idempotent; if a recorded result changes, a lab-only revision is recorded and
 streaks/alerts are recalculated in target-draw order.
@@ -57,6 +84,17 @@ confidence intervals and are accompanied by sample sizes and skips/coverage.
 Wilson lower bound above the theoretical baseline; it is not evidence of
 profitability or future performance. Historical simulations cannot prove that
 the pick was available to the system before the draw.
+
+The four-number theoretical baseline is `C(45,6)/C(49,6)`, approximately 58.26%.
+Its random baseline uses four distinct numbers on identical entered targets;
+skipped targets receive no random trials. Seeds include the segment seed,
+strategy ID/version, target ID, and repetition index. The original experiment's
+random sequence is unchanged. Random repetitions do not increase the number
+of independent strategy predictions.
+
+Stage 1 does not introduce a worker or sealed final-test dataset. Backtests
+remain synchronous and repeated evaluation is still possible. The current
+final-test segment must not be interpreted as an enforced untouched holdout.
 
 ## Storage
 

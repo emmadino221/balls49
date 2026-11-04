@@ -10,7 +10,8 @@ const {
     STRATEGIES,
     createBetZeroLab,
     probabilityAllAbsent,
-    validateBetZeroPrediction
+    validateBetZeroPrediction,
+    predictionFromStrategy, validSelections, seededRandom, randomSelections
 } = require('./betzero-lab');
 
 function openLab(t, now = Date.now()) {
@@ -96,9 +97,10 @@ test('simplified research prediction adds ten to the smallest prior-draw number 
     assert.match(prediction.conditions.reason, /exceeds 49/);
 });
 
-test('BetZero settlement validates one or multiple selections and rejects invalid input', () => {
-    assert.equal(validateBetZeroPrediction([18], [1, 2, 3, 4, 5, 6]), 'WIN');
-    assert.equal(validateBetZeroPrediction([18], [18, 2, 3, 4, 5, 6]), 'LOSS');
+test('lab settlement requires an explicit one-number contract or exactly four BetZero selections', () => {
+    assert.equal(validateBetZeroPrediction([18], [1, 2, 3, 4, 5, 6], 1), 'WIN');
+    assert.equal(validateBetZeroPrediction([18], [18, 2, 3, 4, 5, 6], 1), 'LOSS');
+    assert.equal(validateBetZeroPrediction([18], [1, 2, 3, 4, 5, 6]), 'INVALID');
     assert.equal(validateBetZeroPrediction([18, 19, 20, 21], [1, 2, 3, 4, 5, 6]), 'WIN');
     assert.equal(validateBetZeroPrediction([18, 19, 20, 21], [1, 2, 3, 4, 5, 21]), 'LOSS');
     assert.equal(validateBetZeroPrediction([], [1, 2, 3, 4, 5, 6]), 'INVALID');
@@ -320,4 +322,182 @@ test('lab tables and operations remain separate from production streak data', t 
     lab.runBacktest(records, { window: 'all' });
     assert.equal(db.prepare('SELECT losses FROM production_streaks WHERE market = ?').get('betzero').losses, 7);
     assert.ok(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name LIKE 'betzero_lab_%'").get().count >= 7);
+});
+
+const FOUR = 'smallest_add10_step10_four';
+const SINGLE = 'simple_smallest_number_add_10';
+const fourDefinition = () => ({ ...STRATEGIES.find(strategy => strategy.id === FOUR), enabled: true });
+
+test('four-number variant starts disabled and original experiment is relabeled without changing its identity', t => {
+    const state = openLab(t, 1000);
+    assert.equal(state.lab.strategies().length, 8);
+    assert.equal(state.lab.strategies().find(s => s.id === FOUR).enabled, false);
+    assert.equal(state.lab.strategies().find(s => s.id === FOUR).selectionCount, 4);
+    assert.match(state.lab.strategies().find(s => s.id === SINGLE).label, /Single-number absence experiment/);
+    assert.equal(state.lab.strategies().find(s => s.id === SINGLE).selectionCount, 1);
+    snapshot(state.lab, { currentId: 101, sourceRecord: record(100, [3, 8, 17, 25, 36, 44], 1001), snapshotAt: 1002 });
+    assert.equal(state.lab.listForwardPredictions({ strategyId: FOUR })[0].status, 'SKIP');
+    state.reopen();
+    assert.equal(state.lab.strategies().find(s => s.id === FOUR).enabled, false);
+    for (const strategy of state.lab.strategies().filter(s => s.status === 'UNVERIFIED')) {
+        assert.equal(strategy.enabled, false);
+        assert.throws(() => state.lab.setStrategyEnabled(strategy.id, true), /Unverified/);
+    }
+});
+
+test('four-number calculation matches all approved examples and every feasible minimum', () => {
+    for (const [balls, expected] of [
+        [[3, 8, 17, 25, 36, 44], [13, 23, 33, 43]],
+        [[12, 18, 24, 30, 42, 49], [22, 32, 42, 3]],
+        [[39, 40, 41, 42, 43, 49], [49, 10, 20, 30]],
+    ]) {
+        assert.deepEqual(predictionFromStrategy(fourDefinition(), { balls }).selections, expected);
+        assert.deepEqual(predictionFromStrategy(fourDefinition(), { balls: [...balls].reverse() }).selections, expected);
+    }
+    for (let minimum = 1; minimum <= 44; minimum++) {
+        const source = { balls: Array.from({ length: 6 }, (_, i) => minimum + i) };
+        const pick = predictionFromStrategy(fourDefinition(), source);
+        if (minimum > 39) {
+            assert.equal(pick.status, 'SKIP');
+            assert.deepEqual(pick.selections, []);
+        } else {
+            assert.equal(pick.status, 'PENDING');
+            assert.equal(pick.selections[0], minimum + 10);
+            assert.equal(validSelections(pick.selections, 4), true);
+            assert.deepEqual(pick, predictionFromStrategy(fourDefinition(), source));
+        }
+    }
+    for (const balls of [[], [1, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5], [1, 2, 3, 4, 5, 50], [1, 2, 3, 4, 5, 6.5]]) {
+        assert.equal(predictionFromStrategy(fourDefinition(), { balls }).status, 'SKIP');
+    }
+});
+
+test('strict counts, distinctness and range apply to both research contracts', () => {
+    const actual = [1, 2, 3, 4, 5, 6];
+    for (const selections of [[], [13], [13, 23], [13, 23, 33], [13, 23, 33, 43, 44], [13, 23, 33, 33], [0, 23, 33, 43], [13, 23, 33, 50], [13, 23, 33, 43.5], ['13', 23, 33, 43]]) {
+        assert.equal(validateBetZeroPrediction(selections, actual, 4), 'INVALID');
+    }
+    assert.equal(validateBetZeroPrediction([13, 23, 33, 43], actual, 1), 'INVALID');
+    assert.equal(validateBetZeroPrediction([13, 23], actual, 2), 'INVALID');
+    assert.equal(validateBetZeroPrediction([13, 23, 33, 43], actual, 4), 'WIN');
+    for (const hit of [13, 23, 33, 43]) assert.equal(validateBetZeroPrediction([13, 23, 33, 43], [1, 2, 3, 4, 5, hit], 4), 'LOSS');
+});
+
+test('single and four-number forward histories and loss streaks settle independently', t => {
+    const state = openLab(t, 1000);
+    state.lab.setStrategyEnabled(FOUR, true);
+    const balls = [3, 8, 17, 23, 36, 44]; // 13 absent; 23 present: single WIN, four LOSS.
+    for (let i = 0; i < 4; i++) snapshot(state.lab, {
+        currentId: 101 + i, sourceRecord: record(100 + i, balls, 1001 + 2 * i), snapshotAt: 1002 + 2 * i
+    });
+    assert.equal(state.lab.stats()[SINGLE].wins, 3);
+    assert.equal(state.lab.stats()[SINGLE].worstLosingStreak, 0);
+    assert.equal(state.lab.stats()[FOUR].losses, 3);
+    assert.equal(state.lab.stats()[FOUR].currentLosingStreak, 3);
+    assert.equal(state.lab.stats()[FOUR].worstLosingStreak, 3);
+    assert.equal(state.lab.listForwardPredictions({ strategyId: FOUR }).length, 4);
+    const invalid = record(104, [1, 1, 2, 3, 4, 5], 1009);
+    snapshot(state.lab, { currentId: 105, sourceRecord: invalid, snapshotAt: 1010 });
+    assert.equal(state.lab.stats()[FOUR].invalid, 1);
+    assert.equal(state.lab.stats()[FOUR].currentLosingStreak, 3);
+    snapshot(state.lab, { currentId: 106, sourceRecord: record(105, [40, 41, 42, 43, 44, 49], 1011), snapshotAt: 1012 });
+    assert.equal(state.lab.stats()[FOUR].skipped, 1);
+    assert.equal(state.lab.stats()[FOUR].currentLosingStreak, 3);
+    snapshot(state.lab, { currentId: 107, sourceRecord: record(106, balls, 1013), snapshotAt: 1014 });
+    snapshot(state.lab, { currentId: 108, sourceRecord: record(107, [1, 2, 3, 4, 5, 6], 1015), snapshotAt: 1016 });
+    assert.equal(state.lab.stats()[FOUR].wins, 1);
+    assert.equal(state.lab.stats()[FOUR].currentLosingStreak, 0);
+    assert.equal(state.lab.stats()[FOUR].worstLosingStreak, 3);
+    state.reopen();
+    assert.equal(state.lab.stats()[FOUR].worstLosingStreak, 3);
+});
+
+test('initialization preserves original registry, records, statistics and saved backtests byte-for-byte', t => {
+    const state = openLab(t, 1000);
+    const balls = [3, 8, 17, 23, 36, 44];
+    snapshot(state.lab, { currentId: 101, sourceRecord: record(100, balls, 1001), snapshotAt: 1002 });
+    snapshot(state.lab, { currentId: 102, sourceRecord: record(101, balls, 1003), snapshotAt: 1004 });
+    const history = Array.from({ length: 12 }, (_, i) => record(i + 1, balls, 1));
+    state.lab.runBacktest(history);
+    // Simulate an installation predating the new registry entry.
+    state.db.prepare('DELETE FROM betzero_lab_strategy_configs WHERE strategy_id=?').run(FOUR);
+    state.db.prepare('DELETE FROM betzero_lab_strategies WHERE strategy_id=?').run(FOUR);
+    const tables = ['betzero_lab_forward_predictions', 'betzero_lab_backtest_runs', 'betzero_lab_backtest_results', 'betzero_lab_backtest_predictions', 'betzero_lab_streak_events', 'betzero_lab_alerts'];
+    const before = tables.map(table => state.db.prepare('SELECT * FROM ' + table + ' ORDER BY rowid').all());
+    const registry = state.db.prepare('SELECT * FROM betzero_lab_strategies WHERE strategy_id=?').get(SINGLE);
+    const stats = state.lab.stats()[SINGLE];
+    state.reopen();
+    assert.deepEqual(tables.map(table => state.db.prepare('SELECT * FROM ' + table + ' ORDER BY rowid').all()), before);
+    assert.deepEqual(state.db.prepare('SELECT * FROM betzero_lab_strategies WHERE strategy_id=?').get(SINGLE), registry);
+    assert.deepEqual(state.lab.stats()[SINGLE], stats);
+    assert.equal(state.lab.strategies().find(s => s.id === FOUR).enabled, false);
+});
+
+test('archived versions do not contaminate active statistics or receive rewritten settlements', t => {
+    const { db, lab } = openLab(t, 1000);
+    snapshot(lab, { currentId: 101, sourceRecord: record(100, [3, 8, 17, 23, 36, 44], 1001), snapshotAt: 1002 });
+    db.prepare("INSERT INTO betzero_lab_strategies SELECT strategy_id, '0.9.0', label, status, kind, description, missing_information FROM betzero_lab_strategies WHERE strategy_id=?").run(SINGLE);
+    db.prepare("INSERT INTO betzero_lab_strategy_configs SELECT strategy_id, '0.9.0', enabled, config_json, updated_at FROM betzero_lab_strategy_configs WHERE strategy_id=? AND version='1.0.0'").run(SINGLE);
+    const original = db.prepare('SELECT * FROM betzero_lab_forward_predictions WHERE strategy_id=?').get(SINGLE);
+    const columns = Object.keys(original);
+    const archived = { ...original, prediction_id: 'archived', strategy_version: '0.9.0', status: 'LOSS' };
+    db.prepare('INSERT INTO betzero_lab_forward_predictions (' + columns.join(',') + ') VALUES (' + columns.map(() => '?').join(',') + ')').run(...columns.map(key => archived[key]));
+    db.prepare("INSERT INTO betzero_lab_streak_events VALUES ('archived', ?, '0.9.0', '101', 'LOSS', 1, 1, 0, 0)").run(SINGLE);
+    db.prepare("INSERT INTO betzero_lab_alerts (strategy_id,strategy_version,target_draw_id,alert_type,message,created_at) VALUES (?, '0.9.0', '101', 'NEW_WORST_LOSS_STREAK', 'Original archived wording', 'original')").run(SINGLE);
+    const oldEvents = db.prepare("SELECT * FROM betzero_lab_streak_events WHERE strategy_version='0.9.0'").all();
+    const oldAlerts = db.prepare("SELECT * FROM betzero_lab_alerts WHERE strategy_version='0.9.0'").all();
+    snapshot(lab, { currentId: 102, sourceRecord: record(101, [1, 2, 3, 4, 5, 6], 1003), snapshotAt: 1004 });
+    assert.equal(lab.stats()[SINGLE].losses, 0);
+    assert.equal(lab.stats()[SINGLE].wins, 1);
+    assert.equal(lab.statsForVersion(SINGLE, '0.9.0').losses, 1);
+    assert.deepEqual({ ...db.prepare("SELECT * FROM betzero_lab_forward_predictions WHERE prediction_id='archived'").get() }, archived);
+    assert.ok(lab.listForwardPredictions({ strategyId: SINGLE }).every(row => row.strategyVersion === '1.0.0'));
+    assert.equal(lab.listForwardPredictions({ strategyId: SINGLE, strategyVersion: '0.9.0' }).length, 1);
+    assert.deepEqual(db.prepare("SELECT * FROM betzero_lab_streak_events WHERE strategy_version='0.9.0'").all(), oldEvents);
+    assert.deepEqual(db.prepare("SELECT * FROM betzero_lab_alerts WHERE strategy_version='0.9.0'").all(), oldAlerts);
+});
+
+test('stored malformed selection counts settle INVALID and never become losses', t => {
+    const { lab, db } = openLab(t, 1000);
+    lab.setStrategyEnabled(FOUR, true);
+    snapshot(lab, { currentId: 101, sourceRecord: record(100, [3, 8, 17, 23, 36, 44], 1001), snapshotAt: 1002 });
+    db.prepare("UPDATE betzero_lab_forward_predictions SET selections_json='[13]' WHERE strategy_id=?").run(FOUR);
+    db.prepare("UPDATE betzero_lab_forward_predictions SET selections_json='[13,23,33,43]' WHERE strategy_id=?").run(SINGLE);
+    snapshot(lab, { currentId: 102, sourceRecord: record(101, [13, 23, 33, 43, 1, 2], 1003), snapshotAt: 1004 });
+    for (const id of [SINGLE, FOUR]) {
+        assert.equal(lab.stats()[id].invalid, 1);
+        assert.equal(lab.stats()[id].wins, 0);
+        assert.equal(lab.stats()[id].losses, 0);
+        assert.equal(lab.stats()[id].worstLosingStreak, 0);
+    }
+});
+
+test('four-number baselines are reproducible, entry-matched, and use the correct probability', t => {
+    const { lab } = openLab(t);
+    lab.setStrategyEnabled(FOUR, true);
+    const records = Array.from({ length: 101 }, (_, i) => record(i + 1, i % 7 === 0 ? [40, 41, 42, 43, 44, 49] : [3, 8, 17, 23, 36, 44], 1));
+    const a = lab.runBacktest(records, { seed: 'four-baseline' });
+    const b = lab.runBacktest(records, { seed: 'four-baseline' });
+    const results = run => run.results.filter(row => row.strategyId === FOUR).map(row => row.result);
+    assert.deepEqual(results(a), results(b));
+    const expected = (43 * 42 * 41 * 40) / (49 * 48 * 47 * 46);
+    for (const result of results(a)) {
+        assert.ok(Math.abs(result.theoreticalBaseline.expectedWinRate - expected) < 1e-12);
+        assert.equal(result.randomBaseline.matchingEntries, result.predictions);
+        assert.equal(result.randomBaseline.trials, result.predictions * 64);
+        assert.ok(result.skipped > 0);
+    }
+    for (let i = 0; i < 100; i++) {
+        const numbers = randomSelections(4, seededRandom('four-' + i));
+        assert.equal(validSelections(numbers, 4), true);
+        assert.deepEqual(numbers, randomSelections(4, seededRandom('four-' + i)));
+    }
+    const rows = lab.getBacktestRun(a.runId, { limit: 500 }).predictions.filter(row => row.strategyId === FOUR);
+    assert.ok(rows.length > 0);
+    assert.ok(rows.every(row => row.status === 'SKIP' ? row.selections.length === 0 : validSelections(row.selections, 4)));
+    const first = rows.find(row => row.targetDrawId === '3');
+    const changed = records.map(row => ({ ...row, result: { balls: [...row.result.balls] } }));
+    changed[2].result.balls = [1, 2, 3, 4, 5, 6];
+    const alternate = lab.runBacktest(changed, { seed: 'four-baseline' });
+    assert.deepEqual(lab.getBacktestRun(alternate.runId, { limit: 500 }).predictions.find(row => row.strategyId === FOUR && row.targetDrawId === '3').selections, first.selections);
 });

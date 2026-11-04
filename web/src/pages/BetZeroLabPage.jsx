@@ -245,7 +245,7 @@ export default function BetZeroLabPage({ session }) {
 
   const runResults = backtest?.results || [];
   const finalTestResults = runResults.filter(row => row.segment === 'final_test');
-  const latestPredictions = (overview?.predictions || []).filter(row => row.strategyId === selectedStrategy?.id).slice(0, 5);
+  const latestPredictions = (overview?.predictions || []).filter(row => row.strategyId === selectedStrategy?.id && row.strategyVersion === selectedStrategy?.version).slice(0, 5);
   const selectedRun = overview?.backtestRuns?.find(run => run.runId === selectedRunId);
 
   return <main className="page-wrap betzero-lab-page">
@@ -272,6 +272,7 @@ export default function BetZeroLabPage({ session }) {
           {strategies.map(strategy => <article className="betzero-strategy-card" key={strategy.id}>
             <div className="betzero-card-top"><StatusBadge value={strategy.status} /><span>{strategy.enabled ? 'Enabled' : 'Disabled'}</span></div>
             <h3>{strategy.label}</h3>
+            {strategy.selectionCount && <p><strong>{strategy.selectionCount === 1 ? 'One-number absence experiment — not a four-number BetZero prediction.' : 'Exactly four distinct numbers — newly designed research, not instructor-verified.'}</strong></p>}
             <p>{strategy.status === 'UNVERIFIED' ? strategy.missingInformation : strategy.description}</p>
             <div className="betzero-card-metrics">
               <span><small>Forward picks</small><strong>{strategy.totalPredictions ?? 0}</strong></span>
@@ -327,7 +328,7 @@ export default function BetZeroLabPage({ session }) {
         <div className="betzero-table-scroll"><table className="betzero-table">
           <thead><tr><th>Strategy</th><th>Forward opportunities</th><th>Forward W/L</th><th>Forward win rate</th><th>Current / worst losses</th><th>Final test W/L</th><th>Random baseline</th><th>95% CI</th></tr></thead>
           <tbody>{strategies.map(strategy => {
-            const result = finalTestResults.find(row => row.strategyId === strategy.id)?.result;
+            const result = finalTestResults.find(row => row.strategyId === strategy.id && row.strategyVersion === strategy.version)?.result;
             const trials = (result?.wins || 0) + (result?.losses || 0);
             return <tr key={strategy.id}><th scope="row">{strategy.label}<small><StatusBadge value={strategy.status} /></small></th>
               <td>{(strategy.totalPredictions || 0) + (strategy.skipped || 0) + (strategy.invalid || 0)}<small>{strategy.totalPredictions ?? 0} picks · {strategy.skipped ?? 0} skipped · {strategy.invalid ?? 0} invalid</small></td>
@@ -335,17 +336,17 @@ export default function BetZeroLabPage({ session }) {
               <td>{percentage(strategy.winRate)}</td>
               <td>{strategy.currentLosingStreak ?? 0} / {strategy.worstLosingStreak ?? 0}</td>
               <td>{result && trials ? `${result.wins} / ${result.losses}` : '—'}<small>{result ? `${trials} picks · ${result.skipped} skipped` : ''}</small></td>
-              <td>{percentage(result?.randomBaseline?.winRate)}<small>{result?.randomBaseline ? `${result.randomBaseline.trials.toLocaleString()} matched random trials` : ''}</small></td>
+              <td>{percentage(result?.randomBaseline?.winRate)}<small>{result?.randomBaseline ? `${result.randomBaseline.trials.toLocaleString()} matched random trials` : ''}</small><small>Theoretical: {percentage(result?.theoreticalBaseline?.expectedWinRate)} · {strategy.selectionCount || '—'} selections</small></td>
               <td>{result?.confidenceInterval95 ? `${percentage(result.confidenceInterval95[0])}–${percentage(result.confidenceInterval95[1])}` : '—'}</td>
             </tr>;
           })}</tbody>
         </table></div>
         {backtest && <div className="betzero-segment-tabs" aria-label="Backtest segment results">
           {SEGMENTS.map(segment => {
-            const entries = runResults.filter(row => row.segment === segment);
+            const entries = runResults.filter(row => row.segment === segment && row.strategyId === selectedStrategy?.id && row.strategyVersion === selectedStrategy?.version);
             const totalPicks = entries.reduce((sum, item) => sum + (item.result.predictions || 0), 0);
             const totalWins = entries.reduce((sum, item) => sum + (item.result.wins || 0), 0);
-            return <div key={segment}><span>{segment.replace('_', ' ')}</span><strong>{totalPicks ? `${totalWins} / ${totalPicks} wins` : 'No eligible picks'}</strong></div>;
+            return <div key={segment}><span>{segment.replace('_', ' ')} · {selectedStrategy?.label} v{selectedStrategy?.version}</span><strong>{totalPicks ? `${totalWins} / ${totalPicks} wins` : 'No eligible picks'}</strong></div>;
           })}
         </div>}
       </section>
