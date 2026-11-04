@@ -32,3 +32,9 @@ markets, grouped by each fixture's supplied week label. Each table grades the
 saved pick against the reported score; matches without a usable score are
 marked `NO SCORE`. Over 1.5 is graded from the explicit goals pick, or from the
 existing GG-derived Over pick when the goals pick is absent.
+
+The results page has separate Over 1.5, GG, NG, and Win tabs. Over 1.5 is selected
+initially and excludes explicit Under 1.5 picks; the GG-derived Over fallback is
+retained. Each tab shows its own match count and weekly result table, including
+an empty state when there are no matching reported picks. Feed refreshes preserve
+the selected tab. Keyboard users can switch tabs with Left/Right, Home, and End.

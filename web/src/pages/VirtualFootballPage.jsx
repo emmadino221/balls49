@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../auth';
 import './virtual-football.css';
 
@@ -23,6 +23,14 @@ const predictionMarkets = [
   { id: 'ng', label: 'NG', description: 'BTTS: No' },
   { id: 'gg', label: 'GG', description: 'BTTS: Yes' },
 ];
+
+const resultMarkets = ['over', 'gg', 'ng', 'win'].map(id => predictionMarkets.find(market => market.id === id));
+
+function hasMarketResult(match, market) {
+  return match.status === 'REPORTED'
+    && !(market === 'over' && match.goals15 === 'UNDER')
+    && !!getMarketPrediction(match, market);
+}
 
 const FEED_REFRESH_INTERVAL_MS = 10000;
 
@@ -163,7 +171,19 @@ function MatchCard({ match, market }) {
 export default function VirtualFootballPage({ showResults = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [activeMarket, setActiveMarket] = useState('win');
+  const [activeMarket, setActiveMarket] = useState(showResults ? 'over' : 'win');
+  const resultTabRefs = useRef([]);
+  function handleResultTabKey(event, index) {
+    let next;
+    if (event.key === 'ArrowRight') next = (index + 1) % resultMarkets.length;
+    else if (event.key === 'ArrowLeft') next = (index + resultMarkets.length - 1) % resultMarkets.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = resultMarkets.length - 1;
+    else return;
+    event.preventDefault();
+    setActiveMarket(resultMarkets[next].id);
+    resultTabRefs.current[next]?.focus();
+  }
 
   useEffect(() => {
     let active = true;
@@ -192,8 +212,7 @@ export default function VirtualFootballPage({ showResults = false }) {
   const reportedCount = matches.filter(match => match.status === 'REPORTED').length;
   const upcomingCount = matches.filter(match => match.status === 'UPCOMING').length;
   const visibleMatches = showResults
-    ? matches.filter(match => match.status === 'REPORTED'
-      && predictionMarkets.some(market => getMarketPrediction(match, market.id)))
+    ? matches.filter(match => hasMarketResult(match, activeMarket))
     : matches.filter(match => match.status !== 'REPORTED' && getMarketPrediction(match, activeMarket));
 
   return <main className="page-wrap resource-page vf-page">
@@ -269,13 +288,24 @@ export default function VirtualFootballPage({ showResults = false }) {
             <span className="vf-section-eyebrow">{showResults ? 'COMPLETED FIXTURES' : 'LATEST FROM THE FEED'}</span>
             <h2>{showResults ? 'Reported results' : 'Match predictions'}</h2>
             <p>{showResults
-              ? 'Scores are shown only after the feed reports a result.'
+              ? 'Choose a market to review its predictions and reported scores, grouped by week.'
               : activeMarket === 'over'
                 ? 'Feed Over/Under 1.5 picks take precedence; when unavailable, GG implies Over 1.5.'
                 : 'Team labels and predictions come from the feed; jersey colors are decorative.'}</p>
           </div>
           <span className="vf-fixture-count">{visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'}</span>
         </div>
+        {showResults && <div className="vf-market-tabs" role="tablist" aria-label="Virtual football result markets">
+          {resultMarkets.map((item, index) => <button key={item.id} type="button" role="tab"
+            id={`vf-result-tab-${item.id}`} aria-controls={`vf-result-panel-${item.id}`}
+            aria-selected={activeMarket === item.id} tabIndex={activeMarket === item.id ? 0 : -1}
+            ref={element => { resultTabRefs.current[index] = element; }}
+            className={`vf-market-tab${activeMarket === item.id ? ' is-active' : ''}`}
+            onKeyDown={event => handleResultTabKey(event, index)} onClick={() => setActiveMarket(item.id)}>
+            <span><strong>{item.label}</strong><small>{item.description}</small></span>
+            <b>{matches.filter(match => hasMarketResult(match, item.id)).length}</b>
+          </button>)}
+        </div>}
         {!showResults && <div className="vf-market-tabs" role="group" aria-label="Filter virtual predictions by market">
           {predictionMarkets.map(item => {
             const count = matches.filter(match => match.status !== 'REPORTED' && getMarketPrediction(match, item.id)).length;
@@ -287,10 +317,10 @@ export default function VirtualFootballPage({ showResults = false }) {
         </div>}
         {showResults
           ? <div className="vf-results-markets">
-              {predictionMarkets.map(market => {
-                const weekGroups = getMarketWeekGroups(visibleMatches, market.id);
+              {resultMarkets.map(market => {
+                const weekGroups = getMarketWeekGroups(matches.filter(match => hasMarketResult(match, market.id)), market.id);
                 const count = weekGroups.reduce((total, group) => total + group.rows.length, 0);
-                return <section className="vf-results-market" key={market.id} aria-labelledby={`vf-results-${market.id}`}>
+                return <section className="vf-results-market" key={market.id} role="tabpanel" id={`vf-result-panel-${market.id}`} aria-labelledby={`vf-result-tab-${market.id}`} hidden={activeMarket !== market.id} tabIndex="0">
                   <div className="vf-results-market-heading">
                     <h3 id={`vf-results-${market.id}`}>{market.label}</h3>
                     <span>{count} {count === 1 ? 'prediction' : 'predictions'}</span>
