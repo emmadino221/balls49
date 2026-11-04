@@ -44,8 +44,9 @@ the selected tab. Keyboard users can switch tabs with Left/Right, Home, and End.
 
 New rounds freeze their website selections before results are available:
 
-- Over 1.5: at most two GG predictions with BTTS model confidence of at least
-  60%, ranked by that confidence. This is a GG-derived signal, not an independent
+- Over 1.5: exactly two GG predictions with BTTS model confidence of at least
+  60%, ranked by that confidence, or no Over picks for that round if fewer than
+  two qualify. The prediction view also suppresses incomplete pairs. This is a GG-derived signal, not an independent
   Over 1.5 probability estimate.
 - GG: the highest-confidence GG prediction, at most one match.
 - NG: the highest-confidence NG prediction, at most one match.
@@ -53,7 +54,9 @@ New rounds freeze their website selections before results are available:
   odds are strictly greater than 1.70, at most one match. Draws do not qualify.
 
 Unknown teams and failed model evaluations cannot qualify. Missing qualifying
-matches leave empty slots. A match may qualify in more than one market.
+matches leave empty slots; Over 1.5 requires both slots or skips the round.
+A match may qualify in more than one market. Previously saved results remain
+unchanged; the two-or-skip rule applies to newly collected rounds.
 
 The publisher includes `selectedMarkets`, `roundId`, `winOdds` and
 `bttsConfidence`. All rows from new rounds are published, including those with
