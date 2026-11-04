@@ -18,7 +18,7 @@ function getPickLabel(pick, match) {
 }
 
 const predictionMarkets = [
-  { id: 'win', label: 'Win', description: 'Home, draw, or away' },
+  { id: 'win', label: 'Win', description: 'One team to win' },
   { id: 'over', label: 'Over 1.5', description: 'Total goals' },
   { id: 'ng', label: 'NG', description: 'BTTS: No' },
   { id: 'gg', label: 'GG', description: 'BTTS: Yes' },
@@ -28,6 +28,9 @@ const resultMarkets = ['over', 'gg', 'ng', 'win'].map(id => predictionMarkets.fi
 
 function hasMarketResult(match, market) {
   return match.status === 'REPORTED'
+    && !!match.roundId
+    && Array.isArray(match.selectedMarkets)
+    && match.selectedMarkets.includes(market)
     && !(market === 'over' && match.goals15 === 'UNDER')
     && !!getMarketPrediction(match, market);
 }
@@ -76,16 +79,17 @@ function getMarketSettlement(match, market) {
   return won ? 'WIN' : 'LOSS';
 }
 
-function getMarketWeekGroups(matches, market) {
-  const weeks = new Map();
-  for (const match of matches) {
+function getMarketRoundGroups(matches, market) {
+  const rounds = new Map();
+  for (const match of [...matches].sort((a, b) => b.createdAt - a.createdAt)) {
     const prediction = getMarketPrediction(match, market);
     if (!prediction) continue;
     const week = String(match.week || 'Week unavailable');
-    if (!weeks.has(week)) weeks.set(week, []);
-    weeks.get(week).push({ match, prediction });
+    const key = `${String(match.id).split(':')[0]}:${match.roundId}`;
+    if (!rounds.has(key)) rounds.set(key, { key, week, createdAt: match.createdAt, rows: [] });
+    rounds.get(key).rows.push({ match, prediction });
   }
-  return [...weeks].map(([week, rows]) => ({ week, rows }));
+  return [...rounds.values()];
 }
 
 function Jersey({ variant }) {
@@ -294,7 +298,7 @@ export default function VirtualFootballPage({ showResults = false }) {
             <span className="vf-section-eyebrow">{showResults ? 'COMPLETED FIXTURES' : 'LATEST FROM THE FEED'}</span>
             <h2>{showResults ? 'Reported results' : 'Match predictions'}</h2>
             <p>{showResults
-              ? 'Choose a market to review its predictions and reported scores, grouped by week.'
+              ? 'Only the picks selected before each round: up to two for Over 1.5 and one each for GG, NG and Win. Older results without saved selections are excluded.'
               : activeMarket === 'over'
                 ? 'Up to two GG-derived Over 1.5 picks, ranked by BTTS model confidence of at least 60%. This is not a separate goals model.'
                 : activeMarket === 'win' ? 'The highest-confidence qualifying winner with selection odds strictly above 1.70.' : 'One match with the highest available model confidence for this market. No qualifying match means no pick.'}</p>
@@ -324,7 +328,7 @@ export default function VirtualFootballPage({ showResults = false }) {
         {showResults
           ? <div className="vf-results-markets">
               {resultMarkets.map(market => {
-                const weekGroups = getMarketWeekGroups(matches.filter(match => hasMarketResult(match, market.id)), market.id);
+                const weekGroups = getMarketRoundGroups(matches.filter(match => hasMarketResult(match, market.id)), market.id);
                 const count = weekGroups.reduce((total, group) => total + group.rows.length, 0);
                 return <section className="vf-results-market" key={market.id} role="tabpanel" id={`vf-result-panel-${market.id}`} aria-labelledby={`vf-result-tab-${market.id}`} hidden={activeMarket !== market.id} tabIndex="0">
                   <div className="vf-results-market-heading">
@@ -334,8 +338,8 @@ export default function VirtualFootballPage({ showResults = false }) {
                   <div className="vf-results-table-scroll">
                     <table className="vf-results-table">
                       <thead><tr><th scope="col">Fixture</th><th scope="col">Prediction</th><th scope="col">Score</th><th scope="col">Result</th></tr></thead>
-                      {weekGroups.map(group => <tbody key={group.week}>
-                        <tr className="vf-results-week"><th scope="rowgroup" colSpan="4">{group.week}</th></tr>
+                      {weekGroups.map(group => <tbody key={group.key}>
+                        <tr className="vf-results-week"><th scope="rowgroup" colSpan="4">{group.week} · {formatTime(group.createdAt)} · {group.rows.length} selected {group.rows.length === 1 ? 'pick' : 'picks'}</th></tr>
                         {group.rows.map(({ match, prediction }) => {
                           const settlement = getMarketSettlement(match, market.id);
                           return <tr key={match.id}>
@@ -346,7 +350,7 @@ export default function VirtualFootballPage({ showResults = false }) {
                           </tr>;
                         })}
                       </tbody>)}
-                      {!weekGroups.length && <tbody><tr><td colSpan="4" className="vf-results-no-picks">No reported predictions for this market.</td></tr></tbody>}
+                      {!weekGroups.length && <tbody><tr><td colSpan="4" className="vf-results-no-picks">No selected picks have reported results for this market yet.</td></tr></tbody>}
                     </table>
                   </div>
                 </section>;

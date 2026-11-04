@@ -27,14 +27,16 @@ predictions.
 
 `/virtual-football.html` shows available upcoming predictions grouped by Win,
 Over 1.5, NG, and GG. `/virtual-results.html` shows separate tables for those
-markets, grouped by each fixture's supplied week label. Each table grades the
+markets, grouped by source and unique round ID, with the week label and publication time displayed. Each table grades the
 saved pick against the reported score; matches without a usable score are
 marked `NO SCORE`. Over 1.5 is graded from the explicit goals pick, or from the
 existing GG-derived Over pick when the goals pick is absent.
 
-The results page has separate Over 1.5, GG, NG, and Win tabs. Over 1.5 is selected
-initially and excludes explicit Under 1.5 picks; the GG-derived Over fallback is
-retained. Each tab shows its own match count and weekly result table, including
+The results page has separate Over 1.5, GG, NG, and Win tabs. Only reported fixtures
+with a saved round ID and explicit selection for the chosen market appear.
+Over 1.5 is selected initially and excludes explicit Under 1.5 picks; the
+GG-derived Over fallback is retained for selected picks. Each tab shows its own
+match count and per-round result table, including
 an empty state when there are no matching reported picks. Feed refreshes preserve
 the selected tab. Keyboard users can switch tabs with Left/Right, Home, and End.
 
@@ -58,8 +60,9 @@ The publisher includes `selectedMarkets`, `roundId`, `winOdds` and
 an empty selection list, so an empty new round cannot reuse an older shortlist.
 The receiver validates requirements and per-round limits against saved picks.
 The website displays only the newest upcoming round and uses the appropriate
-market confidence. Results use the frozen selections; legacy results are kept
-without retrospective ranking. Existing Telegram and extension selection rules
+market confidence. Results use the frozen selections; legacy records remain stored
+but are excluded from the shortlist history because their original market
+selections cannot be reconstructed reliably. Existing Telegram and extension selection rules
 are unchanged.
 
 Deploy the website receiver and frontend first, then update both collector and
