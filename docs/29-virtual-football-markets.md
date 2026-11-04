@@ -1,5 +1,16 @@
 # Virtual Football markets and results
 
+## Result filters and streaks
+
+Each result market shows worst and current losing streaks, won rounds and lost
+rounds. Calculations use chronological rounds within the loaded feed history
+(currently the latest 200 match records), filtered by local publication date
+and week. They are not all-time statistics. Repeated week labels remain separate
+rounds. Over 1.5 needs both picks to win; either losing makes the round a loss.
+Incomplete pairs or missing scores break the streak rather than implying a win
+or loss. Skipped rounds do not count. The round-result filter changes table
+visibility only, so hiding wins cannot artificially extend losing streaks.
+
 The public website reads signed snapshots from `GET /public-virtual-football`.
 The feed receiver accepts the existing version 1 match fields and an optional
 `goals15` market field:

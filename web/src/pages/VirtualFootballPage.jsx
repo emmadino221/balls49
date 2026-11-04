@@ -179,6 +179,10 @@ export default function VirtualFootballPage({ showResults = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [activeMarket, setActiveMarket] = useState(showResults ? 'over' : 'win');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [weekFilter, setWeekFilter] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState('');
   const resultTabRefs = useRef([]);
   function handleResultTabKey(event, index) {
     let next;
@@ -216,6 +220,27 @@ export default function VirtualFootballPage({ showResults = false }) {
   }, []);
 
   const matches = Array.isArray(data?.matches) ? data.matches : [];
+  const invalidDates = fromDate && toDate && fromDate > toDate;
+  const historyMatches = matches.filter(match => {
+    const date = new Date(match.createdAt);
+    const localDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return !invalidDates && (!fromDate || localDate >= fromDate) && (!toDate || localDate <= toDate)
+      && (!weekFilter || match.week === weekFilter);
+  });
+  const historyFor = market => {
+    const groups = getMarketRoundGroups(historyMatches.filter(match => hasMarketResult(match, market)), market);
+    for (const group of groups) {
+      const outcomes = group.rows.map(({ match }) => getMarketSettlement(match, market));
+      group.outcome = outcomes.length !== (market === 'over' ? 2 : 1) || outcomes.includes('NO SCORE')
+        ? 'INCOMPLETE' : outcomes.every(outcome => outcome === 'WIN') ? 'WIN' : 'LOSS';
+    }
+    let current = 0, worst = 0, wins = 0, losses = 0;
+    for (const group of [...groups].reverse()) {
+      if (group.outcome === 'LOSS') { current += 1; losses += 1; worst = Math.max(worst, current); }
+      else { current = 0; if (group.outcome === 'WIN') wins += 1; }
+    }
+    return { groups: groups.filter(group => !outcomeFilter || group.outcome === outcomeFilter), current, worst, wins, losses };
+  };
   const reportedCount = matches.filter(match => match.status === 'REPORTED').length;
   const upcomingCount = matches.filter(match => match.status === 'UPCOMING').length;
   const freshMatches = matches.filter(match => match.status === 'UPCOMING' && Array.isArray(match.selectedMarkets) && match.roundId);
@@ -225,7 +250,7 @@ export default function VirtualFootballPage({ showResults = false }) {
   const currentMarketMatches = market => market === 'over' && !overPairReady
     ? [] : roundMatches.filter(match => getMarketPrediction(match, market));
   const visibleMatches = showResults
-    ? matches.filter(match => hasMarketResult(match, activeMarket))
+    ? historyFor(activeMarket).groups.flatMap(group => group.rows.map(row => row.match))
     : currentMarketMatches(activeMarket).slice(0, activeMarket === 'over' ? 2 : 1);
 
   return <main className="page-wrap resource-page vf-page">
@@ -308,6 +333,14 @@ export default function VirtualFootballPage({ showResults = false }) {
           </div>
           <span className="vf-fixture-count">{visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'}</span>
         </div>
+        {showResults && <div className="vf-history-filters">
+          <label>From date<input type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></label>
+          <label>To date<input type="date" value={toDate} onChange={event => setToDate(event.target.value)} /></label>
+          <label>Week<select value={weekFilter} onChange={event => setWeekFilter(event.target.value)}><option value="">All weeks</option>{[...new Set(matches.map(match => match.week))].sort().map(week => <option key={week} value={week}>{week}</option>)}</select></label>
+          <label>Round result<select value={outcomeFilter} onChange={event => setOutcomeFilter(event.target.value)}><option value="">All results</option><option value="WIN">Won</option><option value="LOSS">Lost</option><option value="INCOMPLETE">Incomplete</option></select></label>
+          <button type="button" onClick={() => { setFromDate(''); setToDate(''); setWeekFilter(''); setOutcomeFilter(''); }}>Reset filters</button>
+          {invalidDates && <p role="alert">The end date must be on or after the start date.</p>}
+        </div>}
         {showResults && <div className="vf-market-tabs" role="tablist" aria-label="Virtual football result markets">
           {resultMarkets.map((item, index) => <button key={item.id} type="button" role="tab"
             id={`vf-result-tab-${item.id}`} aria-controls={`vf-result-panel-${item.id}`}
@@ -316,7 +349,7 @@ export default function VirtualFootballPage({ showResults = false }) {
             className={`vf-market-tab${activeMarket === item.id ? ' is-active' : ''}`}
             onKeyDown={event => handleResultTabKey(event, index)} onClick={() => setActiveMarket(item.id)}>
             <span><strong>{item.label}</strong><small>{item.description}</small></span>
-            <b>{matches.filter(match => hasMarketResult(match, item.id)).length}</b>
+            <b>{historyFor(item.id).groups.reduce((total, group) => total + group.rows.length, 0)}</b>
           </button>)}
         </div>}
         {!showResults && <div className="vf-market-tabs" role="group" aria-label="Filter virtual predictions by market">
@@ -331,18 +364,26 @@ export default function VirtualFootballPage({ showResults = false }) {
         {showResults
           ? <div className="vf-results-markets">
               {resultMarkets.map(market => {
-                const weekGroups = getMarketRoundGroups(matches.filter(match => hasMarketResult(match, market.id)), market.id);
+                const stats = historyFor(market.id);
+                const weekGroups = stats.groups;
                 const count = weekGroups.reduce((total, group) => total + group.rows.length, 0);
                 return <section className="vf-results-market" key={market.id} role="tabpanel" id={`vf-result-panel-${market.id}`} aria-labelledby={`vf-result-tab-${market.id}`} hidden={activeMarket !== market.id} tabIndex="0">
                   <div className="vf-results-market-heading">
                     <h3 id={`vf-results-${market.id}`}>{market.label}</h3>
                     <span>{count} {count === 1 ? 'prediction' : 'predictions'}</span>
                   </div>
+                  <div className="vf-streak-stats">
+                    <article><span>Worst losing streak</span><strong>{stats.worst}</strong><small>consecutive rounds</small></article>
+                    <article><span>Current losing streak</span><strong>{stats.current}</strong><small>consecutive rounds</small></article>
+                    <article><span>Won rounds</span><strong>{stats.wins}</strong></article>
+                    <article><span>Lost rounds</span><strong>{stats.losses}</strong></article>
+                  </div>
+                  <p className="vf-history-note">Statistics cover the loaded history within your date and week filters, not all-time results. Result filtering only changes the table. Dates use your local time. {market.id === 'over' ? 'Both picks must win for a round to win; either pick losing makes it a losing round. ' : ''}Incomplete rounds break the streak; skipped rounds are not counted.</p>
                   <div className="vf-results-table-scroll">
                     <table className="vf-results-table">
                       <thead><tr><th scope="col">Fixture</th><th scope="col">Prediction</th><th scope="col">Score</th><th scope="col">Result</th></tr></thead>
                       {weekGroups.map(group => <tbody key={group.key}>
-                        <tr className="vf-results-week"><th scope="rowgroup" colSpan="4">{group.week} · {formatTime(group.createdAt)} · {group.rows.length} selected {group.rows.length === 1 ? 'pick' : 'picks'}</th></tr>
+                        <tr className="vf-results-week"><th scope="rowgroup" colSpan="4">{group.week} · {formatTime(group.createdAt)} · {group.rows.length} selected {group.rows.length === 1 ? 'pick' : 'picks'} · Round: {group.outcome}</th></tr>
                         {group.rows.map(({ match, prediction }) => {
                           const settlement = getMarketSettlement(match, market.id);
                           return <tr key={match.id}>
