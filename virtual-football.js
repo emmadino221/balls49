@@ -3,7 +3,8 @@ const crypto = require('crypto');
 function createVirtualFootball(db) {
     db.exec(`CREATE TABLE IF NOT EXISTS site_virtual_matches (
         id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, payload TEXT NOT NULL
-    ); CREATE TABLE IF NOT EXISTS site_virtual_feed (id INTEGER PRIMARY KEY CHECK(id=1), accepted_at INTEGER NOT NULL, source_at INTEGER NOT NULL);`);
+    ); CREATE TABLE IF NOT EXISTS site_virtual_feed (id INTEGER PRIMARY KEY CHECK(id=1), accepted_at INTEGER NOT NULL, source_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS site_virtual_history_epoch (id INTEGER PRIMARY KEY CHECK(id=1), started_at INTEGER NOT NULL);`);
     const error = (message, status = 400) => Object.assign(new Error(message), { status });
     function ingest(raw, headers) {
         const secret = process.env.VIRTUAL_FEED_SECRET || '';
@@ -51,7 +52,9 @@ function createVirtualFootball(db) {
         });
         db.exec('BEGIN IMMEDIATE');
         try {
+            const historyStart = db.prepare('SELECT started_at FROM site_virtual_history_epoch WHERE id=1').get()?.started_at || 0;
             for (const row of rows) {
+                if (row.createdAt < historyStart) continue;
                 const old = db.prepare('SELECT payload FROM site_virtual_matches WHERE id=?').get(row.id);
                 if (old) {
                     const saved = JSON.parse(old.payload);
@@ -81,14 +84,15 @@ function createVirtualFootball(db) {
         return { ok: true, received: rows.length };
     }
     function view() {
+        const historyStart = db.prepare('SELECT started_at FROM site_virtual_history_epoch WHERE id=1').get()?.started_at || 0;
         const feed = db.prepare('SELECT * FROM site_virtual_feed WHERE id=1').get();
         const stale = !feed || Date.now() - feed.accepted_at > 120000 || Date.now() - feed.source_at > 180000;
-        const matches = db.prepare('SELECT payload FROM site_virtual_matches ORDER BY created_at DESC, id DESC LIMIT 200').all().map(row => {
+        const matches = db.prepare('SELECT payload FROM site_virtual_matches WHERE created_at >= ? ORDER BY created_at DESC, id DESC LIMIT 200').all(historyStart).map(row => {
             const m = JSON.parse(row.payload);
             const expired = m.status === 'UPCOMING' && (stale || Date.now() - m.createdAt > 180000);
             return { ...m, status: expired ? 'EXPIRED' : m.status };
         });
-        return { updatedAt: feed?.accepted_at || null, sourceAt: feed?.source_at || null, stale, matches };
+        return { updatedAt: feed?.accepted_at || null, sourceAt: feed?.source_at || null, historyStart: historyStart || null, stale, matches };
     }
     return { ingest, view };
 }

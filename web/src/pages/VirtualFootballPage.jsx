@@ -333,6 +333,7 @@ export default function VirtualFootballPage({ showResults = false }) {
           </div>
           <span className="vf-fixture-count">{visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'}</span>
         </div>
+        {showResults && data.historyStart && <p className="vf-history-note">Fresh prediction history started {formatTime(data.historyStart)}. Earlier results have been cleared.</p>}
         {showResults && <div className="vf-history-filters">
           <label>From date<input type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></label>
           <label>To date<input type="date" value={toDate} onChange={event => setToDate(event.target.value)} /></label>
