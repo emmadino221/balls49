@@ -35,6 +35,7 @@ function hasMarketResult(match, market) {
 const FEED_REFRESH_INTERVAL_MS = 10000;
 
 function getMarketPrediction(match, market) {
+  if (Array.isArray(match.selectedMarkets) && !match.selectedMarkets.includes(market)) return null;
   if (market === 'win' && match.pick) {
     return { label: 'Match winner', value: getPickLabel(match.pick, match) };
   }
@@ -96,7 +97,8 @@ function Jersey({ variant }) {
 }
 
 function MatchCard({ match, market }) {
-  const confidence = Number.isFinite(match.confidence) ? match.confidence : null;
+  const marketConfidence = market === 'win' ? match.confidence : match.bttsConfidence;
+  const confidence = Number.isFinite(marketConfidence) ? marketConfidence : null;
   const statusLabel = match.status === 'REPORTED'
     ? 'Result reported'
     : match.status === 'EXPIRED' ? 'Past fixture' : 'Upcoming';
@@ -135,6 +137,7 @@ function MatchCard({ match, market }) {
       <span><small>{marketPrediction?.label || '1X2 prediction'}</small><strong>{marketPrediction?.value || pickLabel}</strong></span>
     </div>
 
+    {market === 'win' && Number.isFinite(match.winOdds) && <p className="vf-published-time">Selection odds: <strong>{match.winOdds.toFixed(2)}</strong></p>}
     <details className="vf-match-details">
       <summary>Prediction details <span aria-hidden="true">⌄</span></summary>
       <div className="vf-detail-grid">
@@ -157,7 +160,7 @@ function MatchCard({ match, market }) {
           <strong>{match.btts === 'GG' ? 'Yes' : match.btts === 'NG' ? 'No' : 'Not available'}</strong>
         </div>
         {confidence !== null && <div className="vf-confidence">
-          <div className="vf-confidence-label"><span>Model confidence</span><strong>{confidence.toFixed(1)}%</strong></div>
+          <div className="vf-confidence-label"><span>{market === 'over' ? 'BTTS confidence supporting Over 1.5' : 'Model confidence'}</span><strong>{confidence.toFixed(1)}%</strong></div>
           <div className="vf-confidence-track" role="img" aria-label={`Model confidence ${confidence.toFixed(1)} percent`}>
             <span style={{ width: `${confidence}%` }} />
           </div>
@@ -211,9 +214,12 @@ export default function VirtualFootballPage({ showResults = false }) {
   const matches = Array.isArray(data?.matches) ? data.matches : [];
   const reportedCount = matches.filter(match => match.status === 'REPORTED').length;
   const upcomingCount = matches.filter(match => match.status === 'UPCOMING').length;
+  const freshMatches = matches.filter(match => match.status === 'UPCOMING' && Array.isArray(match.selectedMarkets) && match.roundId);
+  const latestRound = [...freshMatches].sort((a,b) => b.createdAt-a.createdAt || Number(b.id.split(':').at(-1))-Number(a.id.split(':').at(-1)))[0];
+  const roundMatches = latestRound ? freshMatches.filter(match => match.roundId === latestRound.roundId && match.id.split(':')[0] === latestRound.id.split(':')[0]) : [];
   const visibleMatches = showResults
     ? matches.filter(match => hasMarketResult(match, activeMarket))
-    : matches.filter(match => match.status !== 'REPORTED' && getMarketPrediction(match, activeMarket));
+    : roundMatches.filter(match => getMarketPrediction(match, activeMarket)).slice(0, activeMarket === 'over' ? 2 : 1);
 
   return <main className="page-wrap resource-page vf-page">
     <section className="vf-hero">
@@ -222,7 +228,7 @@ export default function VirtualFootballPage({ showResults = false }) {
         <h1>{showResults ? <>Virtual results.<br /><span>Reported scores.</span></> : <>Every match.<br /><span>One clear view.</span></>}</h1>
         <p>{showResults
           ? 'Review completed virtual fixtures and the scores reported by the match feed.'
-          : 'Explore virtual fixtures and the available Win, Over 1.5, NG, and GG picks from your prediction feed.'}</p>
+          : 'Each round: up to two Over 1.5 picks, one GG, one NG and one winner with selection odds above 1.70.'}</p>
         <a className="vf-hero-link" href={showResults ? 'virtual-football.html' : 'virtual-results.html'}>
           {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">{showResults ? '→' : '↓'}</span>
         </a>
@@ -290,8 +296,8 @@ export default function VirtualFootballPage({ showResults = false }) {
             <p>{showResults
               ? 'Choose a market to review its predictions and reported scores, grouped by week.'
               : activeMarket === 'over'
-                ? 'Feed Over/Under 1.5 picks take precedence; when unavailable, GG implies Over 1.5.'
-                : 'Team labels and predictions come from the feed; jersey colors are decorative.'}</p>
+                ? 'Up to two GG-derived Over 1.5 picks, ranked by BTTS model confidence of at least 60%. This is not a separate goals model.'
+                : activeMarket === 'win' ? 'The highest-confidence qualifying winner with selection odds strictly above 1.70.' : 'One match with the highest available model confidence for this market. No qualifying match means no pick.'}</p>
           </div>
           <span className="vf-fixture-count">{visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'}</span>
         </div>
@@ -308,7 +314,7 @@ export default function VirtualFootballPage({ showResults = false }) {
         </div>}
         {!showResults && <div className="vf-market-tabs" role="group" aria-label="Filter virtual predictions by market">
           {predictionMarkets.map(item => {
-            const count = matches.filter(match => match.status !== 'REPORTED' && getMarketPrediction(match, item.id)).length;
+            const count = roundMatches.filter(match => getMarketPrediction(match, item.id)).length;
             return <button key={item.id} type="button" className={`vf-market-tab${activeMarket === item.id ? ' is-active' : ''}`}
               aria-pressed={activeMarket === item.id} onClick={() => setActiveMarket(item.id)}>
               <span><strong>{item.label}</strong><small>{item.description}</small></span><b>{count}</b>
@@ -350,8 +356,8 @@ export default function VirtualFootballPage({ showResults = false }) {
             ? <div className="vf-empty-state"><span aria-hidden="true">{activeMarket === 'over' ? '1.5' : '⚽'}</span>
               <h3>{activeMarket === 'over' ? 'Over 1.5 picks not available' : 'No picks available for this market'}</h3>
               <p>{activeMarket === 'over'
-                ? 'No Over/Under 1.5 picks or GG predictions are currently available in the feed.'
-                : 'No published virtual fixtures currently include a prediction for this market.'}</p></div>
+                ? 'No current shortlist meets the Over 1.5 confidence requirement. We do not fill missing selections with weaker picks.'
+                : 'No current match meets the selection requirements. Check again next round.'}</p></div>
             : <div className="vf-match-grid">{visibleMatches.map(match => <MatchCard key={match.id} match={match} market={activeMarket} />)}</div>}
       </section>
 

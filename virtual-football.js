@@ -28,7 +28,20 @@ function createVirtualFootball(db) {
             if (!['UPCOMING', 'REPORTED'].includes(m.status)) throw error('Invalid status.');
             const score = typeof m.score === 'string' && /^\d{1,2}\s*-\s*\d{1,2}$/.test(m.score) ? m.score.replace(/\s/g, '') : null;
             const confidence = typeof m.confidence === 'number' && Number.isFinite(m.confidence) && m.confidence >= 0 && m.confidence <= 100 ? m.confidence : null;
-            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, status: m.status, score: m.status === 'REPORTED' ? score : null };
+            const selectedMarkets = m.selectedMarkets == null ? null : m.selectedMarkets;
+            const roundId = m.roundId == null ? null : m.roundId;
+            const bttsConfidence = m.bttsConfidence == null ? null : m.bttsConfidence;
+            const winOdds = m.winOdds == null ? null : m.winOdds;
+            if (bttsConfidence !== null && (typeof bttsConfidence !== 'number' || !Number.isFinite(bttsConfidence) || bttsConfidence < 0 || bttsConfidence > 100)) throw error('Invalid BTTS confidence.');
+            if (winOdds !== null && (typeof winOdds !== 'number' || !Number.isFinite(winOdds) || winOdds <= 1 || winOdds > 10000)) throw error('Invalid winner odds.');
+            if (selectedMarkets !== null) {
+                if (!Array.isArray(selectedMarkets) || selectedMarkets.length > 4 || new Set(selectedMarkets).size !== selectedMarkets.length || selectedMarkets.some(k => !['over','gg','ng','win'].includes(k)) || !/^[a-f0-9]{32}$/.test(roundId || '')) throw error('Invalid market shortlist.');
+                if (selectedMarkets.includes('win') && (!(winOdds > 1.70) || confidence === null || !['HOME', 'AWAY'].includes(m.pick))) throw error('Winner shortlist requires a team winner, odds above 1.70 and model confidence.');
+                if (selectedMarkets.includes('gg') && (m.btts !== 'GG' || bttsConfidence === null)) throw error('Invalid GG selection.');
+                if (selectedMarkets.includes('ng') && (m.btts !== 'NG' || bttsConfidence === null)) throw error('Invalid NG selection.');
+                if (selectedMarkets.includes('over') && (m.btts !== 'GG' || bttsConfidence === null || bttsConfidence < 60 || m.goals15 === 'UNDER')) throw error('Over shortlist requires a qualifying GG signal.');
+            }
+            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, bttsConfidence, winOdds, selectedMarkets, roundId, status: m.status, score: m.status === 'REPORTED' ? score : null };
         });
         db.exec('BEGIN IMMEDIATE');
         try {
@@ -41,6 +54,19 @@ function createVirtualFootball(db) {
                     if (row.status === 'REPORTED') { saved.status = row.status; saved.score = row.score; }
                     db.prepare('UPDATE site_virtual_matches SET payload=? WHERE id=?').run(JSON.stringify(saved), row.id);
                 } else db.prepare('INSERT INTO site_virtual_matches VALUES (?,?,?)').run(row.id, row.createdAt, JSON.stringify(row));
+            }
+            // Validate against saved selections too, preventing extra picks in later snapshots.
+            const counts = new Map();
+            for (const entry of db.prepare('SELECT payload FROM site_virtual_matches').all()) {
+                const match = JSON.parse(entry.payload);
+                if (!match.selectedMarkets) continue;
+                const source = match.id.split(':')[0];
+                for (const market of match.selectedMarkets) {
+                    const key = `${source}:${match.roundId}:${market}`;
+                    const count = (counts.get(key) || 0) + 1;
+                    if (count > (market === 'over' ? 2 : 1)) throw error('Too many selected picks for this round.');
+                    counts.set(key, count);
+                }
             }
             db.prepare('INSERT INTO site_virtual_feed VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET accepted_at=excluded.accepted_at, source_at=excluded.source_at').run(Number(timestamp), input.sourceAt);
             db.prepare('DELETE FROM site_virtual_matches WHERE id NOT IN (SELECT id FROM site_virtual_matches ORDER BY created_at DESC, id DESC LIMIT 5000)').run();
