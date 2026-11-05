@@ -4,6 +4,10 @@ const crypto = require('node:crypto');
 
 const RANDOM_REPETITIONS = 64;
 const ALERT_THRESHOLDS = [3, 5, 7, 10];
+function describeEvaluation(data) {
+    return data.evaluationMode ? data : { ...data, evaluationMode: 'LEGACY_EXPLORATORY',
+        methodology: 'Legacy exploratory historical simulation. Its final_test segment is a reused holdout, not an enforced untouched final test.' };
+}
 const STRATEGIES = [
     {
         id: 'single_color_add_10',
@@ -264,12 +268,13 @@ function makeOpportunities(draws) {
     return { opportunities, gaps };
 }
 
-function metricsForSegment(opportunities, strategy, seed) {
+function metricsForSegment(opportunities, strategy, seed, onProgress = () => {}) {
     let predictions = 0, wins = 0, losses = 0, skipped = 0;
     let currentLosingStreak = 0, worstLosingStreak = 0, currentWinningStreak = 0, longestWinningStreak = 0;
     let expectedWins = 0, randomWins = 0, randomTrials = 0;
     const random = seededRandom(`${seed}:${strategy.id}:${strategy.version}:${opportunities[0]?.target.id || 0}`);
     for (const { source, target } of opportunities) {
+        if ((predictions + skipped) % 100 === 0) onProgress((predictions + skipped) / Math.max(1, opportunities.length));
         const pick = predictionFromStrategy(strategy, source);
         if (pick.status !== 'PENDING') {
             skipped++;
@@ -376,6 +381,9 @@ function createBetZeroLab(db, options = {}) {
         );
         CREATE INDEX IF NOT EXISTS betzero_lab_forward_target_idx
             ON betzero_lab_forward_predictions(target_draw_id, strategy_id);
+        CREATE INDEX IF NOT EXISTS betzero_lab_forward_window_idx
+            ON betzero_lab_forward_predictions(strategy_id, strategy_version, CAST(target_draw_id AS INTEGER) DESC)
+            WHERE status IN ('WIN','LOSS','SKIP','INVALID');
         CREATE TABLE IF NOT EXISTS betzero_lab_backtest_runs (
             run_id TEXT PRIMARY KEY,
             status TEXT NOT NULL CHECK(status IN ('COMPLETED', 'FAILED')),
@@ -447,6 +455,11 @@ function createBetZeroLab(db, options = {}) {
             previous_balls_json TEXT,
             next_balls_json TEXT,
             changed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS betzero_lab_reconciliations (
+            prediction_id TEXT PRIMARY KEY,
+            source_name TEXT NOT NULL, source_hash TEXT NOT NULL, result_hash TEXT NOT NULL,
+            observed_at TEXT NOT NULL, reconciled_at TEXT NOT NULL, outcome TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS betzero_lab_state (
             state_key TEXT PRIMARY KEY,
@@ -534,7 +547,7 @@ function createBetZeroLab(db, options = {}) {
         return setStrategyConfig(strategyId, { enabled });
     }
 
-    function rebuildStreakEvents(changedFromTarget) {
+    function rebuildStreakEvents(changedFromTarget, onlyStrategy = null) {
         const insertEvent = db.prepare(`INSERT INTO betzero_lab_streak_events
             (prediction_id, strategy_id, strategy_version, target_draw_id, outcome,
             current_loss_streak, worst_loss_streak, current_win_streak, longest_win_streak)
@@ -557,6 +570,7 @@ function createBetZeroLab(db, options = {}) {
             WHERE strategy_id = ? AND strategy_version = ? AND CAST(target_draw_id AS INTEGER) >= ?
             ORDER BY CAST(target_draw_id AS INTEGER), prediction_id`).all(strategyId, version, changedFromTarget);
         for (const strategy of strategies()) {
+            if (onlyStrategy && (strategy.id !== onlyStrategy.id || strategy.version !== onlyStrategy.version)) continue;
             if (!strategyDefinition(strategy.id, strategy.version)) continue;
             deleteEvents.run(strategy.id, strategy.version, changedFromTarget);
             deleteAlerts.run(strategy.id, strategy.version, changedFromTarget);
@@ -591,6 +605,37 @@ function createBetZeroLab(db, options = {}) {
         }
     }
 
+    function reconcileArchive(archive, settings = {}) {
+        const { planReconciliation } = require('./betzero-reconciliation');
+        const plan = planReconciliation(db, archive, { ...settings, now: now() });
+        if (settings.dryRun !== false) return plan;
+        // One bounded pending-only repair per transaction. Re-read under the write lock.
+        let applied = 0;
+        for (const decision of plan.decisions.filter(item => item.action === 'SETTLE')) {
+            db.exec('BEGIN IMMEDIATE');
+            try {
+                const row = db.prepare('SELECT * FROM betzero_lab_forward_predictions WHERE prediction_id=?').get(decision.predictionId);
+                if (!row || row.status !== 'PENDING' || JSON.stringify(row) !== JSON.stringify(decision.original)) {
+                    db.exec('ROLLBACK'); decision.action = 'UNCHANGED'; continue;
+                }
+                const refreshed = planReconciliation(db, archive, { ...settings, now: now(), target: decision.targetDrawId }).decisions.find(item => item.predictionId === decision.predictionId);
+                if (refreshed?.action !== 'SETTLE') {
+                    db.exec('ROLLBACK'); decision.action = 'UNCHANGED'; decision.reason = refreshed?.reason || 'NO_LONGER_ELIGIBLE'; continue;
+                }
+                const historySize = db.prepare('SELECT COUNT(*) n FROM betzero_lab_forward_predictions WHERE strategy_id=? AND strategy_version=?').get(decision.strategyId, decision.strategyVersion).n;
+                if (historySize > 50000) throw new Error('Reconciliation requires a separately reviewed rebuild above 50,000 strategy records.');
+                db.prepare(`UPDATE betzero_lab_forward_predictions SET status=?, actual_balls_json=?, validated_at=?
+                    WHERE prediction_id=? AND status='PENDING'`).run(decision.outcome, JSON.stringify(decision.balls), plan.evaluatedAt, decision.predictionId);
+                db.prepare(`INSERT INTO betzero_lab_reconciliations
+                    (prediction_id,source_name,source_hash,result_hash,observed_at,reconciled_at,outcome) VALUES(?,?,?,?,?,?,?)`)
+                    .run(decision.predictionId, plan.source, plan.sourceHash, decision.resultHash, decision.observedAt, plan.evaluatedAt, decision.outcome);
+                rebuildStreakEvents(0, { id: decision.strategyId, version: decision.strategyVersion });
+                db.exec('COMMIT'); applied++;
+            } catch (error) { db.exec('ROLLBACK'); throw error; }
+        }
+        return { ...plan, dryRun: false, applied };
+    }
+
     function settleRecord(record, validatedAt) {
         const targetId = drawIdFromRecord(record);
         if (targetId === null || !record?.result || typeof record.result !== 'object') return null;
@@ -618,7 +663,7 @@ function createBetZeroLab(db, options = {}) {
         return changed ? targetId : null;
     }
 
-    function saveForwardPrediction(strategy, sourceRecord, sourceBalls, targetDrawId, predictedAt) {
+    function saveForwardPrediction(strategy, sourceRecord, sourceBalls, targetDrawId, predictedAt, timing) {
         const prediction = predictionFromStrategy(strategy, { balls: sourceBalls });
         const sourceId = drawIdFromRecord(sourceRecord);
         const predictionId = crypto.randomUUID();
@@ -633,7 +678,7 @@ function createBetZeroLab(db, options = {}) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
             predictionId, strategy.id, strategy.version, String(sourceId), String(targetDrawId),
             new Date(predictedAt).toISOString(), JSON.stringify(strategy.config), JSON.stringify(prediction.selections),
-            JSON.stringify(prediction.conditions), JSON.stringify(sourceInput), prediction.status
+            JSON.stringify({ ...prediction.conditions, timing }), JSON.stringify(sourceInput), prediction.status
         );
     }
 
@@ -653,10 +698,15 @@ function createBetZeroLab(db, options = {}) {
             const targetDrawId = Number(current?.drawId);
             const clockDrawId = Number(clock?.drawId);
             const timeLeft = Number(clock?.timeLeftSeconds);
+            const observedAt = Number(clock?.observedAt);
+            const recordedAt = Math.max(snapshotAt, now());
+            const expectedTargetAt = observedAt + timeLeft * 1000;
             const targetAlreadySettled = (Array.isArray(historyUpdates) ? historyUpdates : []).some(record =>
                 drawIdFromRecord(record) === targetDrawId && record?.result && typeof record.result === 'object');
             if (Number.isSafeInteger(targetDrawId) && targetDrawId > 1 && clockDrawId === targetDrawId
-                && !targetAlreadySettled && Number.isFinite(timeLeft) && timeLeft > 0 && timeLeft <= 300) {
+                && !targetAlreadySettled && Number.isFinite(timeLeft) && timeLeft > 0 && timeLeft <= 300
+                && Number.isSafeInteger(observedAt) && observedAt > 0 && observedAt <= snapshotAt
+                && snapshotAt - observedAt <= 30000 && recordedAt < expectedTargetAt) {
                 const sourceRecord = (Array.isArray(historyUpdates) ? historyUpdates : []).find(record =>
                     drawIdFromRecord(record) === targetDrawId - 1 && record?.result && typeof record.result === 'object');
                 const sourceBalls = ballsFromRecord(sourceRecord);
@@ -666,7 +716,8 @@ function createBetZeroLab(db, options = {}) {
                 if (sourceRecord && validBalls(sourceBalls) && Number.isFinite(settledAt)
                     && settledAt > Math.max(lastSnapshotAt, startedAt) && settledAt <= snapshotAt) {
                     for (const strategy of strategies()) {
-                        if (strategyDefinition(strategy.id, strategy.version)) saveForwardPrediction(strategy, sourceRecord, sourceBalls, targetDrawId, snapshotAt);
+                        if (strategyDefinition(strategy.id, strategy.version)) saveForwardPrediction(strategy, sourceRecord, sourceBalls, targetDrawId, recordedAt,
+                            { observedAt, expectedTargetAt, snapshotAt, recordedAt });
                     }
                 }
             }
@@ -714,6 +765,7 @@ function createBetZeroLab(db, options = {}) {
             strategy.id,
             {
                 ...strategy,
+                ...require('./betzero-reconciliation').pendingQuality(db, strategy.id, strategy.version, now()),
                 ...summarizePredictionRows(predictionRows(strategy.id)
                     .filter(row => row.strategy_version === strategy.version))
             }
@@ -723,7 +775,7 @@ function createBetZeroLab(db, options = {}) {
     function statsForVersion(strategyId, version) {
         const strategy = strategies().find(item => item.id === strategyId && item.version === version);
         if (!strategy) throw new Error('Unknown lab strategy version.');
-        return { ...strategy, ...summarizePredictionRows(predictionRows(strategyId).filter(row => row.strategy_version === version)) };
+        return { ...strategy, ...require('./betzero-reconciliation').pendingQuality(db, strategyId, version, now()), ...summarizePredictionRows(predictionRows(strategyId).filter(row => row.strategy_version === version)) };
     }
 
     function alerts(limit = 100) {
@@ -734,7 +786,7 @@ function createBetZeroLab(db, options = {}) {
             .all(boundedLimit);
     }
 
-    function runBacktest(records, { window = 'all', seed = 'betzero-lab-v1' } = {}) {
+    function runBacktest(records, { window = 'all', seed = 'betzero-lab-v1', mode = 'EXPLORATORY', protocolId = null, onProgress = () => {} } = {}) {
         const requestedWindow = String(window);
         if (!['100', '500', '1000', 'all'].includes(requestedWindow)) {
             throw Object.assign(new Error('Choose a 100, 500, 1000, or all-draw window.'), { status: 400 });
@@ -746,12 +798,13 @@ function createBetZeroLab(db, options = {}) {
         const extracted = extractResults(records);
         let opportunities = extracted.opportunities;
         if (requestedWindow !== 'all') opportunities = opportunities.slice(-Number(requestedWindow));
+        if (opportunities.length > 50000) throw Object.assign(new Error('Maximum 50,000 source/target pairs.'), { status: 413 });
         if (opportunities.length < 5) {
             throw Object.assign(new Error('At least five consecutive completed draw pairs are required for a backtest.'), { status: 422 });
         }
         const developmentEnd = Math.floor(opportunities.length * 0.6);
         const validationEnd = developmentEnd + Math.floor(opportunities.length * 0.2);
-        const segments = {
+        const segments = mode === 'SEALED_FINAL' ? { final_test: opportunities } : {
             development: opportunities.slice(0, developmentEnd),
             validation: opportunities.slice(developmentEnd, validationEnd),
             final_test: opportunities.slice(validationEnd)
@@ -795,7 +848,7 @@ function createBetZeroLab(db, options = {}) {
                 } else {
                     result = {
                         status: 'RESEARCH_ONLY',
-                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`)
+                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`, fraction => onProgress(5 + 65 * (resultRows.length + fraction) / (STRATEGIES.length * Object.keys(segments).length)))
                     };
                 }
                 resultRows.push({ runId, strategyId: strategy.id, strategyVersion: strategy.version, segment, result });
@@ -810,7 +863,8 @@ function createBetZeroLab(db, options = {}) {
             eligibleOpportunities: opportunities.length,
             firstTargetDrawId: opportunities[0].target.id,
             lastTargetDrawId: opportunities.at(-1).target.id,
-            split: { development: segments.development.length, validation: segments.validation.length, finalTest: segments.final_test.length },
+            evaluationMode: mode, protocolId,
+            split: { development: segments.development?.length || 0, validation: segments.validation?.length || 0, finalTest: segments.final_test.length },
             strategies: effectiveStrategies.map(strategy => ({
                 id: strategy.id,
                 version: strategy.version,
@@ -819,7 +873,7 @@ function createBetZeroLab(db, options = {}) {
                 config: strategy.config
             })),
             randomRepetitionsPerEntry: RANDOM_REPETITIONS,
-            methodology: 'Chronological walk-forward simulation: each target uses only the immediately prior completed draw. The selected opportunities are split 60/20/20 into development, validation, and untouched final-test segments. Unverified strategies are not evaluated. Historical simulations do not prove that the pick was available live and are not forward results.'
+            methodology: mode === 'SEALED_FINAL' ? 'One consumed sealed protocol; frozen rules and seed, future target boundaries reserved before collection. This retrospective evaluation is not genuine forward prediction evidence.' : 'Exploratory historical simulation with 60/20/20 development, validation, and reused holdout segments. No untouched final-test claim. Only prior-draw inputs generate picks. Forward predictions remain separate.'
         };
         const runResult = db.prepare(`INSERT INTO betzero_lab_backtest_runs
             (run_id, status, requested_window, seed, created_at, completed_at, dataset_hash, data_json)
@@ -832,9 +886,11 @@ function createBetZeroLab(db, options = {}) {
             status, actual_balls_json, validated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
         const simulatedPredictions = [];
+        onProgress(72);
         for (const strategy of effectiveStrategies) {
             for (const [segment, rows] of Object.entries(segments)) {
                 for (const { source, target } of rows) {
+                    if (simulatedPredictions.length % 100 === 0) onProgress(72 + 20 * simulatedPredictions.length / (effectiveStrategies.length * opportunities.length));
                     const prediction = predictionFromStrategy(strategy, source);
                     const status = prediction.status === 'PENDING'
                         ? validateBetZeroPrediction(prediction.selections, target.balls, strategy.selectionCount ?? 0)
@@ -879,7 +935,7 @@ function createBetZeroLab(db, options = {}) {
 
     function getBacktestRun(runId, { limit = 500, offset = 0 } = {}) {
         const run = db.prepare('SELECT * FROM betzero_lab_backtest_runs WHERE run_id = ?').get(String(runId || ''));
-        if (!run) return null;
+        if (!run || run.status !== 'COMPLETED') return null;
         const boundedLimit = Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 500));
         const boundedOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
         return {
@@ -890,7 +946,7 @@ function createBetZeroLab(db, options = {}) {
             createdAt: run.created_at,
             completedAt: run.completed_at,
             datasetHash: run.dataset_hash,
-            data: JSON.parse(run.data_json),
+            data: describeEvaluation(JSON.parse(run.data_json)),
             results: db.prepare(`SELECT strategy_id AS strategyId, strategy_version AS strategyVersion,
                 segment, result_json AS resultJson FROM betzero_lab_backtest_results WHERE run_id = ?
                 ORDER BY strategy_id, segment`).all(run.run_id).map(row => ({
@@ -933,10 +989,10 @@ function createBetZeroLab(db, options = {}) {
         const boundedLimit = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20));
         return db.prepare(`SELECT run_id AS runId, status, requested_window AS requestedWindow, seed,
             created_at AS createdAt, completed_at AS completedAt, dataset_hash AS datasetHash, data_json AS dataJson
-            FROM betzero_lab_backtest_runs ORDER BY created_at DESC LIMIT ?`).all(boundedLimit).map(row => ({
+            FROM betzero_lab_backtest_runs WHERE status='COMPLETED' ORDER BY created_at DESC LIMIT ?`).all(boundedLimit).map(row => ({
             runId: row.runId, status: row.status, requestedWindow: row.requestedWindow, seed: row.seed,
             createdAt: row.createdAt, completedAt: row.completedAt, datasetHash: row.datasetHash,
-            data: JSON.parse(row.dataJson)
+            data: describeEvaluation(JSON.parse(row.dataJson))
         }));
     }
 
@@ -945,6 +1001,7 @@ function createBetZeroLab(db, options = {}) {
             mode: 'EXPERIMENTAL_ONLY',
             warning: 'EXPERIMENTAL — NOT FOR REAL-MONEY BETTING. No bets or subscriber publishing are enabled.',
             strategies: stats(),
+            forwardWindows: require('./betzero-forward-metrics').forwardWindows(db, strategies(), now()),
             predictions: listForwardPredictions({ limit: 100 }),
             alerts: alerts(100),
             backtestRuns: listBacktestRuns(20)
@@ -956,6 +1013,7 @@ function createBetZeroLab(db, options = {}) {
         setStrategyConfig,
         setStrategyEnabled,
         ingestSnapshot,
+        reconcileArchive,
         listForwardPredictions,
         stats,
         statsForVersion,

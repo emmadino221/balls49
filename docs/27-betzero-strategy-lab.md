@@ -92,9 +92,10 @@ strategy ID/version, target ID, and repetition index. The original experiment's
 random sequence is unchanged. Random repetitions do not increase the number
 of independent strategy predictions.
 
-Stage 1 does not introduce a worker or sealed final-test dataset. Backtests
-remain synchronous and repeated evaluation is still possible. The current
-final-test segment must not be interpreted as an enforced untouched holdout.
+Stage 2 introduces the opt-in worker and sealed protocols described below.
+Legacy saved results are labelled exploratory at read time without rewriting
+their stored records. The historical `final_test` segment name is retained for
+API compatibility but does not imply an untouched cohort.
 
 ## Storage
 
@@ -148,3 +149,94 @@ node --test test_betzero_lab.js
 The existing production tests should also be run before deployment. An
 experimental SQLite warning from Node is expected when using its built-in
 `node:sqlite` module.
+
+## Stage 2: asynchronous worker (not automatically installed or started)
+
+`betzero-worker.js` is a separate Node process. It must be launched explicitly
+with `SITE_DB_PATH` pointing to the existing website database. It does not load
+`bot.js`, credentials, betting code, or Telegram. The supervisor forks a child
+with an allowlisted environment. The child freezes the available draw contents,
+records their dataset hash, and evaluates against a private temporary SQLite
+database using the queued versions/configuration. Production database writes
+are only lab results, copied in transactions of at most 100 prediction rows.
+An incomplete import remains a FAILED staging run, hidden from result APIs.
+Completed result visibility and the job's completion are committed together.
+
+Queue limits: one RUNNING job enforced with a partial unique index, at most two
+QUEUED jobs under BEGIN IMMEDIATE, maximum 50,000 pairs, ten minutes elapsed
+from claim through import. Input target spans are also capped at 50,000 to
+bound dataset reads even when draw IDs contain gaps. Queue/worker connections
+use a 100 ms SQLite busy timeout; bounded retries during result import yield
+between attempts. The production connection's settings are unchanged.
+
+Cancellation is immediate for queued jobs and polled during running jobs.
+The supervisor kills the calculation child on cancellation/deadline. Progress
+and heartbeat updates fence stale workers using a unique claim token. After
+30 seconds without heartbeat, a job becomes FAILED (or CANCELLED if requested),
+not silently rerun. Waiting jobs can then run. Failed partial imports remain
+hidden for diagnosis; no automatic historical deletion occurs. Temporary
+datasets are removed after normal completion/failure; abrupt OS termination
+can leave temporary files for OS cleanup. A child also checks its job lease.
+
+`deploy/balls49-betzero-worker.service` is an example only. Before any future
+installation, set its Node executable to the installed path and create a
+dedicated environment file using `deploy/betzero-worker.env.example`. Do not
+reuse a credential-bearing site/bot environment. CPUQuota (default 50%),
+MemoryMax (1536 MB), and Nice are adjustable via systemd drop-ins;
+BETZERO_WORKER_HEAP_MB controls child V8 heap (128–2048 MB, default 768).
+KillMode=control-group stops both supervisor and child on service shutdown.
+These OS resource limits are not enforced when manually running Node on Windows.
+
+### API compatibility and ownership
+
+All new routes require the existing owner session and existing origin checks:
+
+- GET/POST `/admin/betzero-lab/jobs`: list the latest 20 jobs, or enqueue
+  `{window, seed}` exploratory work / `{protocolId}` sealed work. POST returns
+  202 and a job object, never a pretend completed result.
+- GET `/admin/betzero-lab/jobs?id=...`: status, progress, frozen specification,
+  error and completed run ID.
+- POST `/admin/betzero-lab/job-cancel`: `{id}`.
+- GET/POST `/admin/betzero-lab/protocols`: list protocols or freeze
+  `{firstDraw,lastDraw,seed}` against current strategy settings.
+
+The legacy POST `/admin/betzero-lab/backtests` still returns its synchronous
+completed result shape for at most 100 pairs. Larger windows return 413 with
+the async endpoint instruction. It checks reserved datasets before evaluation.
+GET result endpoints retain their existing shapes; evaluationMode clarifies
+legacy/exploratory versus sealed results. Forward records stay separate.
+
+### Frozen final-test protocols
+
+Protocols reserve 5–50,000 **future target draws**, above the highest draw
+currently in website history. They freeze strategy IDs/versions, exact lab
+module SHA-256, selection counts, enablement, configuration, seed, source rule,
+target boundaries and reporting criteria. Protocols do not enable strategies.
+Overlapping reservations are rejected globally, even under new strategy IDs,
+versions or seeds. Exploratory/synchronous evaluations cannot use reserved
+draws as either sources or targets. Exposure ranges are persisted.
+
+Submission is allowed only after the final target exists. Claiming the cohort
+for a queued job consumes it atomically, even if the job later fails, is
+cancelled, or the process crashes. A second submission is rejected; inspect the
+original saved job/results instead. If the rule-code hash changed, submission
+or computation fails closed. The child requires all source/target draws in a
+sealed cohort to have valid six-ball results. Missing/invalid data fails the
+job without making the cohort reusable.
+
+Exploratory runs contain development, validation and a reused holdout segment.
+Sealed runs evaluate only the sealed cohort under frozen rules. Genuine forward
+predictions remain those recorded live before target settlement. No historical
+or sealed run is relabelled as a genuine forward prediction. Raw draw results
+remain visible outside this lab: reservation prevents lab reuse, not external
+inspection, privileged database edits, or operator knowledge.
+
+### Verification
+
+Run all `test_*.js` with Node's test runner, Python unittest discovery, and
+`npm --prefix web run build:same-origin`. `test_betzero_jobs.js` covers queue
+bounds, duplicate claims, busy locks, simulated ten-minute deadlines, running
+cancellation, crashed claims, sealed reuse, actual child-process completion,
+frozen settings, API authorization and the legacy response contract.
+Responsive browser evidence is kept under ignored `output/playwright/` using a
+synthetic localhost preview, not a production owner session.

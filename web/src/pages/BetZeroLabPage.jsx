@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiRequest } from '../auth.js';
 import './betzero-lab.css';
 
-const RANGE_OPTIONS = [10, 50, 100];
+const RANGE_OPTIONS = [100, 500, 1000];
 const STATUS_OPTIONS = ['ALL', 'WIN', 'LOSS', 'PENDING', 'SKIP', 'INVALID'];
 const SEGMENTS = ['development', 'validation', 'final_test'];
 
@@ -78,10 +78,38 @@ export default function BetZeroLabPage({ session }) {
   const [busyAction, setBusyAction] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [jobs, setJobs] = useState([]);
+  const [protocols, setProtocols] = useState([]);
+  const [queueError, setQueueError] = useState('');
+  const [firstDraw, setFirstDraw] = useState('');
+  const [lastDraw, setLastDraw] = useState('');
   const requestInFlight = useRef(false);
 
   const strategies = useMemo(() => Object.values(overview?.strategies || {}), [overview]);
   const selectedStrategy = strategies.find(strategy => strategy.id === selectedStrategyId) || strategies[0] || null;
+
+  const refreshJobs = useCallback(async () => {
+    if (!session?.admin) return;
+    try {
+      const [queue, frozen] = await Promise.all([apiRequest('/admin/betzero-lab/jobs'), apiRequest('/admin/betzero-lab/protocols')]);
+      setJobs(queue.jobs); setProtocols(frozen.protocols); setQueueError('');
+    } catch (failure) { setQueueError(failure.message); }
+  }, [session?.admin]);
+  useEffect(() => {
+    refreshJobs();
+    const timer = window.setInterval(refreshJobs, 5000);
+    return () => window.clearInterval(timer);
+  }, [refreshJobs]);
+
+  async function jobAction(path, body) {
+    setBusy(true); setError('');
+    try {
+      const result = await apiRequest(`/admin/betzero-lab/${path}`, { method: 'POST', body: JSON.stringify(body) });
+      setNotice(path === 'protocols' ? 'Protocol sealed. Rules, seed and future target boundaries are frozen.' : path === 'job-cancel' ? 'Cancellation requested.' : `Evaluation queued: ${result.id}`);
+      await refreshJobs();
+    } catch (failure) { setError(failure.message); }
+    finally { setBusy(false); }
+  }
 
   const loadOverview = useCallback(async (silent = false) => {
     if (!session?.admin || requestInFlight.current) return;
@@ -156,8 +184,8 @@ export default function BetZeroLabPage({ session }) {
     });
   }, [historyQuery, historyStatus, historyRecords]);
 
-  const chartRows = useMemo(() => (selectedStrategy?.last100 || []).slice()
-    .reverse().filter(row => row.status === 'WIN' || row.status === 'LOSS').slice(-recentRange), [recentRange, selectedStrategy]);
+  const forwardWindow = overview?.forwardWindows?.[selectedStrategy?.id]?.windows?.[recentRange];
+  const chartRows = forwardWindow?.chart || [];
 
   async function chooseBacktest(runId) {
     setSelectedRunId(runId);
@@ -181,27 +209,7 @@ export default function BetZeroLabPage({ session }) {
 
   async function runBacktest(event) {
     event.preventDefault();
-    setBusy(true);
-    setBusyAction('Running backtest');
-    setError('');
-    setNotice('');
-    try {
-      const result = await apiRequest('/admin/betzero-lab/backtests', {
-        method: 'POST',
-        body: JSON.stringify({ window: windowSize, seed }),
-      });
-      setSelectedRunId(result.runId);
-      const detail = await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(result.runId)}&limit=1`);
-      setBacktest(detail);
-      const next = await apiRequest('/admin/betzero-lab');
-      setOverview(next);
-      setNotice(`Backtest completed · ${result.data.validDraws.toLocaleString()} valid historical draws · seed ${result.seed}.`);
-    } catch (runError) {
-      setError(runError.message || 'The backtest could not be completed.');
-    } finally {
-      setBusy(false);
-      setBusyAction('');
-    }
+    await jobAction('jobs', { window: windowSize, seed });
   }
 
   async function saveStrategyConfig(event) {
@@ -292,6 +300,7 @@ export default function BetZeroLabPage({ session }) {
           <div className="betzero-forward-primary">
             <div className="betzero-forward-heading"><div><StatusBadge value={selectedStrategy.status} /><h3>{selectedStrategy.label}</h3></div>
               <span className="betzero-streak-indicator">Loss streak <strong>{selectedStrategy.currentLosingStreak ?? 0}</strong></span></div>
+            <>{selectedStrategy.provisional && <p className="betzero-warning" role="status">Provisional summary: {selectedStrategy.provisionalReason}</p>}</>
             <p>{selectedStrategy.status === 'UNVERIFIED' ? selectedStrategy.missingInformation : selectedStrategy.description}</p>
             <div className="betzero-prediction-list">
               {latestPredictions.length ? latestPredictions.map(prediction => <article className="betzero-prediction" key={prediction.predictionId}>
@@ -311,22 +320,36 @@ export default function BetZeroLabPage({ session }) {
       </section>
 
       <section className="betzero-section">
-        <div className="betzero-section-heading betzero-chart-controls"><div><span className="overline">HISTORICAL PERFORMANCE</span><h2>Forward-testing trend</h2></div>
+        <div className="betzero-section-heading betzero-chart-controls"><div><span className="overline">RECORDED FORWARD RESULTS</span><h2>Forward-testing trend</h2></div>
           <div className="betzero-control-row"><label>Strategy<select value={selectedStrategy?.id || ''} onChange={event => setSelectedStrategyId(event.target.value)}>
             {strategies.map(strategy => <option value={strategy.id} key={strategy.id}>{strategy.label}</option>)}
-          </select></label><label>Last evaluated<select value={recentRange} onChange={event => setRecentRange(Number(event.target.value))}>
+          </select></label><label>Recent completed records<select value={recentRange} onChange={event => setRecentRange(Number(event.target.value))}>
             {RANGE_OPTIONS.map(range => <option key={range} value={range}>{range}</option>)}
           </select></label></div>
         </div>
-        {selectedStrategy && <OutcomeChart rows={chartRows} title={`${selectedStrategy.label} · last ${recentRange}`} />}
+        <p className="betzero-section-note">Each strategy version has its own rolling window. Skips and invalid records occupy window slots; pending predictions do not. Collector observation times alone do not prove the actual draw deadline. Older records without timing evidence remain in history but are excluded from these verified rates. Win rates do not measure profit.</p>
+        {forwardWindow && <>
+          {forwardWindow.provisional && <p className="betzero-warning" role="status">Provisional results: {forwardWindow.provisionalReason}</p>}
+          <div className="betzero-stage4-metrics">
+            <MetricCard label="Sample collected" value={`${forwardWindow.available} / ${recentRange}`} note={`${forwardWindow.settled} settled · ${forwardWindow.pending} pending`} />
+            <MetricCard label="Wins / losses" value={`${forwardWindow.wins} / ${forwardWindow.losses}`} note={`${forwardWindow.skipped} skipped · ${forwardWindow.invalid} invalid · ${forwardWindow.unverified} timing-unverified`} />
+            <MetricCard label="Win rate · 95% interval" value={percentage(forwardWindow.winRate)} note={forwardWindow.confidenceInterval95 ? forwardWindow.confidenceInterval95.map(v => percentage(v)).join(' – ') : 'Waiting for verified settled results'} />
+            <MetricCard label="Current / worst loss streak" value={`${forwardWindow.currentLosingStreak} / ${forwardWindow.worstLosingStreak}`} note={`Longest win streak: ${forwardWindow.longestWinningStreak} · within this window`} />
+            <MetricCard label="Theoretical baseline" value={percentage(forwardWindow.theoreticalBaseline)} note="Assumes independent, uniform six-ball draws" />
+            <MetricCard label="Matched seeded random" value={percentage(forwardWindow.randomBaseline.winRate)} note={`${forwardWindow.randomBaseline.repetitions} simulations per settled entry · same targets and skips`} />
+          </div>
+          {forwardWindow.streakFlag && <p className="betzero-warning" role="status">{forwardWindow.streakFlag}</p>}
+          <p className="betzero-section-note">95% Wilson intervals describe the settled sample. Repeated monitoring and serial dependence limit inference. A loss-streak alert does not predict the next draw. Random seed: {forwardWindow.randomBaseline.seed}.</p>
+        </>}
+        {selectedStrategy && <OutcomeChart rows={chartRows} title={`${selectedStrategy.label} · last ${recentRange} records`} />}
       </section>
 
       <section className="betzero-section">
         <div className="betzero-section-heading"><div><span className="overline">STRATEGY COMPARISON</span><h2>Forward vs. matched backtest</h2></div>
           {selectedRun && <span className="betzero-muted">Run {selectedRun.runId.slice(0, 8)} · {selectedRun.requestedWindow} draws</span>}</div>
-        <p className="betzero-section-note">Compare all strategies on the same recorded forward sample and the same final-test segment. Win rate alone is not a ranking; sample size, skip frequency, pick count, and uncertainty matter.</p>
+        <p className="betzero-section-note">Forward records and historical backtest segments are different samples. Each strategy version is tracked separately. Win rate alone is not a ranking; sample size, skip frequency, pick count, and uncertainty matter.</p>
         <div className="betzero-table-scroll"><table className="betzero-table">
-          <thead><tr><th>Strategy</th><th>Forward opportunities</th><th>Forward W/L</th><th>Forward win rate</th><th>Current / worst losses</th><th>Final test W/L</th><th>Random baseline</th><th>95% CI</th></tr></thead>
+          <thead><tr><th>Strategy</th><th>Forward opportunities</th><th>Forward W/L</th><th>Forward win rate</th><th>Current / worst losses</th><th>{backtest?.data.evaluationMode === 'SEALED_FINAL' ? 'Sealed final W/L' : 'Exploratory holdout W/L'}</th><th>Random baseline</th><th>95% CI</th></tr></thead>
           <tbody>{strategies.map(strategy => {
             const result = finalTestResults.find(row => row.strategyId === strategy.id && row.strategyVersion === strategy.version)?.result;
             const trials = (result?.wins || 0) + (result?.losses || 0);
@@ -346,23 +369,50 @@ export default function BetZeroLabPage({ session }) {
             const entries = runResults.filter(row => row.segment === segment && row.strategyId === selectedStrategy?.id && row.strategyVersion === selectedStrategy?.version);
             const totalPicks = entries.reduce((sum, item) => sum + (item.result.predictions || 0), 0);
             const totalWins = entries.reduce((sum, item) => sum + (item.result.wins || 0), 0);
-            return <div key={segment}><span>{segment.replace('_', ' ')} · {selectedStrategy?.label} v{selectedStrategy?.version}</span><strong>{totalPicks ? `${totalWins} / ${totalPicks} wins` : 'No eligible picks'}</strong></div>;
+            return <div key={segment}><span>{segment === 'final_test' ? (backtest.data.evaluationMode === 'SEALED_FINAL' ? 'sealed final test' : 'exploratory holdout') : segment} · {selectedStrategy?.label} v{selectedStrategy?.version}</span><strong>{totalPicks ? `${totalWins} / ${totalPicks} wins` : 'No eligible picks'}</strong></div>;
           })}
         </div>}
       </section>
 
       <section className="betzero-section">
         <div className="betzero-section-heading"><div><span className="overline">HISTORICAL SIMULATION</span><h2>Backtest strategies</h2></div></div>
-        <p className="betzero-section-note">Chronological walk-forward simulation with a 60/20/20 development, validation, and final-test split. Historical simulations are not proof of predictions available live.</p>
+        <p className="betzero-section-note">Exploratory simulations use development, validation, and reused holdout segments. They are not untouched final tests or genuine forward predictions. Sealed evaluations use future draw ranges frozen below.</p>
         <form className="betzero-backtest-form" onSubmit={runBacktest}>
           <label>Historical window<select value={windowSize} onChange={event => setWindowSize(event.target.value)}>
             <option value="100">Last 100 opportunities</option><option value="500">Last 500 opportunities</option>
             <option value="1000">Last 1,000 opportunities</option><option value="all">All available opportunities</option>
           </select></label>
           <label>Reproducibility seed<input value={seed} maxLength={64} required onChange={event => setSeed(event.target.value)} /></label>
-          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Working…' : 'Run backtest'}</button>
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Working…' : 'Queue exploratory backtest'}</button>
         </form>
         {busy && <p className="betzero-progress" role="status">{busyAction || 'Lab operation in progress'}…</p>}
+        {queueError && <p role="alert" className="betzero-message is-error">{queueError}</p>}
+        <div className="betzero-job-list" aria-label="Backtest jobs">
+          <p>One running job, two waiting jobs; at most 50,000 pairs and ten minutes per job. Queued jobs wait until the separate worker is running.</p>
+          {jobs.map(job => <article className="betzero-job" key={job.id}>
+            <strong>{job.specification.mode === 'SEALED_FINAL' ? 'Sealed final-test evaluation' : 'Exploratory historical evaluation'}</strong>
+            <span>{job.state} · {job.progress}% · {dateTime(job.createdAt)}</span>
+            <progress max="100" value={job.progress} aria-label={`Job ${job.id} progress`} />
+            {job.error && <p>{job.error}</p>}
+            {['QUEUED','RUNNING'].includes(job.state) && <button className="btn btn-secondary" disabled={busy || job.cancelRequested} onClick={() => jobAction('job-cancel', { id:job.id })}>{job.cancelRequested ? 'Cancellation requested' : 'Cancel job'}</button>}
+            {job.state === 'COMPLETED' && <button className="btn btn-secondary" disabled={busy} onClick={() => chooseBacktest(job.runId)}>View results</button>}
+          </article>)}
+          {!jobs.length && <p>No queued or saved jobs yet.</p>}
+        </div>
+        <details className="betzero-protocol-controls"><summary>Seal a future final-test protocol</summary>
+          <p>Freeze the current strategy versions, enablement, rules and seed before these target draws occur. A cohort can be submitted only once, including after cancellation or failure. This does not enable strategies. Raw draws may still be visible elsewhere; this control prevents lab reuse, not outside inspection.</p>
+          <form className="betzero-backtest-form" onSubmit={event => { event.preventDefault(); jobAction('protocols', { firstDraw, lastDraw, seed }); }}>
+            <label>First future target draw<input type="number" min="2" required value={firstDraw} onChange={e => setFirstDraw(e.target.value)} /></label>
+            <label>Last future target draw<input type="number" min="6" required value={lastDraw} onChange={e => setLastDraw(e.target.value)} /></label>
+            <span>Frozen seed: {seed}</span><button className="btn btn-secondary" disabled={busy}>Seal protocol</button>
+          </form>
+          {protocols.map(protocol => <article className="betzero-job" key={protocol.id}>
+            <strong>Targets {protocol.first}–{protocol.last} · {protocol.state}</strong>
+            <span>Seed: {protocol.seed} · Rule hash: {protocol.rulesHash.slice(0,12)}</span>
+            {protocol.state === 'SEALED' && <button className="btn btn-secondary" disabled={busy} onClick={() => jobAction('jobs', { protocolId:protocol.id })}>Queue sealed evaluation</button>}
+          </article>)}
+        </details>
+        {backtest && <p className="betzero-section-note">{backtest.data.evaluationMode === 'SEALED_FINAL' ? 'Sealed final-test evaluation — consumed protocol; not a live forward test.' : 'Exploratory historical evaluation — holdout results can have been inspected before.'}</p>}
         <div className="betzero-run-list"><label>Saved run<select value={selectedRunId} onChange={event => chooseBacktest(event.target.value)} disabled={busy}>
           {!overview.backtestRuns?.length && <option value="">No saved runs</option>}
           {(overview.backtestRuns || []).map(run => <option key={run.runId} value={run.runId}>{dateTime(run.createdAt)} · {run.requestedWindow} · {run.runId.slice(0, 8)}</option>)}

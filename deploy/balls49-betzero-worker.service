@@ -1,0 +1,30 @@
+[Unit]
+Description=Isolated BetZero research backtest worker
+After=network.target
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=balls49
+WorkingDirectory=/home/balls49/balls49-site
+# Use only the lab database path and resource settings, not betting or Telegram secrets.
+EnvironmentFile=/etc/balls49/betzero-worker.env
+# Pin the audited executable; review this path explicitly during Node upgrades.
+ExecStart=/home/balls49/.nvm/versions/node/v24.21.0/bin/node --max-old-space-size=512 /home/balls49/balls49-site/betzero-worker.js
+Restart=on-failure
+RestartSec=30
+KillMode=control-group
+TimeoutStopSec=15
+CPUQuota=25%
+CPUWeight=10
+MemoryHigh=768M
+MemoryMax=1G
+TasksMax=32
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

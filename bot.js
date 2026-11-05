@@ -9,6 +9,8 @@ const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, bet49Numbers } = require('./bet49');
 const { createBetZeroLab } = require('./betzero-lab');
+const { createJobStore } = require('./betzero-jobs');
+const { handleJobApi, smallBacktestRecords } = require('./betzero-job-api');
 ﻿'use strict';
 
 const https = require('https');
@@ -104,8 +106,12 @@ siteDb.exec(`
 const footballService = createFootballService(siteDb);
 const virtualFootball = createVirtualFootball(siteDb);
 let betzeroLab = null;
+let betzeroJobs = null;
 try {
     betzeroLab = createBetZeroLab(siteDb);
+    const jobDb = new DatabaseSync(SITE_DATABASE_FILE);
+    jobDb.exec('PRAGMA busy_timeout=100');
+    betzeroJobs = createJobStore(jobDb);
 } catch (error) {
     console.error('[BetZeroLab] Lab storage could not be initialized; the lab API is unavailable.', error);
 }
@@ -241,6 +247,8 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'GET /admin/betzero-lab', 'GET /admin/betzero-lab/predictions', 'GET /admin/betzero-lab/backtests',
     'POST /admin/betzero-lab/backtests', 'POST /admin/betzero-lab/strategy-config',
+    'GET /admin/betzero-lab/jobs', 'POST /admin/betzero-lab/jobs', 'POST /admin/betzero-lab/job-cancel',
+    'GET /admin/betzero-lab/protocols', 'POST /admin/betzero-lab/protocols',
     'POST /internal/prediction-snapshot', 'POST /internal/virtual-football-snapshot',
     'POST /auth/signup', 'POST /auth/login', 'GET /auth/me', 'POST /auth/logout',
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
@@ -4151,6 +4159,9 @@ async function handleHttpRequest(req, res) {
         } catch (error) { return sendJson(res, error.status || 400, { error: error.status ? error.message : 'Invalid admin request.' }); }
     }
 
+    if (['/admin/betzero-lab/jobs', '/admin/betzero-lab/job-cancel', '/admin/betzero-lab/protocols'].includes(parsedUrl.pathname)) {
+        if (await handleJobApi({ req, res, url: parsedUrl, session: siteSession(req), store: betzeroJobs, lab: betzeroLab, readJson: readRequestJson, sendJson })) return;
+    }
     if (parsedUrl.pathname === '/admin/betzero-lab') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
         if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed.' });
@@ -4195,7 +4206,10 @@ async function handleHttpRequest(req, res) {
                 return sendJson(res, 400, { error: 'Invalid backtest request.' });
             }
             try {
-                return sendJson(res, 200, betzeroLab.runBacktest(predictionLog, {
+                if (!betzeroJobs) return sendJson(res,503,{ error:'Lab queue unavailable.' });
+                const labRecords = smallBacktestRecords(predictionLog, request.window);
+                betzeroJobs.reserveSync(labRecords);
+                return sendJson(res, 200, betzeroLab.runBacktest(labRecords, {
                     window: request.window,
                     seed: request.seed
                 }));

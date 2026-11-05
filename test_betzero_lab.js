@@ -47,7 +47,7 @@ function snapshot(lab, { currentId, sourceRecord, snapshotAt, targetRecord = nul
         .map(item => [String(item.drawId), item])).values()];
     return lab.ingestSnapshot({
         current: { drawId: String(currentId) },
-        clock: { drawId: String(currentId), timeLeftSeconds: timeLeft },
+        clock: { drawId: String(currentId), timeLeftSeconds: timeLeft, observedAt: snapshotAt },
         historyUpdates,
         snapshotAt
     });

@@ -246,3 +246,13 @@
   .betzero-history-filters { grid-template-columns: minmax(0, 1fr); }
   .betzero-segment-tabs { grid-template-columns: minmax(0, 1fr); }
 }
+.betzero-job-list, .betzero-protocol-controls { margin: 20px 0; color: var(--ink); }
+.betzero-job { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; margin: 10px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow-wrap: anywhere; }
+.betzero-job strong, .betzero-job > span, .betzero-job > p { flex: 1 1 240px; min-width: 0; }
+.betzero-job progress { width: min(100%, 220px); accent-color: var(--green); }
+.betzero-protocol-controls summary { cursor: pointer; padding: 12px 0; font-weight: 700; }
+.betzero-protocol-controls p, .betzero-job-list > p { color: var(--muted); line-height: 1.6; }
+@media(max-width:600px) { .betzero-job .btn { width: 100%; } }
+.betzero-stage4-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+@media (max-width: 900px) { .betzero-stage4-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .betzero-stage4-metrics { grid-template-columns: minmax(0, 1fr); } }
