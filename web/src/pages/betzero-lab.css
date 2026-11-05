@@ -278,6 +278,14 @@
 .betzero-historical-segment { padding:18px; border:1px solid var(--line); border-radius:12px; margin:12px 0; }
 .betzero-historical-segment h4 { text-transform:capitalize; margin:0 0 12px; }
 .betzero-historical-rate { display:block; width:100%; height:24px; accent-color:var(--green); }
+.betzero-enablement { display:grid; gap:12px; margin:16px 0; padding:14px 0; border-block:1px solid var(--line); }
+.betzero-enablement-caption { color:var(--muted); font-size:12px; line-height:1.6; }
+.betzero-enable-switch { display:flex; align-items:center; gap:12px; min-height:44px; width:100%; text-align:left; padding:8px; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink); font:inherit; font-size:14px; cursor:pointer; }
+.betzero-enable-switch:disabled { cursor:not-allowed; opacity:.65; }
+.betzero-switch-track { display:flex; align-items:center; flex:0 0 44px; height:26px; padding:3px; border-radius:20px; background:var(--muted); box-sizing:border-box; }
+.betzero-switch-track > span { width:20px; height:20px; border-radius:50%; background:var(--surface); box-shadow:0 1px 3px #0004; }
+.betzero-enable-switch[aria-checked=true] .betzero-switch-track { background:var(--green); }
+.betzero-enable-switch[aria-checked=true] .betzero-switch-track > span { margin-left:auto; }
 .betzero-technical-heading p { color:var(--muted); line-height:1.6; }
 .betzero-lab-page .betzero-status { font-size:11px; }
 .betzero-lab-page .betzero-section-note,.betzero-lab-page .betzero-muted,.betzero-lab-page .betzero-empty { font-size:13px; line-height:1.65; }

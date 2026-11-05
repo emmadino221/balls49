@@ -56,7 +56,7 @@ function OutcomeChart({ rows, title, historical = false }) {
   </div>;
 }
 
-function PredictionCard({ strategy, count, title, name }) {
+function PredictionCard({ strategy, count, title, name, onToggle, saving, controlsBusy }) {
   const records = strategy?.last100 || [];
   const pending = records.find(row => row.status === 'PENDING');
   const settled = records.find(row => ['WIN', 'LOSS'].includes(row.status));
@@ -66,6 +66,16 @@ function PredictionCard({ strategy, count, title, name }) {
   return <article className="betzero-simple-pick">
     <div className="betzero-pick-title"><span>{title}</span><StatusBadge value={strategy ? (strategy.enabled ? 'ACTIVE' : 'DISABLED') : 'UNAVAILABLE'} /></div>
     <h3>{name}</h3>
+    <div className="betzero-enablement">
+      <span className="betzero-enablement-caption">Research Predictions Only — No Automatic Betting</span>
+      <button type="button" role="switch" aria-checked={Boolean(strategy?.enabled)}
+        aria-label={`${title} research predictions`} aria-busy={saving}
+        disabled={!strategy || strategy.version !== '1.0.0' || controlsBusy}
+        className="betzero-enable-switch" onClick={() => onToggle(strategy, title)}>
+        <span className="betzero-switch-track" aria-hidden="true"><span /></span>
+        <span>{saving ? 'Saving…' : strategy?.enabled ? 'Enabled — switch off' : 'Disabled — switch on'}</span>
+      </button>
+    </div>
     <p className="betzero-pick-caption">{count === 1 ? 'Single-number absence research experiment' : 'Four-number research experiment'}</p>
     {count === 4 && strategy && !strategy.enabled && !records.some(r => r.selections?.length === 4) && <p className="betzero-empty">4-number research predictions are disabled.</p>}
     {displayed ? <>
@@ -107,6 +117,9 @@ export default function BetZeroLabPage({ session }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState('');
+  const [savingStrategyId, setSavingStrategyId] = useState('');
+  const strategySaveLock = useRef(false);
+  const overviewRevision = useRef(0);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [jobs, setJobs] = useState([]);
@@ -143,11 +156,13 @@ export default function BetZeroLabPage({ session }) {
   }
 
   const loadOverview = useCallback(async (silent = false) => {
-    if (!session?.admin || requestInFlight.current) return;
+    if (!session?.admin || requestInFlight.current || strategySaveLock.current) return;
+    const revision = overviewRevision.current;
     requestInFlight.current = true;
     if (!silent) setLoading(true);
     try {
       const next = await apiRequest('/admin/betzero-lab');
+      if (revision !== overviewRevision.current) return;
       setOverview(next);
       setHistoryRefreshKey(value => value + 1);
       setError('');
@@ -175,7 +190,10 @@ export default function BetZeroLabPage({ session }) {
     setHistoryLoading(true);
     setHistoryError('');
     apiRequest(`/admin/betzero-lab/predictions?${params}`, { signal: controller.signal })
-      .then(result => setHistoryRecords(result.predictions))
+      .then(result => {
+        if (!Array.isArray(result.predictions)) throw new Error('Prediction history returned an invalid response. Refresh the lab to try again.');
+        setHistoryRecords(result.predictions);
+      })
       .catch(loadError => {
         if (loadError.name !== 'AbortError') setHistoryError(loadError.message || 'Prediction history could not be loaded.');
       })
@@ -274,6 +292,38 @@ export default function BetZeroLabPage({ session }) {
     }
   }
 
+  async function toggleResearchStrategy(strategy, title) {
+    if (!session?.admin || busy || strategySaveLock.current || !strategy || strategy.version !== '1.0.0'
+      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four'].includes(strategy.id)) return;
+    strategySaveLock.current = true;
+    const enabled = !strategy.enabled;
+    const confirmed = window.confirm(`${enabled ? 'Enable' : 'Disable'} ${title} (${strategy.label}, version ${strategy.version})?\n\n${enabled ? 'Future eligible research predictions will start. Missed draws will not be backfilled.' : 'New research selections will stop. Existing pending predictions can still settle.'}\n\nExisting history and alert thresholds are preserved. The other strategy is unchanged.\n\nResearch Predictions Only — No Automatic Betting. This does not start the backtesting worker.`);
+    if (!confirmed) { strategySaveLock.current = false; return; }
+    overviewRevision.current++;
+    setSavingStrategyId(strategy.id); setBusy(true); setError(''); setNotice('');
+    let saved = false;
+    try {
+      const result = await apiRequest('/admin/betzero-lab/strategy-config', {
+        method: 'POST', body: JSON.stringify({ strategyId: strategy.id, enabled }),
+      });
+      saved = true;
+      setOverview(current => current ? { ...current, strategies: { ...current.strategies,
+        [strategy.id]: { ...current.strategies[strategy.id], ...result.strategy } } } : current);
+      if (selectedStrategy?.id === strategy.id) setEnabledInput(result.strategy.enabled);
+      const next = await apiRequest('/admin/betzero-lab');
+      setOverview(next); setHistoryRefreshKey(value => value + 1);
+      if (selectedStrategy?.id === strategy.id) setEnabledInput(Boolean(next.strategies[strategy.id]?.enabled));
+      const actualEnabled = next.strategies[strategy.id]?.enabled;
+      setNotice(`${title}: server confirms research predictions are ${actualEnabled ? 'enabled' : 'disabled'}. Existing history is preserved.`);
+    } catch (failure) {
+      setError(saved
+        ? `${title} was saved, but refreshing its status failed. Refresh the lab to confirm the latest settings. ${failure.message}`
+        : `${title} could not be confirmed saved. The switch retains its previous status; refresh before retrying if the connection failed. ${failure.message}`);
+    } finally {
+      strategySaveLock.current = false; setSavingStrategyId(''); setBusy(false);
+    }
+  }
+
   if (session?.checking) return <main className="page-wrap betzero-lab-page"><section className="content-card" role="status">Checking owner session…</section></main>;
   if (!session?.admin) return <main className="page-wrap betzero-lab-page">
     <section className="betzero-access-card"><span className="overline">PRIVATE RESEARCH WORKSPACE</span>
@@ -307,8 +357,8 @@ export default function BetZeroLabPage({ session }) {
       <section className="betzero-section betzero-my-predictions" aria-labelledby="my-predictions-title">
         <div className="betzero-section-heading"><div><span className="overline">YOUR RESEARCH PICKS</span><h2 id="my-predictions-title">My Predictions</h2></div></div>
         <div className="betzero-simple-picks">
-          <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" />
-          <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" />
+          <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} />
+          <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} />
         </div>
       </section>
       <section className="betzero-section" aria-labelledby="test-strategy-title">
