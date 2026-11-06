@@ -16,7 +16,7 @@ function childRun(sitePath, temporary, job) {
     const site = new DatabaseSync(sitePath, { readOnly: true });
     site.exec('PRAGMA busy_timeout=1000');
     const spec = job.specification;
-    const records = site.prepare('SELECT record_json FROM public_prediction_history WHERE sort_draw_id BETWEEN ? AND ? ORDER BY sort_draw_id LIMIT 50002').all(spec.first - 1, spec.last).map(r => JSON.parse(r.record_json));
+    const records = site.prepare('SELECT record_json FROM public_prediction_history WHERE sort_draw_id BETWEEN ? AND ? ORDER BY sort_draw_id LIMIT 50007').all(Math.min(spec.contextFirst ?? spec.first - 1, spec.first - 1), spec.last).map(r => JSON.parse(r.record_json));
     const observe = site.prepare('SELECT state,token,cancel_requested,started_at FROM betzero_lab_jobs WHERE id=?');
     let lastCheck = 0;
     const report = progress => {
@@ -28,10 +28,10 @@ function childRun(sitePath, temporary, job) {
         }
         process.send?.({ progress });
     };
-    if (records.length > 50001) throw new Error('Dataset exceeds 50,000 pairs.');
+    if (records.length > 50006) throw new Error('Dataset exceeds 50,000 pairs.');
     if (spec.mode === 'SEALED_FINAL') {
         const valid = new Map(records.map(r => [Number(r.drawId), r.result?.balls]));
-        for (let id = spec.first - 1; id <= spec.last; id++) {
+        for (let id = Math.min(spec.contextFirst ?? spec.first - 1, spec.first - 1); id <= spec.last; id++) {
             const balls = valid.get(id);
             if (!Array.isArray(balls) || balls.length !== 6 || new Set(balls).size !== 6 || balls.some(n => !Number.isInteger(n) || n < 1 || n > 49)) throw new Error('Sealed cohort has missing or invalid draws; protocol remains consumed.');
         }
@@ -41,9 +41,10 @@ function childRun(sitePath, temporary, job) {
     for (const strategy of spec.strategies) {
         const actual = lab.strategies().find(s => s.id === strategy.id && s.version === strategy.version);
         if (!actual) throw new Error('Frozen strategy version is unavailable.');
+        if (spec.researchStrategyId) continue;
         lab.setStrategyConfig(strategy.id, { enabled: strategy.enabled, alertThresholds: strategy.config.alertThresholds });
     }
-    const run = lab.runBacktest(records, { window: 'all', seed: spec.seed, mode: spec.mode, protocolId: spec.protocolId || null, onProgress: report });
+    const run = lab.runBacktest(records, { window: 'all', seed: spec.seed, mode: spec.mode, protocolId: spec.protocolId || null, firstTarget: spec.first, strategyId: spec.researchStrategyId || null, onProgress: report });
     run.data.frozenSpecification = spec;
     privateDb.prepare('UPDATE betzero_lab_backtest_runs SET data_json=? WHERE run_id=?').run(JSON.stringify(run.data), run.runId);
     privateDb.close();

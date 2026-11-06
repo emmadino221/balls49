@@ -76,8 +76,14 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
         <span>{saving ? 'Saving…' : strategy?.enabled ? 'Enabled — switch off' : 'Disabled — switch on'}</span>
       </button>
     </div>
-    <p className="betzero-pick-caption">{count === 1 ? 'Single-number absence research experiment' : 'Four-number research experiment'}</p>
+    <p className="betzero-pick-caption">{count === 1 ? 'Single-number absence research experiment' : `${count}-number research experiment`}</p>
     {count === 4 && strategy && !strategy.enabled && !records.some(r => r.selections?.length === 4) && <p className="betzero-empty">4-number research predictions are disabled.</p>}
+    {count === 3 && <>
+      <p className="betzero-pick-caption">Method: {displayed?.conditions?.method || strategy?.decisionState?.method || 'Awaiting analysis'}</p>
+      {!strategy?.enabled && <p className="betzero-empty">3-number research predictions are disabled.</p>}
+      {records[0]?.status === 'SKIP' && <p className="betzero-warning">Latest opportunity skipped: {records[0].conditions?.reason || 'No eligible prediction'}</p>}
+      {strategy?.decisionState?.paused && <p className="betzero-warning">Result conflict - paused for review.</p>}
+    </>}
     {displayed ? <>
       <p className="betzero-pick-caption">{pending ? 'Latest pending record - draw timing not verified' : 'Last completed prediction'}</p>
       {valid ? <div className="betzero-number-balls" aria-label="Recorded selected numbers">{selections.map(n => <span key={n}>{n}</span>)}</div> : <p>No valid saved selection available.</p>}
@@ -169,7 +175,7 @@ export default function BetZeroLabPage({ session }) {
       const runId = selectedRunId || next.backtestRuns?.[0]?.runId || '';
       if (!selectedRunId && runId) setSelectedRunId(runId);
       if (runId) {
-        const detail = await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(runId)}&limit=1`);
+        const detail = await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(runId)}&limit=1000`);
         setBacktest(detail);
       } else {
         setBacktest(null);
@@ -246,7 +252,7 @@ export default function BetZeroLabPage({ session }) {
     setBusyAction('Loading saved backtest');
     setError('');
     try {
-      const detail = await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(runId)}&limit=1`);
+      const detail = await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(runId)}&limit=1000`);
       setBacktest(detail);
     } catch (loadError) {
       setError(loadError.message || 'The saved backtest could not be loaded.');
@@ -258,7 +264,20 @@ export default function BetZeroLabPage({ session }) {
 
   async function runBacktest(event) {
     event.preventDefault();
-    await jobAction('jobs', { window: windowSize, seed });
+    if (!selectedStrategy || selectedStrategy.status !== 'RESEARCH_ONLY') { setError('Choose a supported research strategy.'); return; }
+    if (windowSize !== '100') {
+      await jobAction('jobs', { window: windowSize, seed, strategyId: selectedStrategy.id });
+      return;
+    }
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await apiRequest('/admin/betzero-lab/backtests', { method:'POST', body:JSON.stringify({window:windowSize,seed,strategyId:selectedStrategy.id}) });
+      setSelectedRunId(result.runId);
+      setBacktest(await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(result.runId)}&limit=1000`));
+      setPerformanceView('historical');
+      setNotice('Historical research test completed. Forward settings were not changed.');
+    } catch (failure) { setError(failure.message || 'Historical test failed.'); }
+    finally { setBusy(false); }
   }
 
   async function saveStrategyConfig(event) {
@@ -294,10 +313,10 @@ export default function BetZeroLabPage({ session }) {
 
   async function toggleResearchStrategy(strategy, title) {
     if (!session?.admin || busy || strategySaveLock.current || !strategy || strategy.version !== '1.0.0'
-      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four'].includes(strategy.id)) return;
+      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three'].includes(strategy.id)) return;
     strategySaveLock.current = true;
     const enabled = !strategy.enabled;
-    const confirmed = window.confirm(`${enabled ? 'Enable' : 'Disable'} ${title} (${strategy.label}, version ${strategy.version})?\n\n${enabled ? 'Future eligible research predictions will start. Missed draws will not be backfilled.' : 'New research selections will stop. Existing pending predictions can still settle.'}\n\nExisting history and alert thresholds are preserved. The other strategy is unchanged.\n\nResearch Predictions Only — No Automatic Betting. This does not start the backtesting worker.`);
+    const confirmed = window.confirm(`${enabled ? 'Enable' : 'Disable'} ${title} (${strategy.label}, version ${strategy.version})?\n\n${enabled ? 'Future eligible research predictions will start. Missed draws will not be backfilled.' : 'New research selections will stop. Existing pending predictions can still settle.'}\n\nExisting history and alert thresholds are preserved. Other strategies are unchanged.\n\nResearch Predictions Only — No Automatic Betting. This does not start the backtesting worker.`);
     if (!confirmed) { strategySaveLock.current = false; return; }
     overviewRevision.current++;
     setSavingStrategyId(strategy.id); setBusy(true); setError(''); setNotice('');
@@ -359,24 +378,25 @@ export default function BetZeroLabPage({ session }) {
         <div className="betzero-simple-picks">
           <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} />
           <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} />
+          <PredictionCard strategy={overview.strategies.minimum_maximum_three} count={3} title="3-Number Minimum/Maximum" name="MIN / MAX - three adjacent numbers" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'minimum_maximum_three'} controlsBusy={busy} />
         </div>
       </section>
       <section className="betzero-section" aria-labelledby="test-strategy-title">
         <div className="betzero-section-heading"><div><span className="overline">EXPLORE PAST DRAWS</span><h2 id="test-strategy-title">Test My Strategy</h2></div></div>
-        <p className="betzero-section-note">Test saved strategy rules against recorded draws. The selector chooses which results you view; the backend evaluates the saved strategy configuration as a group.</p>
+        <p className="betzero-section-note">Test only the selected research strategy against recorded draws, without changing forward settings. Tests of 100 opportunities run here; larger tests queue and wait while the worker is unavailable.</p>
         <form className="betzero-backtest-form" onSubmit={runBacktest}>
           <label>Historical window<select value={windowSize} onChange={event => setWindowSize(event.target.value)}>
             <option value="100">Last 100 opportunities</option><option value="500">Last 500 opportunities</option>
             <option value="1000">Last 1,000 opportunities</option><option value="all">All available opportunities</option>
           </select></label>
-          <label>Show results for<select value={selectedStrategy?.id || ''} onChange={event => setSelectedStrategyId(event.target.value)}>
-            {strategies.map(strategy => <option key={strategy.id} value={strategy.id}>{strategy.selectionCount === 1 ? '1-Number BetZero' : strategy.selectionCount === 4 ? '4-Number BetZero' : `Advanced: ${strategy.label}`}</option>)}
+          <label>Strategy to test<select value={selectedStrategy?.id || ''} onChange={event => setSelectedStrategyId(event.target.value)}>
+            {strategies.map(strategy => <option key={strategy.id} value={strategy.id}>{strategy.selectionCount === 1 ? '1-Number BetZero' : strategy.selectionCount === 3 ? '3-Number Minimum/Maximum' : strategy.selectionCount === 4 ? '4-Number BetZero' : `Advanced: ${strategy.label}`}</option>)}
           </select></label>
-          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Working…' : 'Queue Historical Test'}</button>
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Working…' : windowSize === '100' ? 'Run Historical Test' : 'Queue Historical Test'}</button>
         </form>
-        <p className="betzero-section-note">Disabled strategies are skipped, not enabled for testing. Queued tests require an administrator to activate the background worker; worker availability is not reported here. Nothing runs automatically.</p>
-        {selectedStrategy && !selectedStrategy.enabled && <p className="betzero-warning">This strategy is disabled. Historical evaluation of disabled strategies is not supported by this API.</p>}
-        <p className="betzero-section-note">This queues an exploratory evaluation using seed <strong>{seed}</strong>. Small synchronous test controls are reserved for Phase 3. Queue status and advanced settings remain below.</p>
+        <p className="betzero-section-note">Research strategies can be tested while forward predictions remain disabled. Unverified tutorial strategies cannot be tested. Larger jobs wait while the worker is unavailable; this page never starts it.</p>
+        {selectedStrategy?.status === 'UNVERIFIED' && <p className="betzero-warning">This tutorial strategy has incomplete rules and cannot be evaluated.</p>}
+        <p className="betzero-section-note">Exploratory evaluation uses seed <strong>{seed}</strong>. Forward settings remain unchanged. Queue status and advanced settings remain below.</p>
       </section>
       <section className="betzero-section betzero-simple-performance" aria-labelledby="performance-title">
         <div className="betzero-section-heading"><div><span className="overline">UNDERSTAND YOUR RESULTS</span><h2 id="performance-title">Results &amp; Performance</h2></div></div>
@@ -463,13 +483,31 @@ export default function BetZeroLabPage({ session }) {
       </section>
       <div className="betzero-technical-heading"><h2>Research tools</h2><p>Existing technical features remain available here. Their collapsible layout is reserved for Phase 4.</p></div>
       <section className="betzero-section">
+        {performanceView === 'historical' && backtest && <section className="betzero-section">
+          <h2>Recorded historical selections</h2>
+          {backtest.data.overall?.strategyId === selectedStrategy?.id && <div className="betzero-simple-pick">
+            <h3>Full historical test</h3>
+            <p>{backtest.data.overall.predictions} evaluated | {backtest.data.overall.wins} wins | {backtest.data.overall.losses} losses | {backtest.data.overall.skipped} skipped</p>
+            <p>Win rate: {percentage(backtest.data.overall.winRate)} | Current losing streak: {backtest.data.overall.currentLosingStreak} | Worst: {backtest.data.overall.worstLosingStreak}</p>
+            <p>Matched random: {percentage(backtest.data.overall.randomBaseline?.winRate)} | Theoretical: {percentage(backtest.data.overall.theoreticalBaseline?.expectedWinRate)}</p>
+            <p>Difference from random: {backtest.data.overall.winRate == null ? 'Unavailable' : `${((backtest.data.overall.winRate - backtest.data.overall.randomBaseline.winRate)*100).toFixed(2)} percentage points`}. Historical performance does not guarantee future results.</p>
+          </div>}
+          <p>Saved simulated results, separate from forward predictions. Up to 1,000 rows shown.</p>
+          <div className="betzero-historical-picks">{(backtest.predictions || []).filter(r => r.strategyId === selectedStrategy?.id).map(row => <article key={row.predictionId} className="betzero-simple-pick">
+            <strong>Draw #{row.targetDrawId} | {row.conditions?.method || 'No method'}</strong>
+            <StatusBadge value={row.status} />
+            <p>Selections: {row.selections?.join(', ') || 'None'}</p>
+            <p>Result: {row.actualBalls?.join(', ') || 'Unavailable'}</p>
+            {row.conditions?.reason && <p>{row.conditions.reason}</p>}
+          </article>)}</div>
+        </section>}
         <div className="betzero-section-heading"><div><span className="overline">STRATEGY OVERVIEW</span><h2>Research status</h2></div>
           <span className="betzero-muted">{strategies.length} registered strategies</span></div>
         <div className="betzero-strategy-grid">
           {strategies.map(strategy => <article className="betzero-strategy-card" key={strategy.id}>
             <div className="betzero-card-top"><StatusBadge value={strategy.status} /><span>{strategy.enabled ? 'Enabled' : 'Disabled'}</span></div>
             <h3>{strategy.label}</h3>
-            {strategy.selectionCount && <p><strong>{strategy.selectionCount === 1 ? 'One-number absence experiment — not a four-number BetZero prediction.' : 'Exactly four distinct numbers — newly designed research, not instructor-verified.'}</strong></p>}
+            {strategy.selectionCount && <p><strong>{strategy.selectionCount === 1 ? 'One-number absence experiment — not a four-number BetZero prediction.' : strategy.selectionCount === 3 ? 'Exactly three distinct numbers - MIN/MAX research.' : 'Exactly four distinct numbers — newly designed research, not instructor-verified.'}</strong></p>}
             <p>{strategy.status === 'UNVERIFIED' ? strategy.missingInformation : strategy.description}</p>
             <div className="betzero-card-metrics">
               <span><small>Forward picks</small><strong>{strategy.totalPredictions ?? 0}</strong></span>

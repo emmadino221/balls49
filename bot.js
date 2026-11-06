@@ -4207,10 +4207,11 @@ async function handleHttpRequest(req, res) {
             }
             try {
                 if (!betzeroJobs) return sendJson(res,503,{ error:'Lab queue unavailable.' });
-                const labRecords = smallBacktestRecords(predictionLog, request.window);
+                const labRecords = smallBacktestRecords(predictionLog, request.window, request.strategyId);
                 betzeroJobs.reserveSync(labRecords);
                 return sendJson(res, 200, betzeroLab.runBacktest(labRecords, {
                     window: request.window,
+                    strategyId: request.strategyId || null,
                     seed: request.seed
                 }));
             } catch (error) {

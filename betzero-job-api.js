@@ -22,11 +22,18 @@ async function handleJobApi({ req, res, url, session, store, lab, readJson, send
     }
     return true;
 }
-function smallBacktestRecords(records, window) {
+function smallBacktestRecords(records, window, strategyId = null) {
     const requested = String(window || 'all');
     if (!['100','500','1000','all'].includes(requested)) throw Object.assign(new Error('Unsupported window.'),{status:400});
     // The production log is already newest-first. Slice before any lab normalization/sort.
     if (requested !== '100' && records.length > 101) throw Object.assign(new Error('Use POST /admin/betzero-lab/jobs for more than 100 source/target pairs.'),{status:413});
+    if (strategyId === 'minimum_maximum_three') {
+        const {normalizeHistoricalDraws,makeOpportunities} = require('./betzero-lab');
+        const pairs = makeOpportunities(normalizeHistoricalDraws(records).draws).opportunities;
+        const context = pairs.slice(-105);
+        if (!context.length) return [];
+        return records.filter(r => Number(r.drawId) >= context[0].source.id);
+    }
     return records.slice(0,101);
 }
 module.exports = { handleJobApi, smallBacktestRecords };

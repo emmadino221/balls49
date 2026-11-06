@@ -311,3 +311,5 @@
  .betzero-view-switch .btn { flex:1 1 180px; }
  .betzero-simple-totals { grid-template-columns:minmax(0,1fr); }
 }
+
+.betzero-historical-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 1rem; max-height: 40rem; overflow-y: auto; }

@@ -2,10 +2,12 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { normalizeHistoricalDraws, makeOpportunities } = require('./betzero-lab');
+const MINMAX = 'minimum_maximum_three';
 const MAX_PAIRS = 50000;
 const TIMEOUT_MS = 600000;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const rulesHash = () => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'betzero-lab.js'))).digest('hex');
+const rulesHash = () => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'betzero-lab.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-minmax.js'))).digest('hex');
 
 function createJobStore(db, { now = Date.now } = {}) {
     db.exec(`CREATE TABLE IF NOT EXISTS betzero_lab_jobs (
@@ -26,16 +28,17 @@ function createJobStore(db, { now = Date.now } = {}) {
     const frozen = strategies => ({ rulesHash: rulesHash(), strategies: strategies.map(s => ({ id: s.id, version: s.version, enabled: s.enabled, config: s.config, selectionCount: s.selectionCount })) });
     const seedValue = seed => { if (typeof seed !== 'string' || !seed.trim() || seed.length > 64) throw fail('Seed must contain 1–64 characters.'); return seed; };
     function assertExploratory(first, last) {
-        if (db.prepare('SELECT id FROM betzero_lab_protocols WHERE first_draw <= ? AND last_draw >= ?').get(last, first)) throw fail('This range overlaps a sealed final-test cohort. Choose another range.', 409);
+        if (db.prepare("SELECT id FROM betzero_lab_protocols WHERE COALESCE(json_extract(specification,'$.contextFirst'),first_draw) <= ? AND last_draw >= ?").get(last, first)) throw fail('This range overlaps a sealed final-test cohort. Choose another range.', 409);
     }
     function seal(input, strategies) {
         const first = Number(input.firstDraw), last = Number(input.lastDraw);
         if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 2 || last - first + 1 < 5 || last - first + 1 > MAX_PAIRS) throw fail('Choose 5–50,000 future target draws.');
-        const specification = { ...frozen(strategies), seed: seedValue(input.seed), first, last, mode: 'SEALED_FINAL', sourceRule: 'target minus one', acceptance: 'Report all outcomes and matched baselines; no parameter tuning on this cohort.' };
+        const contextFirst = strategies.some(s => s.id === MINMAX && s.enabled) ? Math.max(1, first - 6) : first;
+        const specification = { contextFirst, initialization: 'five valid preceding pairs; fresh state', ...frozen(strategies), seed: seedValue(input.seed), first, last, mode: 'SEALED_FINAL', sourceRule: 'target minus one', acceptance: 'Report all outcomes and matched baselines; no parameter tuning on this cohort.' };
         return transaction(() => {
             if (first <= latest()) throw fail('Final-test target draws must be in the future.');
-            assertExploratory(first, last);
-            if (db.prepare('SELECT 1 FROM betzero_lab_exposures WHERE first_draw <= ? AND last_draw >= ?').get(last, first)) throw fail('Previously explored ranges cannot be sealed.', 409);
+            assertExploratory(contextFirst, last);
+            if (db.prepare('SELECT 1 FROM betzero_lab_exposures WHERE first_draw <= ? AND last_draw >= ?').get(last, contextFirst)) throw fail('Previously explored ranges cannot be sealed.', 409);
             const id = crypto.randomUUID();
             db.prepare('INSERT INTO betzero_lab_protocols(id,first_draw,last_draw,created_at,specification) VALUES (?,?,?,?,?)').run(id, first, last, now(), JSON.stringify(specification));
             return { id, ...specification, state: 'SEALED' };
@@ -46,6 +49,8 @@ function createJobStore(db, { now = Date.now } = {}) {
             if (db.prepare("SELECT COUNT(*) AS n FROM betzero_lab_jobs WHERE state='QUEUED'").get().n >= 2) throw fail('Queue is full: at most two waiting jobs.', 429);
             let payload;
             let protocol;
+            if (input.strategyId && input.protocolId) throw fail('Cannot override a sealed strategy selection.',409);
+            if (input.strategyId && !strategies.some(s => s.id === input.strategyId && s.status === 'RESEARCH_ONLY')) throw fail('Unknown research strategy.');
             if (input.protocolId) {
                 protocol = db.prepare('SELECT * FROM betzero_lab_protocols WHERE id=?').get(String(input.protocolId));
                 if (!protocol || protocol.state !== 'SEALED') throw fail('Protocol is missing or has already been consumed. Reopen its saved job instead.', 409);
@@ -59,14 +64,22 @@ function createJobStore(db, { now = Date.now } = {}) {
                 const first = window === 'all' ? (db.prepare('SELECT MIN(sort_draw_id) AS id FROM public_prediction_history').get()?.id || 0) + 1 : Math.max(2, last - requested + 1);
                 if (last - first + 1 > MAX_PAIRS) throw fail('All history exceeds 50,000 target draws; choose a smaller window.', 413);
                 if (last - first + 1 < 5) throw fail('At least five source/target pairs are required.', 422);
-                assertExploratory(first - 1, last);
-                payload = { ...frozen(strategies), first, last, window, seed: seedValue(input.seed), mode: 'EXPLORATORY' };
+                let contextFirst = first - 1;
+                const selected = input.strategyId ? strategies.filter(s => s.id === input.strategyId).map(s => ({...s,enabled:true})) : strategies;
+                if (selected.some(s => s.id === MINMAX && s.enabled)) {
+                    const prior = db.prepare('SELECT record_json FROM public_prediction_history WHERE sort_draw_id<? ORDER BY sort_draw_id DESC LIMIT 50001').all(first).map(r=>JSON.parse(r.record_json));
+                    const pairs = makeOpportunities(normalizeHistoricalDraws(prior).draws).opportunities.slice(-5);
+                    if (pairs.length) contextFirst = Math.min(contextFirst,pairs[0].source.id);
+                }
+                if (last-contextFirst > MAX_PAIRS + 5) throw fail('Evaluation including initialization context exceeds bounded input size.',413);
+                assertExploratory(contextFirst, last);
+                payload = { contextFirst, researchStrategyId: input.strategyId || null, initialization:'five valid preceding pairs; fresh state', ...frozen(selected), first, last, window, seed: seedValue(input.seed), mode: 'EXPLORATORY' };
             }
             if (payload.rulesHash !== rulesHash()) throw fail('The frozen rule code differs from this installation. Do not reuse this protocol with changed code.', 409);
             const id = crypto.randomUUID();
             db.prepare("INSERT INTO betzero_lab_jobs(id,state,payload,created_at) VALUES (?,'QUEUED',?,?)").run(id, JSON.stringify(payload), now());
             if (protocol) db.prepare("UPDATE betzero_lab_protocols SET state='CONSUMED',job_id=? WHERE id=?").run(id, protocol.id);
-            else db.prepare('INSERT INTO betzero_lab_exposures VALUES (?,?)').run(payload.first - 1, payload.last);
+            else db.prepare('INSERT INTO betzero_lab_exposures VALUES (?,?)').run(payload.contextFirst ?? payload.first - 1, payload.last);
             return get(id);
         });
     }
