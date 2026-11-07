@@ -723,6 +723,7 @@ function injectLiveOverlay() {
                     <div class="b49-decision-label">Decision reason</div>
                     <div id="overlayDecisionReason">Waiting for the next draw decision.</div>
                 </div>
+                <div class="b49-decision-reason" id="overlaySuggestionRisk" role="status" hidden></div>
 
                 <div class="b49-grid">
                     <div class="b49-metric-box">
@@ -888,6 +889,17 @@ function updateLiveOverlay(data) {
 
     const reasonEl = document.getElementById('overlayDecisionReason');
     if (reasonEl) reasonEl.innerText = data.decisionReason || 'Waiting for the next draw decision.';
+
+    const riskEl = document.getElementById('overlaySuggestionRisk');
+    const suggestion = data.automationControl?.suggestionStrategy;
+    const risk = suggestion?.request?.riskWarningOnly && suggestion?.risk;
+    if (riskEl) {
+        riskEl.hidden = !risk;
+        if (risk) {
+            const money = value => `NGN ${Number(value).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
+            riskEl.textContent = `${risk.warnedAt ? 'RISK WARNING: threshold reached. Automation continues. ' : 'Auto suggestion: ' }Net loss since applied ${money(risk.loss)} / warning ${money(risk.threshold)}. ${suggestion.message || ''}`;
+        }
+    }
 
     const balEl = document.getElementById('overlayLiveBalance');
     if (balEl) {

@@ -10,6 +10,9 @@ const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).
 const fresh = () => ({ observed: 0, waiting: true, active: false, batch: 0, attempts: 0, deficit: 0 });
 function current(s) { return s.config.suggestionStrategy; }
 function enabled(s) { return s.automationControl?.controller === 'website' && !current(s)?.needsReview && current(s); }
+function warningOnly(s) { return !!(enabled(s)?.request.autoUpdate && current(s)?.request.riskWarningOnly === true); }
+// Ignore changing history timestamps when deciding whether a new setup exists.
+function setupHash(plan) { return hash({ plans: plan.plans, reserve: plan.reserve }); }
 function recovery(s) { return !current(s)?.needsReview && Object.values(current(s)?.lanes || {}).some(l => l.deficit > 0 || l.attempts > 0); }
 
 function reserve(key, base, steps) {
@@ -56,7 +59,7 @@ function preview(input, records) {
     }
     const required = totalReserve(fitted);
     if (!Number.isFinite(required)) throw fail('A recovery stake exceeds NGN 50,000. Reduce the base stake or choose another plan.');
-    const request = { games: keys, window, capitalMode, capital: capitalMode ? capital : 0, base: fitted, autoUpdate: input.autoUpdate === true };
+    const request = { games: keys, window, capitalMode, capital: capitalMode ? capital : 0, base: fitted, autoUpdate: input.autoUpdate === true, riskWarningOnly: input.autoUpdate === true && input.riskWarningOnly === true };
     const result = { request, plans: plans.map(p => ({ ...p, base: fitted, reserve: reserve(p.key, fitted, p.steps) })), reserve: required, draws: history.draws, toDraw: history.toDraw };
     return { ...result, token: hash(result) };
 }
@@ -77,6 +80,7 @@ function install(s, plan, previous) {
     for (const key of Object.keys(config.sniperSettings || {})) config.sniperSettings[key] = { enabled: false, step: 0, resetLosses: 0 };
     config.suggestionStrategy = { ...plan, lanes: Object.fromEntries(plan.request.games.map(k => [k, fresh()])), lastObserved: Number(plan.toDraw) || 0, lastSettled: previous?.lastSettled || null, capital: plan.request.capitalMode ? plan.request.capital : null, available: plan.request.capitalMode ? plan.request.capital : null, appliedAt: Date.now(), message: 'Plan saved. Waiting for a fresh win before entry.' };
     // Re-selection starts a new entry observation, never a new execution session.
+    if (plan.request.riskWarningOnly) config.suggestionStrategy.risk = { threshold: plan.reserve, net: 0, loss: 0, warnedAt: null };
     if (previous) config.suggestionStrategy.message = 'Settled recovery completed. Latest eligible plan applied.';
 }
 
@@ -100,7 +104,7 @@ function allows(s, key) {
     const external = key === 'unified' ? key : Object.keys(games).find(g => games[g] === key);
     const lane = strategy.lanes[external], plan = strategy.plans.find(p => p.key === external);
     if (!lane || !plan) return false;
-    if (lane.attempts >= plan.steps) { s.stats.isHalted = true; s.stats.haltReason = 'Suggested recovery attempts exhausted. Review before restarting.'; return false; }
+    if (!warningOnly(s) && lane.attempts >= plan.steps) { s.stats.isHalted = true; s.stats.haltReason = 'Suggested recovery attempts exhausted. Review before restarting.'; return false; }
     return lane.active || (!lane.waiting && lane.observed === plan.waitLosses);
 }
 function stake(s, key) {
@@ -138,6 +142,12 @@ function settle(s, record, details, records) {
         }
     }
     strategy.lastSettled = String(record.drawId);
+    if (warningOnly(s)) {
+        strategy.risk ||= { threshold: strategy.reserve, net: 0, loss: 0, warnedAt: null };
+        strategy.risk.net = Math.round((strategy.risk.net + net) * 100) / 100;
+        strategy.risk.loss = Math.max(0, -strategy.risk.net);
+        if (strategy.risk.loss >= strategy.risk.threshold && !strategy.risk.warnedAt) strategy.risk.warnedAt = Date.now();
+    }
     if (strategy.available !== null) strategy.available = Math.round((strategy.available + net) * 100) / 100;
     // Mixed draws may win one game while another still needs recovery.
     if (!won || recovery(s)) return;
@@ -154,6 +164,10 @@ function settle(s, record, details, records) {
             if (!base) throw fail('Insufficient capital for the existing plan. Review before restarting.');
             next = { request: { ...strategy.request, capital: strategy.capital, base }, plans: strategy.plans.map(p => ({ ...p, base, reserve: reserve(p.key, base, p.steps) })), reserve: cost(base), draws: strategy.draws, toDraw: record.drawId };
         }
+        if (warningOnly(s) && setupHash(next) === setupHash(strategy)) {
+            strategy.message = 'Settled win confirmed. Setup unchanged; continuing the current suggestion.';
+            return;
+        }
         install(s, next, strategy);
         for (const p of current(s).plans) if (record.result[p.key] === 'WIN') current(s).lanes[p.key].waiting = false;
         if (!strategy.request.autoUpdate) current(s).message = 'Settled recovery completed. Base stake resized; entry rules kept.';
@@ -161,6 +175,10 @@ function settle(s, record, details, records) {
     } catch (error) {
         // Never increase the old stake or silently pick a different market.
         strategy.message = error.status ? error.message : 'Strategy refresh unavailable.';
+        if (warningOnly(s)) {
+            strategy.message += ' Keeping the current suggestion; retrying after the next settled recovery win.';
+            return;
+        }
         strategy.needsReview = true;
         s.stats.isHalted = true; s.stats.haltReason = strategy.message;
     }
@@ -170,10 +188,10 @@ function checkExposure(s, payload, exposure) {
     const strategy = enabled(s); if (!strategy) return true;
     const fields = ['stake', 'bet49Stake', 'colorStake', 'sumStake', 'tcStake', 'tc2Stake', 'tc1Stake'];
     let reason = fields.some(k => Number(payload[k] || 0) > 50000) ? 'Suggested stake exceeds the NGN 50,000 limit.' : '';
-    if (strategy.available !== null && exposure > strategy.available) reason = 'Insufficient allocated capital for the next bet.';
+    if (!warningOnly(s) && strategy.available !== null && exposure > strategy.available) reason = 'Insufficient allocated capital for the next bet.';
     if (payload.bet49Stake > 0 && payload.bet49?.length !== 6) reason = 'Bet49 strategy requires six numbers. Review the prediction.';
     if (!reason) return true;
     s.stats.isHalted = true; s.stats.haltReason = reason; s.pendingBetPayload = null;
     return false;
 }
-module.exports = { preview, install, observe, allows, stake, settle, checkExposure, recovery };
+module.exports = { preview, install, observe, allows, stake, settle, checkExposure, recovery, warningOnly };
