@@ -1619,7 +1619,7 @@ function getBetPayloadExposure(payload) {
 }
 
 function exceedsStopLossWithPayload(session, payload) {
-    if (!session || session.config.stopLoss >= 0) return false;
+    if (!session || automationStrategy.warningOnly(session) || session.config.stopLoss >= 0) return false;
 
     const currentLoss = Math.max(0, -Number(session.stats.totalReturned || 0));
     const nextExposure = getBetPayloadExposure(payload);
@@ -1629,7 +1629,7 @@ function exceedsStopLossWithPayload(session, payload) {
 function enforceSessionLimits(session) {
     automationControl.guard(session);
     // Debited stakes are not settled losses: wait for the placed bet's result.
-    if (!session.stats.isHalted && !session.lastBetDetails) {
+    if (!session.stats.isHalted && !session.lastBetDetails && !automationStrategy.warningOnly(session)) {
         if (session.config.takeProfit > 0 && session.stats.totalReturned >= session.config.takeProfit) {
             session.stats.isHalted = true;
             session.stats.haltReason = `Target Met (N${session.config.takeProfit})`;
@@ -3535,7 +3535,7 @@ async function tick() {
                         let bestGame = globalPick.key;
                         let bestMlScore = localMlScores[bestGame] || 0;
 
-                        if (session.config.maxSteps[bestGame] > 0 && session.masterState.step > session.config.maxSteps[bestGame]) {
+                        if (!automationStrategy.warningOnly(session) && session.config.maxSteps[bestGame] > 0 && session.masterState.step > session.config.maxSteps[bestGame]) {
                             session.stats.isHalted = true;
                             session.stats.haltReason = `🛑 Max Step Hit (${session.config.maxSteps[bestGame]}) for ${bestGame}`;
                             clearStrandedStates(session);
@@ -3604,7 +3604,7 @@ async function tick() {
 
                             if (!sniperAllowsEntry(session, key)) return;
 
-                            if (session.config.maxSteps[key] > 0 && state.localStep > session.config.maxSteps[key]) {
+                            if (!automationStrategy.warningOnly(session) && session.config.maxSteps[key] > 0 && state.localStep > session.config.maxSteps[key]) {
                                 session.stats.isHalted = true;
                                 session.stats.haltReason = `🛑 Max Step Reached (${session.config.maxSteps[key]})`;
                                 clearStrandedStates(session);
