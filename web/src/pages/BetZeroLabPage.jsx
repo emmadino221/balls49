@@ -348,7 +348,7 @@ export default function BetZeroLabPage({ session }) {
   const finalTestResults = runResults.filter(row => row.segment === 'final_test');
   const latestPredictions = (overview?.predictions || []).filter(row => row.strategyId === selectedStrategy?.id && row.strategyVersion === selectedStrategy?.version).slice(0, 5);
   const selectedRun = overview?.backtestRuns?.find(run => run.runId === selectedRunId);
-  const selectedOverall = backtest?.data?.overallByVersion?.[strategyKey(selectedStrategy)] || (backtest?.data?.overall?.strategyId === selectedStrategy?.id && (backtest.data.overall.strategyVersion || '1.0.0') === selectedStrategy?.version ? backtest.data.overall : null);
+  const selectedOverall = backtest?.data?.overallByVersion?.[strategyKey(selectedStrategy)] || (backtest?.data?.overall && selectedStrategy && backtest.data.overall.strategyId === selectedStrategy.id && (backtest.data.overall.strategyVersion || '1.0.0') === selectedStrategy.version ? backtest.data.overall : null);
 
   return <main className="page-wrap betzero-lab-page">
     <section className="betzero-hero">
@@ -540,7 +540,7 @@ export default function BetZeroLabPage({ session }) {
           {selectedRun && <span className="betzero-muted">Run {selectedRun.runId.slice(0, 8)} · {selectedRun.requestedWindow} draws</span>}</div>
         <p className="betzero-section-note">Forward records and historical backtest segments are different samples. Each strategy version is tracked separately. Win rate alone is not a ranking; sample size, skip frequency, pick count, and uncertainty matter.</p>
         <div className="betzero-table-scroll"><table className="betzero-table">
-          <thead><tr><th>Strategy</th><th>Forward opportunities</th><th>Forward W/L</th><th>Forward win rate</th><th>Current / worst losses</th><th>{backtest?.data.evaluationMode === 'SEALED_FINAL' ? 'Sealed final W/L' : 'Exploratory holdout W/L'}</th><th>Random baseline</th><th>95% CI</th></tr></thead>
+          <thead><tr><th>Strategy</th><th>Forward opportunities</th><th>Forward W/L</th><th>Forward win rate</th><th>Current / worst losses</th><th>{backtest?.data?.evaluationMode === 'SEALED_FINAL' ? 'Sealed final W/L' : 'Exploratory holdout W/L'}</th><th>Random baseline</th><th>95% CI</th></tr></thead>
           <tbody>{strategies.map(strategy => {
             const result = finalTestResults.find(row => row.strategyId === strategy.id && row.strategyVersion === strategy.version)?.result;
             const trials = (result?.wins || 0) + (result?.losses || 0);
