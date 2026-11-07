@@ -54,9 +54,9 @@ test('three-way skips when the source two-way pick is inactive or invalid', () =
     }
 });
 
-test('Winning Color predicts the one color not selected by Total Color 2-way', () => {
-    assert.deepEqual(singleColorPrediction(twoWay), { status: 'ACTIVE', top1: ['green'] });
-    assert.deepEqual(singleColorPrediction({ ...twoWay, top2: ['blue', 'green'] }), { status: 'ACTIVE', top1: ['red'] });
+test('Winning Color predicts the first ranked color selected by Total Color 2-way', () => {
+    assert.deepEqual(singleColorPrediction(twoWay), { status: 'ACTIVE', top1: ['red'] });
+    assert.deepEqual(singleColorPrediction({ ...twoWay, top2: ['blue', 'green'] }), { status: 'ACTIVE', top1: ['blue'] });
 });
 
 test('Winning Color skips when the Total Color 2-way pick is inactive or invalid', () => {

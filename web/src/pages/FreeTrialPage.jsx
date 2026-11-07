@@ -11,7 +11,7 @@ const markets = [
   { id: 'rainbow', name: 'Rainbow Color', help: 'One color prediction.' },
   { id: 'totalColor', name: 'Total Color (3-way)', help: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', help: 'Two selected colors.' },
-  { id: 'totalColor1', name: 'Winning Color', help: 'The one red, blue, or green color not selected by Total Color 2-way.' },
+  { id: 'totalColor1', name: 'Winning Color', help: 'The top-ranked color from the active Total Color 2-way prediction.' },
   { id: 'hilo', name: 'High / Low', help: 'A prediction on the draw total range.' },
   { id: 'unified', name: 'Unified', help: 'The single pick chosen from the available markets.' },
 ];

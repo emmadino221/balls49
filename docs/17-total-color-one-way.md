@@ -1,7 +1,7 @@
 # Winning Color
 
-Market key: `totalColor1`. Winning Color directly predicts the one red, blue, or
-green color not selected by the active Total Color 2-way pick. If Total Color
+Market key: `totalColor1`. Winning Color directly predicts the first (top-ranked)
+color in the active Total Color 2-way selection (`top2[0]`). If Total Color
 2-way is skipped or has an invalid selection, Winning Color also skips. A
 settled six-ball draw wins only if its winning color outcome matches the issued
 one-way pick. Ties use No Winning Color, so they do not match a color pick.
@@ -11,6 +11,10 @@ website. History starts with actually issued one-way picks; old records are not
 reclassified as historical one-way predictions. Elite includes the new market;
 Premium access requires the owner to approve this market. Free Trial uses the
 existing last-10-seconds reveal rule. Analysis remains subscription protected.
+
+Previously issued picks retain their original selections and settlement. This
+rule change applies to newly generated predictions; historical performance still
+includes the earlier excluded-color rule.
 
 ## Extension
 

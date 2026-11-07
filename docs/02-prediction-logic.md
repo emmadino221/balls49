@@ -17,7 +17,7 @@ The public prediction/history surfaces expose eight markets:
 | Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
 | Total Color (3-way) | `totalColor` | Reuse the two colors selected by Total Color 2-way, then add DRAW (No Winning Color). Skip when Total Color 2-way is inactive. |
 | Total Color (2-way) | `totalColor2` | Select two colors; a tie outcome is represented as black. |
-| Winning Color | `totalColor1` | Predict the one red, blue, or green color not selected by Total Color 2-way. Skip when Total Color 2-way is inactive or invalid; ties are No Winning Color and lose. |
+| Winning Color | `totalColor1` | Use the first (top-ranked) color in the active Total Color 2-way selection. Skip when Total Color 2-way is inactive or invalid; ties are No Winning Color and lose. |
 | High/Low | `hilo` | Use weighted 20/50/100-draw HIGH/LOW counts, with LOW on ties. Always pick with valid history; MID loses for either side. |
 | Unified | `unified` | A wrapper around the chosen supported market; its result follows that market. |
 

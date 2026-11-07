@@ -57,7 +57,8 @@ function singleColorPrediction(twoWayPrediction) {
         || new Set(top2).size !== 2 || top2.some(color => !COLORS.includes(color))) {
         return { status: 'SKIP', top1: [] };
     }
-    return { status: 'ACTIVE', top1: [COLORS.find(color => !top2.includes(color))] };
+    // top2 retains the ranking issued by Total Color 2-way.
+    return { status: 'ACTIVE', top1: [top2[0]] };
 }
 
 function singleColorWins(prediction, numbers) {
