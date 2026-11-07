@@ -42,9 +42,9 @@ function childRun(sitePath, temporary, job) {
         const actual = lab.strategies().find(s => s.id === strategy.id && s.version === strategy.version);
         if (!actual) throw new Error('Frozen strategy version is unavailable.');
         if (spec.researchStrategyId) continue;
-        lab.setStrategyConfig(strategy.id, { enabled: strategy.enabled, alertThresholds: strategy.config.alertThresholds });
+        // Frozen research settings are passed to the isolated runner, never applied as forward enablement.
     }
-    const run = lab.runBacktest(records, { window: 'all', seed: spec.seed, mode: spec.mode, protocolId: spec.protocolId || null, firstTarget: spec.first, strategyId: spec.researchStrategyId || null, onProgress: report });
+    const run = lab.runBacktest(records, { window: 'all', seed: spec.seed, mode: spec.mode, protocolId: spec.protocolId || null, firstTarget: spec.first, strategyId: spec.researchStrategyId || null, strategyVersion: spec.researchStrategyVersion || '1.0.0', frozenStrategies:spec.strategies, onProgress: report });
     run.data.frozenSpecification = spec;
     privateDb.prepare('UPDATE betzero_lab_backtest_runs SET data_json=? WHERE run_id=?').run(JSON.stringify(run.data), run.runId);
     privateDb.close();

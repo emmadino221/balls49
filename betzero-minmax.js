@@ -4,6 +4,8 @@
 const ID = 'minimum_maximum_three';
 const valid = balls => Array.isArray(balls) && balls.length === 6 && new Set(balls).size === 6
     && balls.every(n => Number.isInteger(n) && n >= 1 && n <= 49);
+const versions = new Set(['1.0.0','2.0.0']);
+function checkVersion(version) { if (!versions.has(version)) throw new Error('Unknown MIN/MAX rule version.'); }
 const opposite = method => method === 'MIN' ? 'MAX' : 'MIN';
 function candidate(balls, method) {
     if (!valid(balls) || !['MIN', 'MAX'].includes(method)) return null;
@@ -14,7 +16,8 @@ function outcome(selections, balls) {
     if (!selections || !valid(balls)) return null;
     return selections.some(n => balls.includes(n)) ? 'LOSS' : 'WIN';
 }
-function decide(source, targetId, history, state = {}) {
+function decide(source, targetId, history, state = {}, version = '1.0.0') {
+    checkVersion(version);
     const skip = (reason, extra = {}) => ({ status: 'SKIP', selections: [], conditions: { reason, ...extra } });
     if (state.paused) return skip('RESULT_CONFLICT_REVIEW_REQUIRED');
     if (state.pending) return skip('UNRESOLVED_PREDICTION');
@@ -38,7 +41,7 @@ function decide(source, targetId, history, state = {}) {
     }
     const selections = candidate(source.balls, method);
     if (!selections) return skip('BOUNDARY', { method, evidence });
-    return { status: 'PENDING', selections, conditions: { method, evidence, model: 'MINIMUM_MAXIMUM_THREE_V1' } };
+    return { status: 'PENDING', selections, conditions: { method, evidence, model: version === '1.0.0' ? 'MINIMUM_MAXIMUM_THREE_V1' : 'MINIMUM_MAXIMUM_THREE_V2' } };
 }
 function afterDecision(state, pick, targetId) {
     if (pick.status === 'PENDING') return { ...state, method: pick.conditions.method, pending: targetId };
@@ -46,11 +49,13 @@ function afterDecision(state, pick, targetId) {
         return { ...state, method: null };
     return state;
 }
-function settle(state, targetId, result) {
+function settle(state, targetId, result, version = '1.0.0') {
+    checkVersion(version);
     if (state.paused || state.pending !== targetId || !['WIN', 'LOSS'].includes(result)) return state;
-    return { ...state, pending: null, method: result === 'WIN' ? opposite(state.method) : state.method, lastSettled: targetId };
+    return { ...state, pending: null, method: result === (version === '1.0.0' ? 'WIN' : 'LOSS') ? opposite(state.method) : state.method, lastSettled: targetId };
 }
-function simulate(opportunities, context, onProgress = () => {}) {
+function simulate(opportunities, context, onProgress = () => {}, version = '1.0.0') {
+    checkVersion(version);
     let state = {};
     let cursor = 0;
     const history = [];
@@ -60,10 +65,10 @@ function simulate(opportunities, context, onProgress = () => {}) {
             history.push(context[cursor++]);
             if (history.length > 5) history.shift();
         }
-        const pick = decide(p.source, p.target.id, history, state);
+        const pick = decide(p.source, p.target.id, history, state, version);
         picks.set(p.target.id, pick);
         state = afterDecision(state, pick, p.target.id);
-        if (pick.status === 'PENDING') state = settle(state, p.target.id, outcome(pick.selections, p.target.balls));
+        if (pick.status === 'PENDING') state = settle(state, p.target.id, outcome(pick.selections, p.target.balls), version);
         if (index % 100 === 0) onProgress(index / Math.max(1, opportunities.length));
     }
     return picks;

@@ -313,3 +313,14 @@
 }
 
 .betzero-historical-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 1rem; max-height: 40rem; overflow-y: auto; }
+
+.betzero-live-monitor { border:1px solid var(--line); border-radius:24px; background:var(--surface); padding:clamp(16px,3vw,28px); min-width:0; }
+.betzero-live-heading, .betzero-live-body { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.betzero-live-heading h2 { margin:8px 0; font-size:clamp(1.3rem,3vw,1.8rem); }
+.betzero-live-countdown { font-size:clamp(3rem,9vw,5rem); font-weight:800; font-variant-numeric:tabular-nums; line-height:1.2; letter-spacing:.02em; }
+.betzero-live-status { padding:7px 12px; border:1px solid currentColor; border-radius:999px; font-size:.8rem; font-weight:800; }
+.betzero-live-status.is-live { color:var(--accent); }
+.betzero-live-status.is-stale, .betzero-live-status.is-unavailable { color:var(--muted); }
+.betzero-live-freshness { display:flex; flex-wrap:wrap; gap:8px 24px; margin:20px 0 12px; font-size:.875rem; color:var(--muted); overflow-wrap:anywhere; }
+@media(max-width:480px) { .betzero-live-body { align-items:flex-start; } .betzero-live-body .btn { width:100%; } }
+@media(prefers-reduced-motion:reduce) { .betzero-live-monitor *, .betzero-live-monitor { animation:none !important; transition:none !important; } }

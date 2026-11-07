@@ -49,8 +49,8 @@ function createJobStore(db, { now = Date.now } = {}) {
             if (db.prepare("SELECT COUNT(*) AS n FROM betzero_lab_jobs WHERE state='QUEUED'").get().n >= 2) throw fail('Queue is full: at most two waiting jobs.', 429);
             let payload;
             let protocol;
-            if (input.strategyId && input.protocolId) throw fail('Cannot override a sealed strategy selection.',409);
-            if (input.strategyId && !strategies.some(s => s.id === input.strategyId && s.status === 'RESEARCH_ONLY')) throw fail('Unknown research strategy.');
+            if ((input.strategyId || input.strategyVersion) && input.protocolId) throw fail('Cannot override a sealed strategy selection.',409);
+            if (input.strategyId && !strategies.some(s => s.id === input.strategyId && s.version === (input.strategyVersion || '1.0.0') && s.status === 'RESEARCH_ONLY')) throw fail('Unknown research strategy.');
             if (input.protocolId) {
                 protocol = db.prepare('SELECT * FROM betzero_lab_protocols WHERE id=?').get(String(input.protocolId));
                 if (!protocol || protocol.state !== 'SEALED') throw fail('Protocol is missing or has already been consumed. Reopen its saved job instead.', 409);
@@ -65,7 +65,7 @@ function createJobStore(db, { now = Date.now } = {}) {
                 if (last - first + 1 > MAX_PAIRS) throw fail('All history exceeds 50,000 target draws; choose a smaller window.', 413);
                 if (last - first + 1 < 5) throw fail('At least five source/target pairs are required.', 422);
                 let contextFirst = first - 1;
-                const selected = input.strategyId ? strategies.filter(s => s.id === input.strategyId).map(s => ({...s,enabled:true})) : strategies;
+                const selected = input.strategyId ? strategies.filter(s => s.id === input.strategyId && s.version === (input.strategyVersion || '1.0.0')).map(s => ({...s,enabled:true})) : strategies;
                 if (selected.some(s => s.id === MINMAX && s.enabled)) {
                     const prior = db.prepare('SELECT record_json FROM public_prediction_history WHERE sort_draw_id<? ORDER BY sort_draw_id DESC LIMIT 50001').all(first).map(r=>JSON.parse(r.record_json));
                     const pairs = makeOpportunities(normalizeHistoricalDraws(prior).draws).opportunities.slice(-5);
@@ -73,7 +73,7 @@ function createJobStore(db, { now = Date.now } = {}) {
                 }
                 if (last-contextFirst > MAX_PAIRS + 5) throw fail('Evaluation including initialization context exceeds bounded input size.',413);
                 assertExploratory(contextFirst, last);
-                payload = { contextFirst, researchStrategyId: input.strategyId || null, initialization:'five valid preceding pairs; fresh state', ...frozen(selected), first, last, window, seed: seedValue(input.seed), mode: 'EXPLORATORY' };
+                payload = { contextFirst, researchStrategyId: input.strategyId || null, researchStrategyVersion: input.strategyId ? (input.strategyVersion || '1.0.0') : null, initialization:'five valid preceding pairs; fresh state', ...frozen(selected), first, last, window, seed: seedValue(input.seed), mode: 'EXPLORATORY' };
             }
             if (payload.rulesHash !== rulesHash()) throw fail('The frozen rule code differs from this installation. Do not reuse this protocol with changed code.', 409);
             const id = crypto.randomUUID();

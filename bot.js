@@ -246,7 +246,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /public-suggestions-status', 'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'GET /admin/betzero-lab', 'GET /admin/betzero-lab/predictions', 'GET /admin/betzero-lab/backtests',
-    'POST /admin/betzero-lab/backtests', 'POST /admin/betzero-lab/strategy-config',
+    'POST /admin/betzero-lab/backtests', 'POST /admin/betzero-lab/strategy-config', 'POST /admin/betzero-lab/minmax-cutover',
     'GET /admin/betzero-lab/jobs', 'POST /admin/betzero-lab/jobs', 'POST /admin/betzero-lab/job-cancel',
     'GET /admin/betzero-lab/protocols', 'POST /admin/betzero-lab/protocols',
     'POST /internal/prediction-snapshot', 'POST /internal/virtual-football-snapshot',
@@ -4181,7 +4181,7 @@ async function handleHttpRequest(req, res) {
         if (strategyId && !betzeroLab.strategies().some(strategy => strategy.id === strategyId)) {
             return sendJson(res, 400, { error: 'Unknown BetZero lab strategy.' });
         }
-        return sendJson(res, 200, { predictions: betzeroLab.listForwardPredictions({ strategyId, limit }) });
+        return sendJson(res, 200, { predictions: betzeroLab.listForwardPredictions({ strategyId, strategyVersion:parsedUrl.searchParams.get('strategyVersion') || undefined, limit }) });
     }
 
     if (parsedUrl.pathname === '/admin/betzero-lab/backtests') {
@@ -4212,6 +4212,7 @@ async function handleHttpRequest(req, res) {
                 return sendJson(res, 200, betzeroLab.runBacktest(labRecords, {
                     window: request.window,
                     strategyId: request.strategyId || null,
+                    strategyVersion: request.strategyVersion || '1.0.0',
                     seed: request.seed
                 }));
             } catch (error) {
@@ -4221,6 +4222,10 @@ async function handleHttpRequest(req, res) {
             }
         }
         return sendJson(res, 405, { error: 'Method not allowed.' });
+    }
+
+    if (parsedUrl.pathname === '/admin/betzero-lab/minmax-cutover') {
+        return require('./betzero-cutover-api').handleCutoverApi({req,res,session:siteSession(req),lab:betzeroLab,readJson:readRequestJson,sendJson});
     }
 
     if (parsedUrl.pathname === '/admin/betzero-lab/strategy-config' && req.method === 'POST') {
@@ -4235,6 +4240,7 @@ async function handleHttpRequest(req, res) {
         try {
             return sendJson(res, 200, {
                 strategy: betzeroLab.setStrategyConfig(String(request.strategyId || ''), {
+                    version: request.strategyVersion,
                     ...(Object.hasOwn(request, 'enabled') ? { enabled: request.enabled } : {}),
                     ...(Object.hasOwn(request, 'alertThresholds') ? { alertThresholds: request.alertThresholds } : {})
                 })

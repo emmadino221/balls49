@@ -3,15 +3,15 @@ const { probabilityAllAbsent, seededRandom, randomSelections, wilsonInterval, va
 const SEED = 'betzero-forward-baseline-v1';
 const cache = new WeakMap();
 
-function forwardWindows(db, strategies, now = Date.now()) {
+function forwardWindows(db, strategies, now = Date.now(), versioned = false) {
     let saved = cache.get(db); if (!saved) { saved = new Map(); cache.set(db, saved); }
-    return Object.fromEntries(strategies.filter(s => s.selectionCount > 0).map(strategy => {
+    return Object.fromEntries(strategies.filter(s => s.selectionCount > 0 && (versioned || s.version === '1.0.0')).map(strategy => {
         const rows = db.prepare(`SELECT * FROM betzero_lab_forward_predictions WHERE strategy_id=? AND strategy_version=?
             AND status IN ('WIN','LOSS','SKIP','INVALID') ORDER BY CAST(target_draw_id AS INTEGER) DESC LIMIT 1000`).all(strategy.id,strategy.version).reverse();
         const pending = db.prepare("SELECT COUNT(*) AS n FROM betzero_lab_forward_predictions WHERE strategy_id=? AND strategy_version=? AND status='PENDING'").get(strategy.id,strategy.version).n;
         const quality = require('./betzero-reconciliation').pendingQuality(db, strategy.id, strategy.version, now);
         const key = `${strategy.id}:${strategy.version}`, signature = JSON.stringify([rows,pending,quality,strategy.config.alertThresholds]);
-        if (saved.get(key)?.signature === signature) return [strategy.id,saved.get(key).value];
+        if (saved.get(key)?.signature === signature) return [versioned ? key : strategy.id,saved.get(key).value];
         const measured = rows.map(row => {
             const timing=JSON.parse(row.conditions_json).timing;
             const predictedAt=Date.parse(row.predicted_at),validatedAt=Date.parse(row.validated_at);
@@ -46,7 +46,7 @@ function forwardWindows(db, strategies, now = Date.now()) {
                 theoreticalBaseline:theoretical,randomBaseline:{seed:SEED,repetitions:1,trials:n,wins:randomWins,winRate:n?randomWins/n:null},
                 streakFlag:currentLoss>=threshold?'Loss-streak threshold reached. This is not a reversal signal.':null,chart}];
         }));
-        const value={version:strategy.version,windows};saved.set(key,{signature,value});return [strategy.id,value];
+        const value={version:strategy.version,windows};saved.set(key,{signature,value});return [versioned ? key : strategy.id,value];
     }));
 }
 module.exports={forwardWindows};

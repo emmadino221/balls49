@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../auth.js';
+import { useBetZeroLive } from './useBetZeroLive';
 import './betzero-lab.css';
 
+const strategyKey = strategy => `${strategy?.id}@${strategy?.version}`;
 const RANGE_OPTIONS = [100, 500, 1000];
 const STATUS_OPTIONS = ['ALL', 'WIN', 'LOSS', 'PENDING', 'SKIP', 'INVALID'];
 const SEGMENTS = ['development', 'validation', 'final_test'];
@@ -56,7 +58,7 @@ function OutcomeChart({ rows, title, historical = false }) {
   </div>;
 }
 
-function PredictionCard({ strategy, count, title, name, onToggle, saving, controlsBusy }) {
+function PredictionCard({ strategy, count, title, name, onToggle, saving, controlsBusy, live }) {
   const records = strategy?.last100 || [];
   const pending = records.find(row => row.status === 'PENDING');
   const settled = records.find(row => ['WIN', 'LOSS'].includes(row.status));
@@ -70,7 +72,7 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
       <span className="betzero-enablement-caption">Research Predictions Only — No Automatic Betting</span>
       <button type="button" role="switch" aria-checked={Boolean(strategy?.enabled)}
         aria-label={`${title} research predictions`} aria-busy={saving}
-        disabled={!strategy || strategy.version !== '1.0.0' || controlsBusy}
+        disabled={!strategy || !['1.0.0','2.0.0'].includes(strategy.version) || controlsBusy}
         className="betzero-enable-switch" onClick={() => onToggle(strategy, title)}>
         <span className="betzero-switch-track" aria-hidden="true"><span /></span>
         <span>{saving ? 'Saving…' : strategy?.enabled ? 'Enabled — switch off' : 'Disabled — switch on'}</span>
@@ -90,6 +92,10 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
       <div className="betzero-pick-target"><strong>Draw #{displayed.targetDrawId}</strong><StatusBadge value={pending ? 'WAITING' : displayed.status} /></div>
       <p className="betzero-pick-caption">Recorded {dateTime(displayed.predictedAt)}. This is not a confirmed upcoming draw.</p>
     </> : <p className="betzero-empty">No recorded prediction yet.</p>}
+    {pending && live?.clock && <p className="betzero-pick-caption">
+      Saved pending target #{pending.targetDrawId}; latest clock draw #{live.clock.drawId}.
+      {String(pending.targetDrawId) !== live.clock.drawId ? ' These are different draws; this record is not the current upcoming prediction.' : !live.reliable ? ' Clock timing is unavailable; this is not a verified upcoming draw.' : ' Draw IDs match; this does not independently verify the saved prediction timestamp.'}
+    </p>}
     <div className="betzero-last-result"><span>Last completed</span>{settled ? <><strong>#{settled.targetDrawId}</strong><StatusBadge value={settled.status} /></> : <span>No settled result in recent history</span>}</div>
     <dl className="betzero-pick-stats">
       <div><dt>Wins / losses</dt><dd>{strategy?.wins ?? '-'} / {strategy?.losses ?? '-'}</dd></div>
@@ -135,8 +141,8 @@ export default function BetZeroLabPage({ session }) {
   const [lastDraw, setLastDraw] = useState('');
   const requestInFlight = useRef(false);
 
-  const strategies = useMemo(() => Object.values(overview?.strategies || {}), [overview]);
-  const selectedStrategy = strategies.find(strategy => strategy.id === selectedStrategyId) || strategies.find(strategy => strategy.id === 'simple_smallest_number_add_10') || strategies[0] || null;
+  const strategies = useMemo(() => Object.values(overview?.strategyVersions || overview?.strategies || {}), [overview]);
+  const selectedStrategy = strategies.find(strategy => strategyKey(strategy) === selectedStrategyId) || strategies.find(strategy => strategy.id === 'simple_smallest_number_add_10') || strategies[0] || null;
 
   const refreshJobs = useCallback(async () => {
     if (!session?.admin) return;
@@ -145,11 +151,6 @@ export default function BetZeroLabPage({ session }) {
       setJobs(queue.jobs); setProtocols(frozen.protocols); setQueueError('');
     } catch (failure) { setQueueError(failure.message); }
   }, [session?.admin]);
-  useEffect(() => {
-    refreshJobs();
-    const timer = window.setInterval(refreshJobs, 5000);
-    return () => window.clearInterval(timer);
-  }, [refreshJobs]);
 
   async function jobAction(path, body) {
     setBusy(true); setError('');
@@ -161,70 +162,58 @@ export default function BetZeroLabPage({ session }) {
     finally { setBusy(false); }
   }
 
-  const loadOverview = useCallback(async (silent = false) => {
-    if (!session?.admin || requestInFlight.current || strategySaveLock.current) return;
+  const cachedRun = useRef('');
+  const loadOverview = useCallback(async (signal) => {
+    if (!session?.admin || requestInFlight.current || strategySaveLock.current) return false;
     const revision = overviewRevision.current;
     requestInFlight.current = true;
-    if (!silent) setLoading(true);
+    setHistoryLoading(true);
     try {
-      const next = await apiRequest('/admin/betzero-lab');
-      if (revision !== overviewRevision.current) return;
-      setOverview(next);
-      setHistoryRefreshKey(value => value + 1);
-      setError('');
+      const params = new URLSearchParams({ limit:'500' });
+      if (historyStrategyId !== 'all') { const [id,version]=historyStrategyId.split('@'); params.set('strategyId',id); params.set('strategyVersion',version); };
+      const requests = await Promise.allSettled([
+        apiRequest('/admin/betzero-lab',{signal}),
+        apiRequest('/admin/betzero-lab/jobs',{signal}),
+        apiRequest('/admin/betzero-lab/protocols',{signal}),
+        apiRequest(`/admin/betzero-lab/predictions?${params}`,{signal})
+      ]);
+      if (signal.aborted || revision !== overviewRevision.current) return false;
+      const failures = requests.filter(r=>r.status==='rejected').map(r=>r.reason);
+      const failure = failures.find(e=>[401,403].includes(e.status)) || failures[0];
+      if (failure) throw failure;
+      const [next,queue,frozen,history] = requests.map(r=>r.value);
+      if (!next?.strategies || !Array.isArray(history.predictions) || !Array.isArray(queue.jobs) || !Array.isArray(frozen.protocols))
+        throw new Error('The lab returned incomplete data. Existing records have been kept.');
+      setOverview(next);setJobs(queue.jobs);setProtocols(frozen.protocols);setHistoryRecords(history.predictions);
+      setError('');setHistoryError('');setQueueError('');
       const runId = selectedRunId || next.backtestRuns?.[0]?.runId || '';
       if (!selectedRunId && runId) setSelectedRunId(runId);
-      if (runId) {
-        const detail = await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(runId)}&limit=1000`);
-        setBacktest(detail);
-      } else {
-        setBacktest(null);
+      if (performanceView === 'historical' && runId && cachedRun.current !== runId) {
+        const detail = await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(runId)}&limit=1000`,{signal});
+        if (!signal.aborted && revision === overviewRevision.current) {setBacktest(detail);cachedRun.current=runId;}
       }
+      return true;
     } catch (loadError) {
-      setError(loadError.message || 'The BetZero lab could not be loaded.');
+      if (!signal.aborted) setError(loadError.message || 'Lab refresh failed; existing predictions are retained.');
+      throw loadError;
     } finally {
       requestInFlight.current = false;
-      setLoading(false);
+      if (!signal.aborted) {setLoading(false);setHistoryLoading(false);}
     }
-  }, [selectedRunId, session?.admin]);
+  }, [selectedRunId, historyStrategyId, performanceView, session?.admin]);
 
+  const live = useBetZeroLive(Boolean(session?.admin),loadOverview);
+  const viewSelection = useRef({historyStrategyId,historyRefreshKey,performanceView});
   useEffect(() => {
-    if (!session?.admin || !overview) return undefined;
-    const controller = new AbortController();
-    const params = new URLSearchParams({ limit: '500' });
-    if (historyStrategyId !== 'all') params.set('strategyId', historyStrategyId);
-    setHistoryLoading(true);
-    setHistoryError('');
-    apiRequest(`/admin/betzero-lab/predictions?${params}`, { signal: controller.signal })
-      .then(result => {
-        if (!Array.isArray(result.predictions)) throw new Error('Prediction history returned an invalid response. Refresh the lab to try again.');
-        setHistoryRecords(result.predictions);
-      })
-      .catch(loadError => {
-        if (loadError.name !== 'AbortError') setHistoryError(loadError.message || 'Prediction history could not be loaded.');
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setHistoryLoading(false);
-      });
-    return () => controller.abort();
-  }, [historyRefreshKey, historyStrategyId, overview, session?.admin]);
-
-  useEffect(() => {
-    if (!session?.admin) {
-      setLoading(false);
-      return undefined;
-    }
-    loadOverview();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') loadOverview(true);
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, [loadOverview, session?.admin]);
+    const old=viewSelection.current;
+    viewSelection.current={historyStrategyId,historyRefreshKey,performanceView};
+    if (old.historyStrategyId!==historyStrategyId || old.historyRefreshKey!==historyRefreshKey || old.performanceView!==performanceView) live.refresh();
+  }, [historyStrategyId,historyRefreshKey,performanceView]);
 
   useEffect(() => {
     if (!strategies.length) return;
-    const selected = strategies.find(strategy => strategy.id === selectedStrategyId) || strategies.find(strategy => strategy.id === 'simple_smallest_number_add_10') || strategies[0];
-    if (selected.id !== selectedStrategyId) setSelectedStrategyId(selected.id);
+    const selected = strategies.find(strategy => strategyKey(strategy) === selectedStrategyId) || strategies.find(strategy => strategy.id === 'simple_smallest_number_add_10') || strategies[0];
+    if (strategyKey(selected) !== selectedStrategyId) setSelectedStrategyId(strategyKey(selected));
     setThresholdInput((selected.config?.alertThresholds || [3, 5, 7, 10]).join(', '));
     setEnabledInput(Boolean(selected.enabled));
   }, [strategies.length, selectedStrategyId]);
@@ -239,7 +228,7 @@ export default function BetZeroLabPage({ session }) {
     });
   }, [historyQuery, historyStatus, historyRecords]);
 
-  const forwardWindow = overview?.forwardWindows?.[selectedStrategy?.id]?.windows?.[recentRange];
+  const forwardWindow = overview?.forwardVersionWindows?.[`${selectedStrategy?.id}:${selectedStrategy?.version}`]?.windows?.[recentRange];
   const chartRows = forwardWindow?.chart || [];
 
   async function chooseBacktest(runId) {
@@ -266,12 +255,12 @@ export default function BetZeroLabPage({ session }) {
     event.preventDefault();
     if (!selectedStrategy || selectedStrategy.status !== 'RESEARCH_ONLY') { setError('Choose a supported research strategy.'); return; }
     if (windowSize !== '100') {
-      await jobAction('jobs', { window: windowSize, seed, strategyId: selectedStrategy.id });
+      await jobAction('jobs', { window: windowSize, seed, strategyId: selectedStrategy.id, strategyVersion: selectedStrategy.version });
       return;
     }
     setBusy(true); setError(''); setNotice('');
     try {
-      const result = await apiRequest('/admin/betzero-lab/backtests', { method:'POST', body:JSON.stringify({window:windowSize,seed,strategyId:selectedStrategy.id}) });
+      const result = await apiRequest('/admin/betzero-lab/backtests', { method:'POST', body:JSON.stringify({window:windowSize,seed,strategyId:selectedStrategy.id,strategyVersion:selectedStrategy.version}) });
       setSelectedRunId(result.runId);
       setBacktest(await apiRequest(`/admin/betzero-lab/backtests?runId=${encodeURIComponent(result.runId)}&limit=1000`));
       setPerformanceView('historical');
@@ -291,15 +280,9 @@ export default function BetZeroLabPage({ session }) {
       const alertThresholds = thresholdInput.split(',').map(value => Number(value.trim()));
       const result = await apiRequest('/admin/betzero-lab/strategy-config', {
         method: 'POST',
-        body: JSON.stringify({ strategyId: selectedStrategy.id, enabled: enabledInput, alertThresholds }),
+        body: JSON.stringify({ strategyId: selectedStrategy.id, strategyVersion: selectedStrategy.version, enabled: enabledInput, alertThresholds }),
       });
-      setOverview(current => current ? {
-        ...current,
-        strategies: {
-          ...current.strategies,
-          [selectedStrategy.id]: { ...current.strategies[selectedStrategy.id], ...result.strategy },
-        },
-      } : current);
+      setOverview(await apiRequest('/admin/betzero-lab'));
       setThresholdInput((result.strategy.config?.alertThresholds || []).join(', '));
       setEnabledInput(Boolean(result.strategy.enabled));
       setNotice(`${selectedStrategy.label} configuration saved. No production settings were changed.`);
@@ -312,7 +295,7 @@ export default function BetZeroLabPage({ session }) {
   }
 
   async function toggleResearchStrategy(strategy, title) {
-    if (!session?.admin || busy || strategySaveLock.current || !strategy || strategy.version !== '1.0.0'
+    if (!session?.admin || busy || strategySaveLock.current || !strategy || !['1.0.0','2.0.0'].includes(strategy.version)
       || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three'].includes(strategy.id)) return;
     strategySaveLock.current = true;
     const enabled = !strategy.enabled;
@@ -323,16 +306,13 @@ export default function BetZeroLabPage({ session }) {
     let saved = false;
     try {
       const result = await apiRequest('/admin/betzero-lab/strategy-config', {
-        method: 'POST', body: JSON.stringify({ strategyId: strategy.id, enabled }),
+        method: 'POST', body: JSON.stringify({ strategyId: strategy.id, strategyVersion: strategy.version, enabled }),
       });
       saved = true;
-      setOverview(current => current ? { ...current, strategies: { ...current.strategies,
-        [strategy.id]: { ...current.strategies[strategy.id], ...result.strategy } } } : current);
-      if (selectedStrategy?.id === strategy.id) setEnabledInput(result.strategy.enabled);
       const next = await apiRequest('/admin/betzero-lab');
       setOverview(next); setHistoryRefreshKey(value => value + 1);
-      if (selectedStrategy?.id === strategy.id) setEnabledInput(Boolean(next.strategies[strategy.id]?.enabled));
-      const actualEnabled = next.strategies[strategy.id]?.enabled;
+      if (strategyKey(selectedStrategy) === strategyKey(strategy)) setEnabledInput(Boolean(next.strategyVersions[strategyKey(strategy)]?.enabled));
+      const actualEnabled = next.strategyVersions[strategyKey(strategy)]?.enabled;
       setNotice(`${title}: server confirms research predictions are ${actualEnabled ? 'enabled' : 'disabled'}. Existing history is preserved.`);
     } catch (failure) {
       setError(saved
@@ -343,10 +323,23 @@ export default function BetZeroLabPage({ session }) {
     }
   }
 
+  async function cutoverMinmax() {
+    if (!session?.admin || busy || strategySaveLock.current) return;
+    strategySaveLock.current = true;
+    if (!window.confirm('Switch Minimum/Maximum from v1.0.0 to v2.0.0?\n\nThis atomically stops future v1 predictions and initializes v2 independently. v2 keeps its method after WIN and switches after LOSS. Pending results or correction conflicts block this change. History is preserved; no missed draws are backfilled. Research only - no automatic betting.')) { strategySaveLock.current=false; return; }
+    overviewRevision.current++; setBusy(true); setError(''); setNotice('');
+    try {
+      await apiRequest('/admin/betzero-lab/minmax-cutover',{method:'POST',body:JSON.stringify({fromVersion:'1.0.0',toVersion:'2.0.0',confirmed:true})});
+      setOverview(await apiRequest('/admin/betzero-lab'));
+      setNotice('Cutover confirmed: v1 stopped, v2 initialized independently for subsequent eligible draws.');
+    } catch(failure) { setError(`Cutover not confirmed. Refresh server status before retrying. ${failure.message}`); }
+    finally {strategySaveLock.current=false;setBusy(false);}
+  }
+
   if (session?.checking) return <main className="page-wrap betzero-lab-page"><section className="content-card" role="status">Checking owner session…</section></main>;
-  if (!session?.admin) return <main className="page-wrap betzero-lab-page">
+  if (!session?.admin || live.expired) return <main className="page-wrap betzero-lab-page">
     <section className="betzero-access-card"><span className="overline">PRIVATE RESEARCH WORKSPACE</span>
-      <h1>Owner sign-in required</h1><p>The experimental BetZero lab is restricted to authorized administrators.</p>
+      <h1>Owner sign-in required</h1>{live.expired && <p role="alert">Your session expired. Sign in again to resume live updates.</p>}<p>The experimental BetZero lab is restricted to authorized administrators.</p>
       <a className="btn btn-primary" href="predictions.html">Open owner controls</a>
     </section>
   </main>;
@@ -355,15 +348,14 @@ export default function BetZeroLabPage({ session }) {
   const finalTestResults = runResults.filter(row => row.segment === 'final_test');
   const latestPredictions = (overview?.predictions || []).filter(row => row.strategyId === selectedStrategy?.id && row.strategyVersion === selectedStrategy?.version).slice(0, 5);
   const selectedRun = overview?.backtestRuns?.find(run => run.runId === selectedRunId);
+  const selectedOverall = backtest?.data?.overallByVersion?.[strategyKey(selectedStrategy)] || (backtest?.data?.overall?.strategyId === selectedStrategy?.id && (backtest.data.overall.strategyVersion || '1.0.0') === selectedStrategy?.version ? backtest.data.overall : null);
 
   return <main className="page-wrap betzero-lab-page">
     <section className="betzero-hero">
       <div><span className="overline">OWNER-ONLY · ISOLATED RESEARCH</span>
         <h1>BetZero Strategy Lab</h1>
         <p>Your predictions, results and research tests in one place.</p></div>
-      <button className="btn btn-secondary" type="button" onClick={() => loadOverview()} disabled={loading || busy}>
-        {loading ? 'Refreshing…' : 'Refresh lab'}
-      </button>
+
     </section>
 
     <div className="betzero-warning" role="note"><strong>EXPERIMENTAL — NOT FOR REAL-MONEY BETTING</strong>
@@ -372,13 +364,36 @@ export default function BetZeroLabPage({ session }) {
     {notice && <div className="betzero-message is-success" role="status">{notice}</div>}
 
     {loading && !overview && <section className="content-card" role="status">Loading isolated lab data…</section>}
+    <section className="betzero-live-monitor" aria-labelledby="live-draw-title" aria-busy={live.refreshing}>
+      <div className="betzero-live-heading"><div><span className="overline">AUTHORITATIVE DRAW CLOCK</span><h2 id="live-draw-title">Live Draw Monitor</h2></div>
+        <span className={`betzero-live-status is-${live.status.toLowerCase()}`} role="status">{live.refreshing && live.status === 'LIVE' ? 'UPDATING' : live.status}</span>
+      </div>
+      <div className="betzero-live-body">
+        <div><p>{live.reliable ? `Next draw #${live.clock.drawId}` : live.clock ? `Last reported draw #${live.clock.drawId}` : 'Next draw unavailable'}</p>
+          <div className="betzero-live-countdown" role="timer" aria-label="Time remaining" aria-live="off">{live.seconds === null ? '--:--' : `${String(Math.floor(live.seconds / 60)).padStart(2,'0')}:${String(live.seconds % 60).padStart(2,'0')}`}</div>
+        </div>
+        <button className="btn btn-secondary" type="button" disabled={live.refreshing || busy} onClick={live.refresh}>{live.refreshing ? 'Refreshing...' : 'Refresh Now'}</button>
+      </div>
+      <div className="betzero-live-freshness"><span>Clock received: {live.clock ? dateTime(live.clock.wall) : 'Not yet received'}</span><span>Lab data updated: {live.updatedAt ? dateTime(live.updatedAt) : 'Waiting for data'}</span></div>
+      {!live.reliable && <p className="betzero-warning" role="status">{live.clockError || (live.status === 'UPDATING' ? 'Waiting for the server to publish the next draw clock. No next draw ID has been inferred.' : 'No recent reliable clock is available. Countdown and upcoming-draw timing cannot be confirmed.')}</p>}
+      {live.refreshError && <p className="betzero-message is-error" role="alert">{live.refreshError}</p>}
+      <p className="betzero-section-note">Clock follows server observations. Research generation and settlement remain on the server. Updates pause when this tab is hidden.</p>
+    </section>
     {overview && <>
       <section className="betzero-section betzero-my-predictions" aria-labelledby="my-predictions-title">
         <div className="betzero-section-heading"><div><span className="overline">YOUR RESEARCH PICKS</span><h2 id="my-predictions-title">My Predictions</h2></div></div>
         <div className="betzero-simple-picks">
-          <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} />
-          <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} />
-          <PredictionCard strategy={overview.strategies.minimum_maximum_three} count={3} title="3-Number Minimum/Maximum" name="MIN / MAX - three adjacent numbers" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'minimum_maximum_three'} controlsBusy={busy} />
+          <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} live={live} />
+          <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} live={live} />
+          {['1.0.0','2.0.0'].map(version => <PredictionCard key={version} strategy={overview.strategyVersions?.[`minimum_maximum_three@${version}`]} count={3}
+            title={`Minimum/Maximum v${version} - ${version === '1.0.0' ? 'Legacy research' : 'New switching strategy'}`}
+            name={version === '1.0.0' ? 'After WIN: switch / After LOSS: keep' : 'After WIN: keep / After LOSS: switch'}
+            onToggle={toggleResearchStrategy} saving={savingStrategyId === 'minimum_maximum_three'} controlsBusy={busy} live={live} />)}
+        </div>
+        <div className="betzero-warning"><strong>Minimum/Maximum version cutover</strong>
+          <p>v2 starts independently from five eligible historical opportunities. Unresolved predictions or conflicts block cutover. Existing history is preserved.</p>
+          <button type="button" className="btn btn-secondary" disabled={busy || Boolean(overview.strategyVersions?.['minimum_maximum_three@2.0.0']?.decisionState?.cutoverAt)} onClick={cutoverMinmax}>Review v1 to v2 cutover</button>
+          <p>Before the first cutover, use this action to initialize v2. Its normal enable switch cannot bypass cutover checks. Returning to v1 after cutover requires a separate reviewed rollback.</p>
         </div>
       </section>
       <section className="betzero-section" aria-labelledby="test-strategy-title">
@@ -389,8 +404,8 @@ export default function BetZeroLabPage({ session }) {
             <option value="100">Last 100 opportunities</option><option value="500">Last 500 opportunities</option>
             <option value="1000">Last 1,000 opportunities</option><option value="all">All available opportunities</option>
           </select></label>
-          <label>Strategy to test<select value={selectedStrategy?.id || ''} onChange={event => setSelectedStrategyId(event.target.value)}>
-            {strategies.map(strategy => <option key={strategy.id} value={strategy.id}>{strategy.selectionCount === 1 ? '1-Number BetZero' : strategy.selectionCount === 3 ? '3-Number Minimum/Maximum' : strategy.selectionCount === 4 ? '4-Number BetZero' : `Advanced: ${strategy.label}`}</option>)}
+          <label>Strategy to test<select value={selectedStrategy ? strategyKey(selectedStrategy) : ''} onChange={event => setSelectedStrategyId(event.target.value)}>
+            {strategies.map(strategy => <option key={strategyKey(strategy)} value={strategyKey(strategy)}>{strategy.selectionCount === 1 ? '1-Number BetZero' : strategy.selectionCount === 3 ? `3-Number Minimum/Maximum v${strategy.version}` : strategy.selectionCount === 4 ? '4-Number BetZero' : `Advanced: ${strategy.label}`}</option>)}
           </select></label>
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Working…' : windowSize === '100' ? 'Run Historical Test' : 'Queue Historical Test'}</button>
         </form>
@@ -416,8 +431,8 @@ export default function BetZeroLabPage({ session }) {
           </div>
       <section className="betzero-section">
         <div className="betzero-section-heading betzero-chart-controls"><div><span className="overline">RECORDED FORWARD RESULTS</span><h2>Forward-testing trend</h2></div>
-          <div className="betzero-control-row"><label>Strategy<select value={selectedStrategy?.id || ''} onChange={event => setSelectedStrategyId(event.target.value)}>
-            {strategies.map(strategy => <option value={strategy.id} key={strategy.id}>{strategy.label}</option>)}
+          <div className="betzero-control-row"><label>Strategy<select value={selectedStrategy ? strategyKey(selectedStrategy) : ''} onChange={event => setSelectedStrategyId(event.target.value)}>
+            {strategies.map(strategy => <option value={strategyKey(strategy)} key={strategyKey(strategy)}>{strategy.label} - v{strategy.version}</option>)}
           </select></label><label>Recent completed records<select value={recentRange} onChange={event => setRecentRange(Number(event.target.value))}>
             {RANGE_OPTIONS.map(range => <option key={range} value={range}>{range}</option>)}
           </select></label></div>
@@ -444,7 +459,7 @@ export default function BetZeroLabPage({ session }) {
           <span className="betzero-muted">{forwardRows.length} matching records</span></div>
         <div className="betzero-history-filters">
           <label>Strategy<select value={historyStrategyId} onChange={event => setHistoryStrategyId(event.target.value)}>
-            <option value="all">All strategies</option>{strategies.map(strategy => <option key={strategy.id} value={strategy.id}>{strategy.label}</option>)}
+            <option value="all">All strategies</option>{strategies.map(strategy => <option key={strategyKey(strategy)} value={strategyKey(strategy)}>{strategy.label} - v{strategy.version}</option>)}
           </select></label>
           <label>Outcome<select value={historyStatus} onChange={event => setHistoryStatus(event.target.value)}>
             {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status === 'ALL' ? 'All outcomes' : status}</option>)}
@@ -456,7 +471,7 @@ export default function BetZeroLabPage({ session }) {
         <div className="betzero-table-scroll"><table className="betzero-table betzero-history-table">
           <thead><tr><th>Target draw</th><th>Strategy</th><th>Selected numbers</th><th>Actual result</th><th>Status</th><th>Predicted at</th><th>Validated at</th></tr></thead>
           <tbody>{forwardRows.map(row => <tr key={row.predictionId}><td data-label="Draw">#{row.targetDrawId}<small>From #{row.sourceDrawId}</small></td>
-            <td data-label="Strategy">{overview.strategies[row.strategyId]?.label || row.strategyId}<small>v{row.strategyVersion}</small></td>
+            <td data-label="Strategy">{overview.strategyVersions?.[`${row.strategyId}@${row.strategyVersion}`]?.label || row.strategyId}<small>v{row.strategyVersion}</small></td>
             <td data-label="Selections">{row.selections.length ? row.selections.join(', ') : '—'}</td>
             <td data-label="Actual six numbers">{row.actualBalls?.join(', ') || '—'}</td><td data-label="Result"><StatusBadge value={row.status} /></td>
             <td data-label="Predicted at">{dateTime(row.predictedAt)}</td><td data-label="Validated at">{dateTime(row.validatedAt)}</td></tr>)}
@@ -485,15 +500,15 @@ export default function BetZeroLabPage({ session }) {
       <section className="betzero-section">
         {performanceView === 'historical' && backtest && <section className="betzero-section">
           <h2>Recorded historical selections</h2>
-          {backtest.data.overall?.strategyId === selectedStrategy?.id && <div className="betzero-simple-pick">
+          {selectedOverall && <div className="betzero-simple-pick">
             <h3>Full historical test</h3>
-            <p>{backtest.data.overall.predictions} evaluated | {backtest.data.overall.wins} wins | {backtest.data.overall.losses} losses | {backtest.data.overall.skipped} skipped</p>
-            <p>Win rate: {percentage(backtest.data.overall.winRate)} | Current losing streak: {backtest.data.overall.currentLosingStreak} | Worst: {backtest.data.overall.worstLosingStreak}</p>
-            <p>Matched random: {percentage(backtest.data.overall.randomBaseline?.winRate)} | Theoretical: {percentage(backtest.data.overall.theoreticalBaseline?.expectedWinRate)}</p>
-            <p>Difference from random: {backtest.data.overall.winRate == null ? 'Unavailable' : `${((backtest.data.overall.winRate - backtest.data.overall.randomBaseline.winRate)*100).toFixed(2)} percentage points`}. Historical performance does not guarantee future results.</p>
+            <p>{selectedOverall.predictions} evaluated | {selectedOverall.wins} wins | {selectedOverall.losses} losses | {selectedOverall.skipped} skipped</p>
+            <p>Win rate: {percentage(selectedOverall.winRate)} | Current losing streak: {selectedOverall.currentLosingStreak} | Worst: {selectedOverall.worstLosingStreak}</p>
+            <p>Matched random: {percentage(selectedOverall.randomBaseline?.winRate)} | Theoretical: {percentage(selectedOverall.theoreticalBaseline?.expectedWinRate)}</p>
+            <p>Difference from random: {selectedOverall.winRate == null ? 'Unavailable' : `${((selectedOverall.winRate - selectedOverall.randomBaseline.winRate)*100).toFixed(2)} percentage points`}. Historical performance does not guarantee future results.</p>
           </div>}
           <p>Saved simulated results, separate from forward predictions. Up to 1,000 rows shown.</p>
-          <div className="betzero-historical-picks">{(backtest.predictions || []).filter(r => r.strategyId === selectedStrategy?.id).map(row => <article key={row.predictionId} className="betzero-simple-pick">
+          <div className="betzero-historical-picks">{(backtest.predictions || []).filter(r => r.strategyId === selectedStrategy?.id && r.strategyVersion === selectedStrategy?.version).map(row => <article key={row.predictionId} className="betzero-simple-pick">
             <strong>Draw #{row.targetDrawId} | {row.conditions?.method || 'No method'}</strong>
             <StatusBadge value={row.status} />
             <p>Selections: {row.selections?.join(', ') || 'None'}</p>
@@ -504,7 +519,7 @@ export default function BetZeroLabPage({ session }) {
         <div className="betzero-section-heading"><div><span className="overline">STRATEGY OVERVIEW</span><h2>Research status</h2></div>
           <span className="betzero-muted">{strategies.length} registered strategies</span></div>
         <div className="betzero-strategy-grid">
-          {strategies.map(strategy => <article className="betzero-strategy-card" key={strategy.id}>
+          {strategies.map(strategy => <article className="betzero-strategy-card" key={strategyKey(strategy)}>
             <div className="betzero-card-top"><StatusBadge value={strategy.status} /><span>{strategy.enabled ? 'Enabled' : 'Disabled'}</span></div>
             <h3>{strategy.label}</h3>
             {strategy.selectionCount && <p><strong>{strategy.selectionCount === 1 ? 'One-number absence experiment — not a four-number BetZero prediction.' : strategy.selectionCount === 3 ? 'Exactly three distinct numbers - MIN/MAX research.' : 'Exactly four distinct numbers — newly designed research, not instructor-verified.'}</strong></p>}
@@ -529,7 +544,7 @@ export default function BetZeroLabPage({ session }) {
           <tbody>{strategies.map(strategy => {
             const result = finalTestResults.find(row => row.strategyId === strategy.id && row.strategyVersion === strategy.version)?.result;
             const trials = (result?.wins || 0) + (result?.losses || 0);
-            return <tr key={strategy.id}><th scope="row">{strategy.label}<small><StatusBadge value={strategy.status} /></small></th>
+            return <tr key={strategyKey(strategy)}><th scope="row">{strategy.label}<small><StatusBadge value={strategy.status} /></small></th>
               <td>{(strategy.totalPredictions || 0) + (strategy.skipped || 0) + (strategy.invalid || 0)}<small>{strategy.totalPredictions ?? 0} picks · {strategy.skipped ?? 0} skipped · {strategy.invalid ?? 0} invalid</small></td>
               <td>{strategy.wins ?? 0} / {strategy.losses ?? 0}</td>
               <td>{percentage(strategy.winRate)}</td>
@@ -594,8 +609,8 @@ export default function BetZeroLabPage({ session }) {
         <div className="betzero-panel">
           <div className="betzero-section-heading"><div><span className="overline">STRATEGY CONFIGURATION</span><h2>Research controls</h2></div></div>
           {selectedStrategy && <form className="betzero-config-form" onSubmit={saveStrategyConfig}>
-            <label>Strategy<select value={selectedStrategy.id} onChange={event => setSelectedStrategyId(event.target.value)}>
-              {strategies.map(strategy => <option key={strategy.id} value={strategy.id}>{strategy.label} · {strategy.status}</option>)}
+            <label>Strategy<select value={strategyKey(selectedStrategy)} onChange={event => setSelectedStrategyId(event.target.value)}>
+              {strategies.map(strategy => <option key={strategyKey(strategy)} value={strategyKey(strategy)}>{strategy.label} · {strategy.status}</option>)}
             </select></label>
             <div className="betzero-config-status"><StatusBadge value={selectedStrategy.status} /><span>{selectedStrategy.enabled ? 'Currently enabled' : 'Currently disabled'}</span></div>
             {selectedStrategy.status === 'UNVERIFIED'
