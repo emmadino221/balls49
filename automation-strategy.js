@@ -10,7 +10,11 @@ const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).
 const fresh = () => ({ observed: 0, waiting: true, active: false, batch: 0, attempts: 0, deficit: 0 });
 function current(s) { return s.config.suggestionStrategy; }
 function enabled(s) { return s.automationControl?.controller === 'website' && !current(s)?.needsReview && current(s); }
-function warningOnly(s) { return !!(enabled(s)?.request.autoUpdate && current(s)?.request.riskWarningOnly === true); }
+function warningOnly(s) {
+    // enabled() can return false for extension-controlled or review-paused sessions.
+    const request = enabled(s)?.request;
+    return request?.autoUpdate === true && request?.riskWarningOnly === true;
+}
 // Ignore changing history timestamps when deciding whether a new setup exists.
 function setupHash(plan) { return hash({ plans: plan.plans, reserve: plan.reserve }); }
 function recovery(s) { return !current(s)?.needsReview && Object.values(current(s)?.lanes || {}).some(l => l.deficit > 0 || l.attempts > 0); }
