@@ -722,6 +722,9 @@ function createBetZeroLab(db, options = {}) {
     }
 
     function saveForwardPrediction(strategy, sourceRecord, sourceBalls, targetDrawId, predictedAt, timing) {
+        // Retired MIN/MAX v1 must not create new rows after the confirmed v2 cutover.
+        if (strategy.id === minmax.ID && strategy.version === '1.0.0'
+            && minmaxState('2.0.0').cutoverAt) return;
         const state = strategy.id === minmax.ID ? minmaxState(strategy.version) : null;
         if (state && strategy.version === '2.0.0' && strategy.enabled && (!state.cutoverAt || predictedAt <= state.cutoverAt || targetDrawId <= state.afterTargetId || Date.parse(sourceRecord.settledAt) <= state.cutoverAt)) return;
         const prediction = state && strategy.enabled

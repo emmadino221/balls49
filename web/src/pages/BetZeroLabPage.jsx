@@ -390,10 +390,10 @@ export default function BetZeroLabPage({ session }) {
           <p className="betzero-section-note">Statistics snapshots collected: {overview.numberStatistics?.snapshots ?? 0}. Conflicts: {overview.numberStatistics?.conflicts ?? 0}. Streak-drop research skips unavailable snapshot pairs.</p>
           <PredictionCard strategy={overview.strategies.statistics_streak_drop_betzero} count={4} title="BetZero - Streak drop" name="strk 2 or 3 to 1; first four ascending" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} />
           <PredictionCard strategy={overview.strategies.statistics_streak_drop_bet49} count={1} title="Bet49 - Streak drop" name="One seeded random number from the same four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} />
-          {['1.0.0','2.0.0'].map(version => <PredictionCard key={version} strategy={overview.strategyVersions?.[`minimum_maximum_three@${version}`]} count={3}
-            title={`Minimum/Maximum v${version} - ${version === '1.0.0' ? 'Legacy research' : 'New switching strategy'}`}
-            name={version === '1.0.0' ? 'After WIN: switch / After LOSS: keep' : 'After WIN: keep / After LOSS: switch'}
-            onToggle={toggleResearchStrategy} saving={savingStrategyId === 'minimum_maximum_three'} controlsBusy={busy} live={live} />)}
+          <PredictionCard strategy={overview.strategyVersions?.['minimum_maximum_three@2.0.0']} count={3}
+            title="Minimum/Maximum v2.0.0 - New switching strategy"
+            name="After WIN: keep / After LOSS: switch"
+            onToggle={toggleResearchStrategy} saving={savingStrategyId === 'minimum_maximum_three'} controlsBusy={busy} live={live} />
         </div>
         <div className="betzero-warning"><strong>Minimum/Maximum version cutover</strong>
           <p>v2 starts independently from five eligible historical opportunities. Unresolved predictions or conflicts block cutover. Existing history is preserved.</p>
