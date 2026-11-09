@@ -466,6 +466,7 @@ function sniperAllowsEntry(session, trackerKey) {
 let lastDrawId = null, predSentForId = null, lastPrediction = null;
 let lastGlobalDrawId = null; 
 let publicClock = { drawId: null, timeLeftSeconds: null, drawDate: null, observedAt: null };
+let labNumberStatistics = null;
 let globalDefaultStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, totalColor1: 0 };
 
 const processedDrawIds = new Set();
@@ -1146,6 +1147,7 @@ async function publishPredictionSnapshot() {
             marketStatsResetAt: getMarketStatsResetAt(),
             current: buildPublicFeedCurrent(),
             clock: publicClock,
+            numberStatistics: labNumberStatistics,
             historyUpdates
         };
         const body = JSON.stringify(snapshot);
@@ -3439,7 +3441,19 @@ async function tick() {
 
         if (nextId && nextId !== lastGlobalDrawId && !lastPrediction) {
             var stats24Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '24HRS' }).catch(() => null);
+            const statisticsRequestedAt = Date.now();
             var stats100Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '100' }).catch(() => null);
+            // Research-only observational snapshot; it never enters production prediction selection.
+            labNumberStatistics = null;
+            const statisticsReceivedAt = Date.now();
+            const sourceResult = predictionLog.find(r => Number(r.drawId) === Number(nextId)-1 && r.result?.balls?.length === 6);
+            const statisticsDeadline = Number(publicClock.observedAt) + Number(publicClock.timeLeftSeconds)*1000;
+            if (sourceResult && Date.parse(sourceResult.settledAt) <= statisticsRequestedAt
+                && String(publicClock.drawId) === String(nextId) && statisticsRequestedAt - publicClock.observedAt <= 30000
+                && statisticsReceivedAt < statisticsDeadline) {
+                labNumberStatistics = { btc:11090,period:'100',sourceDrawId:Number(nextId)-1,targetDrawId:Number(nextId),
+                    requestedAt:statisticsRequestedAt,receivedAt:statisticsReceivedAt,deadline:statisticsDeadline,response:stats100Num };
+            }
             var stats24HiLo = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: 11050, period: '24HRS' }).catch(() => null);
             var stats100HiLo = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: 11050, period: '100' }).catch(() => null);
             var stats100TC = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_TC, period: '100' }).catch(() => null);
@@ -3923,7 +3937,8 @@ async function handleHttpRequest(req, res) {
                         current: snapshot.current,
                         clock: snapshot.clock,
                         historyUpdates: normalizedHistoryUpdates.map(item => item.record),
-                        snapshotAt
+                        snapshotAt,
+                        numberStatistics: snapshot.numberStatistics
                     });
                 } catch (error) {
                     console.error('[BetZeroLab] Could not process a prediction snapshot; the production feed was stored.', error);
