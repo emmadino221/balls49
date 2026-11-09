@@ -1,6 +1,16 @@
 'use strict';
 
 const { randomInt } = require('crypto');
+const { predictBet49SmallestAdd10 } = require('./bet49');
+
+function predictBetZeroStep10(draws, targetDrawId) {
+    const first = predictBet49SmallestAdd10(draws, targetDrawId);
+    const strategy = 'SMALLEST_ADD10_STEP10_FOUR_V1';
+    if (first.status !== 'ACTIVE') return { ...first, strategy };
+    const numbers = [...first.numbers];
+    while (numbers.length < 4) numbers.push(((numbers.at(-1) - 1 + 10) % 49) + 1);
+    return { ...first, numbers, strategy };
+}
 
 // Only completed draws immediately before the target belong to this window.
 function predictBetZero(draws, records, targetDrawId) {
@@ -43,4 +53,4 @@ function predictBetZero(draws, records, targetDrawId) {
         : { ...skip, poolSize: eligible.length, reason: 'Fewer than four eligible BetZero numbers' };
 }
 
-module.exports = { predictBetZero };
+module.exports = { predictBetZero, predictBetZeroStep10 };
