@@ -8,6 +8,7 @@ const { createVirtualFootball } = require('./virtual-football');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, predictBet49SmallestAdd10, bet49Numbers } = require('./bet49');
+const { predictBetZeroStep10 } = require('./betzero');
 const { createBetZeroLab } = require('./betzero-lab');
 const { createJobStore } = require('./betzero-jobs');
 const { handleJobApi, smallBacktestRecords } = require('./betzero-job-api');
@@ -1540,7 +1541,7 @@ function evaluateMLEntryConfidence(key, currentStep, predData, liveStreaks) {
             confidenceScore -= (currentLossStreak * 0.08);
         }
 
-        if (key === 'u4' && predData.brainData.betzero && predData.brainData.betzero.strategy !== 'bet49_first_four') {
+        if (key === 'u4' && predData.brainData.betzero && !['bet49_first_four', 'SMALLEST_ADD10_STEP10_FOUR_V1'].includes(predData.brainData.betzero.strategy)) {
             let poolSize = predData.brainData.betzero.poolSize || 0;
             if (poolSize < 12) confidenceScore -= 0.20; 
             else if (poolSize >= 15) confidenceScore += 0.15; 
@@ -2518,15 +2519,15 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         totalColor2Pred.gap = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
     }
 
-    // Retain the legacy multi-number pool for BetZero, Rainbow and High/Low.
+    // Retain the legacy multi-number pool for Rainbow and High/Low.
     // The published Bet49 selection is replaced independently below.
     const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, totalColor2Pred);
     var bet49Pick = bet49Prediction.numbers;
 
-    // Lowest last-10 frequency among issued Bet49 picks; retain Bet49 order on ties.
-    const betzeroStatus = bet49Prediction.status === 'ACTIVE' && bet49Pick.length >= 4 ? 'ACTIVE' : 'SKIP';
-    const unlikely4 = betzeroStatus === 'ACTIVE' ? bet49Pick.map((number, index) => ({ number, index })).sort((a, b) => bet49Prediction.counts[a.number] - bet49Prediction.counts[b.number] || a.index - b.index).slice(0, 4).map(({ number }) => ({ number })) : [];
-    const bzSkipReason = betzeroStatus === 'ACTIVE' ? '' : 'Bet49 has fewer than four active picks';
+    const mainBetZero = predictBetZeroStep10(histRaw?.data?.draws, targetDrawId);
+    const betzeroStatus = mainBetZero.status;
+    const unlikely4 = mainBetZero.numbers.map(number => ({ number }));
+    const bzSkipReason = mainBetZero.reason;
 
     // Total Color 2-way is computed first; Rainbow follows the final Bet49 picks,
     // so a Rainbow tie must not change the two-way prediction retroactively.
@@ -2558,7 +2559,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var oppositeStreakLimit = Math.max(0, parseInt(hiloStats.find(item => item.sel === oppositeKey)?.strk, 10) || 0);
 
     var brainData = {
-        betzero: { selected: unlikely4.map(x => x.number), status: betzeroStatus, poolSize: bet49Pick.length, strategy: 'bet49_first_four' },
+        betzero: { ...mainBetZero, selected: mainBetZero.numbers },
         rainbow: { selected: topColor.name, freqs: colorFreqs100, maxFreq: rawColorFreq, weightedMax: topColor.weighted, selectedNumberColorCounts: bet49ColorCounts, strategy: 'bet49_selected_color_majority' },
         hilo: { targetLock: sumRange, oppositeStreakLimit: oppositeStreakLimit, analysis: highLow.analysis },
         totalColor: { status: totalColorPred.status }
