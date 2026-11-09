@@ -20,27 +20,28 @@ function forwardWindows(db, strategies, now = Date.now(), versioned = false) {
                 && timing.observedAt<=timing.snapshotAt && timing.snapshotAt<=predictedAt && predictedAt<timing.expectedTargetAt
                 && Number(row.target_draw_id)===Number(row.source_draw_id)+1;
             const outcome=['WIN','LOSS'].includes(row.status), balls=JSON.parse(row.actual_balls_json || 'null');
-            const usable=verified && (!outcome || (validatedAt>predictedAt && validBalls(balls) && validSelections(JSON.parse(row.selections_json),strategy.selectionCount)));
+            const selections=JSON.parse(row.selections_json), count=selections.length;
+            const usable=verified && (!outcome || (validatedAt>predictedAt && validBalls(balls) && gradeStrategy(strategy,selections,balls)!=='INVALID'));
             let randomWins=0;
             if(usable && outcome) {
                 const random=seededRandom(`${SEED}:${strategy.id}:${strategy.version}:${row.target_draw_id}`);
-                if(gradeStrategy(strategy,randomSelections(strategy.selectionCount,random),balls)==='WIN')randomWins++;
+                if(gradeStrategy(strategy,randomSelections(count,random),balls)==='WIN')randomWins++;
             }
-            return {targetDrawId:row.target_draw_id,status:row.status,usable,randomWins};
+            return {targetDrawId:row.target_draw_id,status:row.status,usable,randomWins,count};
         });
         const windows=Object.fromEntries([100,500,1000].map(size=>{
             const selected=measured.slice(-size);
             let wins=0,losses=0,skipped=0,invalid=0,unverified=0,currentLoss=0,worstLoss=0,currentWin=0,longestWin=0,randomWins=0;
-            const chart=[];
+            const chart=[]; let expectedWins=0;
             for(const row of selected){
                 if(!row.usable){unverified++;continue;}
                 if(row.status==='SKIP'){skipped++;continue;}
                 if(row.status==='INVALID'){invalid++;continue;}
                 if(row.status==='WIN'){wins++;currentLoss=0;longestWin=Math.max(longestWin,++currentWin);}
                 else{losses++;currentWin=0;worstLoss=Math.max(worstLoss,++currentLoss);}
-                randomWins+=row.randomWins;chart.push({targetDrawId:row.targetDrawId,status:row.status});
+                randomWins+=row.randomWins; expectedWins+=strategyProbability(strategy,row.count); chart.push({targetDrawId:row.targetDrawId,status:row.status});
             }
-            const n=wins+losses,theoretical=strategyProbability(strategy);
+            const n=wins+losses,theoretical=n ? expectedWins/n : (strategy.id === 'statistics_streak_drop_betzero' && strategy.version === '2.0.0' ? null : strategyProbability(strategy));
             const threshold=Math.min(...(strategy.config.alertThresholds || [3,5,7,10]));
             return [size,{...quality,requested:size,available:selected.length,settled:n,wins,losses,skipped,invalid,unverified,pending,
                 winRate:n?wins/n:null,confidenceInterval95:wilsonInterval(wins,n),currentLosingStreak:currentLoss,worstLosingStreak:worstLoss,longestWinningStreak:longestWin,

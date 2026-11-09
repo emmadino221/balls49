@@ -64,7 +64,7 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
   const settled = records.find(row => ['WIN', 'LOSS'].includes(row.status));
   const displayed = pending || settled;
   const selections = displayed?.selections || [];
-  const valid = selections.length === count && new Set(selections).size === count && selections.every(n => Number.isInteger(n) && n >= 1 && n <= 49);
+  const valid = (Array.isArray(count) ? count.includes(selections.length) : selections.length === count) && new Set(selections).size === selections.length && selections.every(n => Number.isInteger(n) && n >= 1 && n <= 49);
   return <article className="betzero-simple-pick">
     <div className="betzero-pick-title"><span>{title}</span><StatusBadge value={strategy ? (strategy.enabled ? 'ACTIVE' : 'DISABLED') : 'UNAVAILABLE'} /></div>
     <h3>{name}</h3>
@@ -78,7 +78,7 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
         <span>{saving ? 'Saving…' : strategy?.enabled ? 'Enabled — switch off' : 'Disabled — switch on'}</span>
       </button>
     </div>
-    <p className="betzero-pick-caption">{strategy?.market === 'BET49' ? 'Single-number appearance research: WIN when selected number appears' : count === 1 ? 'Single-number absence research experiment' : `${count}-number research experiment`}</p>
+    <p className="betzero-pick-caption">{strategy?.market === 'BET49' ? 'Single-number appearance research: WIN when selected number appears' : count === 1 ? 'Single-number absence research experiment' : `${Array.isArray(count) ? count.join(' or ') : count}-number research experiment`}</p>
     {count === 4 && strategy && !strategy.enabled && !records.some(r => r.selections?.length === 4) && <p className="betzero-empty">4-number research predictions are disabled.</p>}
     {count === 3 && <>
       <p className="betzero-pick-caption">Method: {displayed?.conditions?.method || strategy?.decisionState?.method || 'Awaiting analysis'}</p>
@@ -86,7 +86,7 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
       {records[0]?.status === 'SKIP' && <p className="betzero-warning">Latest opportunity skipped: {records[0].conditions?.reason || 'No eligible prediction'}</p>}
       {strategy?.decisionState?.paused && <p className="betzero-warning">Result conflict - paused for review.</p>}
     </>}
-    {strategy?.id?.startsWith('statistics_streak_drop_') && <p className="betzero-warning">Requires two consecutive recorded 100-draw statistics snapshots. Fewer than four transitions: SKIP. Bet9ja does not supply a statistics draw ID; input alignment is observational and results are provisional. Historical draws alone cannot reconstruct these streaks.</p>}
+    {strategy?.id?.startsWith('statistics_streak_drop_') && <p className="betzero-warning">Requires two consecutive recorded 100-draw statistics snapshots. Fewer than {strategy.version === '2.0.0' ? 'three' : 'four'} transitions: SKIP. Bet9ja does not supply a statistics draw ID; input alignment is observational and results are provisional. Historical draws alone cannot reconstruct these streaks.</p>}
     {strategy?.id?.startsWith('statistics_streak_drop_') && records[0]?.status === 'SKIP' && <p>Latest skip: {records[0].conditions?.reason}</p>}
     {displayed ? <>
       <p className="betzero-pick-caption">{pending ? 'Latest pending record - draw timing not verified' : 'Last completed prediction'}</p>
@@ -388,8 +388,11 @@ export default function BetZeroLabPage({ session }) {
           <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} live={live} />
           <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} live={live} />
           <p className="betzero-section-note">Statistics snapshots collected: {overview.numberStatistics?.snapshots ?? 0}. Conflicts: {overview.numberStatistics?.conflicts ?? 0}. Streak-drop research skips unavailable snapshot pairs.</p>
-          <PredictionCard strategy={overview.strategies.statistics_streak_drop_betzero} count={4} title="BetZero - Streak drop" name="strk 2 or 3 to 1; first four ascending" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} />
-          <PredictionCard strategy={overview.strategies.statistics_streak_drop_bet49} count={1} title="Bet49 - Streak drop" name="One seeded random number from the same four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} />
+          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@1.0.0']} count={4} title="BetZero - Streak drop v1" name="strk 2 or 3 to 1; first four ascending" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} />
+          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@1.0.0']} count={1} title="Bet49 - Streak drop v1" name="One seeded random number from the same four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} />
+          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@2.0.0']} count={[3,4]} title="BetZero - Streak drop v2" name="Use three qualifiers, or first four when more qualify" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} />
+          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@2.0.0']} count={1} title="Bet49 - Streak drop v2" name="One seeded random number from the same three or four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} />
+          <p className="betzero-section-note">Streak-drop v1 and v2 have separate history and settings. V2 starts disabled; enabling it does not disable v1 or backfill missed draws.</p>
           <PredictionCard strategy={overview.strategyVersions?.['minimum_maximum_three@2.0.0']} count={3}
             title="Minimum/Maximum v2.0.0 - New switching strategy"
             name="After WIN: keep / After LOSS: switch"

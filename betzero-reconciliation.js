@@ -44,7 +44,7 @@ function planReconciliation(db, archive, { now = Date.now(), overdueMs = 300000,
         })) { decision.reason = 'CONFLICTING_SAVED_RESULT'; continue; }
         const definition = STRATEGIES.find(strategy => strategy.id === row.strategy_id && strategy.version === row.strategy_version);
         let selections; try { selections = JSON.parse(row.selections_json); } catch { selections = null; }
-        if (!definition?.selectionCount || !validSelections(selections, definition.selectionCount)) { decision.reason = 'INVALID_STRATEGY_OR_SELECTIONS'; continue; }
+        if (!definition?.selectionCount || gradeStrategy(definition, selections, parsed[0].balls) === 'INVALID') { decision.reason = 'INVALID_STRATEGY_OR_SELECTIONS'; continue; }
         Object.assign(decision, { action: 'SETTLE', outcome: gradeStrategy(definition, selections, parsed[0].balls),
             balls: parsed[0].balls, resultHash: parsed[0].resultHash, observedAt: new Date(Math.min(...parsed.map(value => value.observed))).toISOString(),
             original: row });

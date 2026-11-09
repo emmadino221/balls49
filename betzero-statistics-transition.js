@@ -10,6 +10,15 @@ const definitions = [
 ].map(s => ({ ...s, version: '1.0.0', status: 'RESEARCH_ONLY', kind: 'PREDICTION',
     description: 'Consecutive observed 100-draw statistics: strk 2 or 3 to 1; first four ascending; skip fewer than four. Bet49 picks one with a recorded deterministic random seed.',
     missingInformation: 'Statistics have no provider draw ID. Clock association is observational; provider freshness is not independently verified.' }));
+definitions.push(...definitions.map(s => ({ ...s, version: '2.0.0',
+    label: s.id === ZERO ? 'BetZero - Streak drop v2 (3 or 4 numbers)' : 'Bet49 - Streak drop v2 (one from 3 or 4)',
+    description: 'Consecutive observed 100-draw statistics: strk 2 or 3 to 1; use three when exactly three qualify, otherwise first four ascending. Skip fewer than three. Bet49 selects one seeded random candidate.'
+})));
+
+function acceptsCount(strategy, count) {
+    if (strategy.id === ZERO && strategy.version === '2.0.0') return count === 3 || count === 4;
+    return count === strategy.selectionCount;
+}
 
 function normalize(sample) {
     if (!sample || sample.btc !== 11090 || sample.period !== '100' || sample.response?.status !== 1) return null;
@@ -37,18 +46,22 @@ function pick(strategy, previous, current, targetId, seed = SEED) {
     if (current.targetDrawId !== targetId || previous.targetDrawId !== current.sourceDrawId
         || previous.receivedAt >= current.requestedAt) return skip('NONCONSECUTIVE_STATISTICS_SNAPSHOTS');
     const qualified = current.values.flatMap((v,i) => v === 1 && [2,3].includes(previous.values[i]) ? [i+1] : []);
-    if (qualified.length < 4) return skip('FEWER_THAN_FOUR_TRANSITIONS');
+    const minimum = strategy.version === '2.0.0' ? 3 : 4;
+    if (minimum === 4 && qualified.length < 4) return skip('FEWER_THAN_FOUR_TRANSITIONS');
+    if (qualified.length < minimum) return { ...skip(minimum === 3 ? 'FEWER_THAN_THREE_TRANSITIONS' : 'FEWER_THAN_FOUR_TRANSITIONS'),
+        conditions: { reason: minimum === 3 ? 'FEWER_THAN_THREE_TRANSITIONS' : 'FEWER_THAN_FOUR_TRANSITIONS',
+            market: strategy.id === HIT ? 'BET49' : 'BETZERO', qualified, requiredMinimum: minimum } };
     const four = qualified.slice(0,4);
     // Rejection sampling avoids modulo bias; version, seed and input hashes freeze the choice.
     const randomSeed = `${seed}:${strategy.version}:${targetId}:${previous.signature}:${current.signature}`;
     let index;
     for (let nonce=0; index === undefined; nonce++) {
         const bytes = crypto.createHash('sha256').update(`${randomSeed}:${nonce}`).digest();
-        for (const byte of bytes) if (byte < 252) { index=byte % 4; break; }
+        for (const byte of bytes) if (byte < 252) { index=byte % four.length; break; }
     }
     return { status:'PENDING', selections:strategy.id === HIT ? [four[index]] : four,
         conditions:{model:'OBSERVED_STATISTICS_TRANSITION', market:strategy.id === HIT ? 'BET49' : 'BETZERO',
-            qualified, betzeroFour:four, randomSeed:strategy.id === HIT ? randomSeed : null,
+            qualified, ...(strategy.version === '1.0.0' ? {betzeroFour:four} : {betzeroCandidates:four}), randomSeed:strategy.id === HIT ? randomSeed : null,
             previousHash:previous.signature,currentHash:current.signature,
             previousSourceDrawId:previous.sourceDrawId,sourceDrawId:current.sourceDrawId,
             inputReceivedAt:current.receivedAt, providerDrawAlignmentVerified:false} };
@@ -82,4 +95,4 @@ function createStore(db) {
     }
     return {read,remember,predict};
 }
-module.exports={ZERO,HIT,SEED,isStrategy,definitions,normalize,pick,createStore};
+module.exports={ZERO,HIT,SEED,isStrategy,definitions,normalize,pick,createStore,acceptsCount};

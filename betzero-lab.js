@@ -107,11 +107,14 @@ function validateBetZeroPrediction(selections, actualBalls, selectionCount = 4) 
 }
 
 function gradeStrategy(strategy, selections, balls) {
-    const status = validateBetZeroPrediction(selections, balls, strategy.selectionCount ?? 0);
+    const count = Array.isArray(selections) ? selections.length : 0;
+    if (!transitions.acceptsCount(strategy, count)) return 'INVALID';
+    const status = validateBetZeroPrediction(selections, balls, count);
     return strategy.id === transitions.HIT && status !== 'INVALID' ? (status === 'WIN' ? 'LOSS' : 'WIN') : status;
 }
-function strategyProbability(strategy) {
-    return strategy.id === transitions.HIT ? 6 / 49 : probabilityAllAbsent(strategy.selectionCount);
+function strategyProbability(strategy, count = strategy.selectionCount) {
+    if (!transitions.acceptsCount(strategy, count)) return null;
+    return strategy.id === transitions.HIT ? 6 / 49 : probabilityAllAbsent(count);
 }
 
 function summarizePredictionRows(rows) {
@@ -262,7 +265,7 @@ function metricsForSegment(opportunities, strategy, seed, onProgress = () => {},
             worstLosingStreak = Math.max(worstLosingStreak, currentLosingStreak);
         }
         const count = pick.selections.length;
-        expectedWins += strategyProbability(strategy);
+        expectedWins += strategyProbability(strategy, count);
         for (let repetition = 0; repetition < RANDOM_REPETITIONS; repetition++) {
             const entryRandom = strategy.id === 'smallest_add10_step10_four'
                 ? seededRandom(`${seed}:${strategy.id}:${strategy.version}:${target.id}:${repetition}`) : random;
@@ -488,6 +491,7 @@ function createBetZeroLab(db, options = {}) {
             ...row, label: strategyDefinition(row.id, row.version)?.displayLabel || row.label,
             market: strategyDefinition(row.id, row.version)?.market || 'BETZERO',
             selectionCount: strategyDefinition(row.id, row.version)?.selectionCount || null,
+            selectionCounts: row.id === transitions.ZERO && row.version === '2.0.0' ? [3,4] : [strategyDefinition(row.id, row.version)?.selectionCount].filter(Boolean),
             enabled: row.enabled === 1, config: JSON.parse(row.configJson)
         }));
     }
@@ -501,7 +505,7 @@ function createBetZeroLab(db, options = {}) {
         if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
             throw Object.assign(new Error('Invalid strategy configuration.'), { status: 400 });
         }
-        if (strategyId === minmax.ID && !updates.version) throw Object.assign(new Error('Choose an exact MIN/MAX version.'),{status:400});
+        if ((strategyId === minmax.ID || transitions.isStrategy(strategyId)) && !updates.version) throw Object.assign(new Error('Choose an exact strategy version.'),{status:400});
         const version = updates.version || '1.0.0';
         const strategy = strategies().find(item => item.id === strategyId && item.version === version && strategyDefinition(item.id, item.version));
         if (!strategy) throw Object.assign(new Error('Unknown lab strategy.'), { status: 404 });
@@ -916,7 +920,7 @@ function createBetZeroLab(db, options = {}) {
             const id = drawIdFromRecord(record), time = Date.parse(record.settledAt || '');
             if (id && Number.isFinite(time)) targetSettledTimes.set(id, Math.min(targetSettledTimes.get(id) ?? Infinity,time));
         }
-        const transitionPicks = new Map(transitionStrategies.map(s => [s.id, new Map(opportunities.map(({target}) => {
+        const transitionPicks = new Map(transitionStrategies.map(s => [`${s.id}@${s.version}`, new Map(opportunities.map(({target}) => {
             const snapshot=statisticsStore.read(target.id-1);
             const before = Math.min(snapshot?.deadline || 0, targetSettledTimes.get(target.id) ?? 0);
             // The capture deadline is fixed before this target; never reconstruct statistics from its result.
@@ -958,7 +962,7 @@ function createBetZeroLab(db, options = {}) {
                 } else {
                     result = {
                         status: 'RESEARCH_ONLY',
-                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`, fraction => onProgress(5 + 65 * (resultRows.length + fraction) / (effectiveStrategies.length * Object.keys(segments).length)), strategy.id === minmax.ID ? minmaxPicks.get(strategy.version) : transitionPicks.get(strategy.id))
+                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`, fraction => onProgress(5 + 65 * (resultRows.length + fraction) / (effectiveStrategies.length * Object.keys(segments).length)), strategy.id === minmax.ID ? minmaxPicks.get(strategy.version) : transitionPicks.get(`${strategy.id}@${strategy.version}`))
                     };
                 }
                 resultRows.push({ runId, strategyId: strategy.id, strategyVersion: strategy.version, segment, result });
@@ -1007,7 +1011,7 @@ function createBetZeroLab(db, options = {}) {
             for (const [segment, rows] of Object.entries(segments)) {
                 for (const { source, target } of rows) {
                     if (simulatedPredictions.length % 100 === 0) onProgress(72 + 20 * simulatedPredictions.length / (effectiveStrategies.length * opportunities.length));
-                    const prediction = transitionPicks.get(strategy.id)?.get(target.id) || (strategy.id === minmax.ID && minmaxPicks.get(strategy.version)?.get(target.id)) || predictionFromStrategy(strategy, source);
+                    const prediction = transitionPicks.get(`${strategy.id}@${strategy.version}`)?.get(target.id) || (strategy.id === minmax.ID && minmaxPicks.get(strategy.version)?.get(target.id)) || predictionFromStrategy(strategy, source);
                     const status = prediction.status === 'PENDING'
                         ? gradeStrategy(strategy, prediction.selections, target.balls)
                         : 'SKIP';
