@@ -7,7 +7,7 @@ const { createFootballService } = require('./football-service');
 const { createVirtualFootball } = require('./virtual-football');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
-const { predictBet49, bet49Numbers } = require('./bet49');
+const { predictBet49, predictBet49SmallestAdd10, bet49Numbers } = require('./bet49');
 const { createBetZeroLab } = require('./betzero-lab');
 const { createJobStore } = require('./betzero-jobs');
 const { handleJobApi, smallBacktestRecords } = require('./betzero-job-api');
@@ -2518,7 +2518,8 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         totalColor2Pred.gap = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
     }
 
-    // Bet49 uses exactly the colors issued for Total Color 2-way on this draw.
+    // Retain the legacy multi-number pool for BetZero, Rainbow and High/Low.
+    // The published Bet49 selection is replaced independently below.
     const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, totalColor2Pred);
     var bet49Pick = bet49Prediction.numbers;
 
@@ -2562,6 +2563,10 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         hilo: { targetLock: sumRange, oppositeStreakLimit: oppositeStreakLimit, analysis: highLow.analysis },
         totalColor: { status: totalColorPred.status }
     };
+
+    const mainBet49 = predictBet49SmallestAdd10(histRaw?.data?.draws, targetDrawId);
+    bet49Pick = mainBet49.numbers;
+    brainData.bet49 = mainBet49;
 
     return { 
         unlikely4, betzeroStatus, bzSkipReason, bet49Pick,

@@ -7,7 +7,7 @@ const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/p
 const PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const markets = [
   { id: 'betzero', name: 'BetZero', help: 'Four-number set; the pick wins if none of those numbers appear.' },
-  { id: 'bet49', name: 'Bet49', help: '4-6 numbers; any selected number appearing wins.' },
+  { id: 'bet49', name: 'Bet49', help: 'One number: previous draw’s smallest number +10. Wins when it appears.' },
   { id: 'rainbow', name: 'Rainbow Color', help: 'One color prediction.' },
   { id: 'totalColor', name: 'Total Color (3-way)', help: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', help: 'Two selected colors.' },

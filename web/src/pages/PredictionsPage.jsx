@@ -13,7 +13,7 @@ const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/p
 const LIVE_PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const games = [
   { id: 'betzero', name: 'BetZero', detail: 'Four-number set. A win means none of the selected numbers appear.' },
-  { id: 'bet49', name: 'Bet49', detail: '4-6 numbers. Any selected number appearing wins; each number is a separate bet.' },
+  { id: 'bet49', name: 'Bet49', detail: 'One number: previous draw’s smallest number +10. Wins when that number appears.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },

@@ -1,5 +1,28 @@
 'use strict';
 
+// Main Bet49: same selection calculation as the single-number Lab experiment,
+// but graded as appearance by the existing Bet49 settlement path.
+function predictBet49SmallestAdd10(draws, targetDrawId) {
+    const target = Number(targetDrawId);
+    const strategy = 'SMALLEST_ADD10_APPEARANCE_V1';
+    const skip = reason => ({ status: 'SKIP', numbers: [], reason, strategy });
+    if (!Number.isSafeInteger(target) || target <= 1) return skip('Invalid target draw');
+    const sources = (Array.isArray(draws) ? draws : []).filter(draw => Number(draw?.id) === target - 1);
+    if (!sources.length) return skip('Previous completed draw is missing');
+    let previous;
+    for (const draw of sources) {
+        const balls = typeof draw.dr === 'string' ? draw.dr.split(',').map(Number) : [];
+        if (balls.length !== 6 || new Set(balls).size !== 6 || balls.some(n => !Number.isInteger(n) || n < 1 || n > 49))
+            return skip('Previous completed draw is invalid');
+        const sorted = [...balls].sort((a,b) => a-b);
+        if (previous && previous.some((n,i) => n !== sorted[i])) return skip('Conflicting previous draw results');
+        previous = sorted;
+    }
+    const number = previous[0] + 10;
+    if (number > 49) return skip('Smallest number plus 10 exceeds 49');
+    return { status: 'ACTIVE', numbers: [number], reason: '', strategy, sourceDrawId: target - 1, smallest: previous[0] };
+}
+
 // targetDrawId prevents using the target or future results.
 function predictBet49(draws, targetDrawId, totalColor2Prediction) {
     const target = Number(targetDrawId);
@@ -48,4 +71,4 @@ function bet49Numbers(value) {
     return numbers.every(n => Number.isInteger(n) && n >= 1 && n <= 49)
         && new Set(numbers).size === numbers.length ? numbers : [];
 }
-module.exports = { predictBet49, bet49Numbers };
+module.exports = { predictBet49, predictBet49SmallestAdd10, bet49Numbers };
