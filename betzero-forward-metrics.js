@@ -1,5 +1,5 @@
 'use strict';
-const { probabilityAllAbsent, seededRandom, randomSelections, wilsonInterval, validSelections, validBalls } = require('./betzero-lab');
+const { strategyProbability, gradeStrategy, seededRandom, randomSelections, wilsonInterval, validSelections, validBalls } = require('./betzero-lab');
 const SEED = 'betzero-forward-baseline-v1';
 const cache = new WeakMap();
 
@@ -10,6 +10,7 @@ function forwardWindows(db, strategies, now = Date.now(), versioned = false) {
             AND status IN ('WIN','LOSS','SKIP','INVALID') ORDER BY CAST(target_draw_id AS INTEGER) DESC LIMIT 1000`).all(strategy.id,strategy.version).reverse();
         const pending = db.prepare("SELECT COUNT(*) AS n FROM betzero_lab_forward_predictions WHERE strategy_id=? AND strategy_version=? AND status='PENDING'").get(strategy.id,strategy.version).n;
         const quality = require('./betzero-reconciliation').pendingQuality(db, strategy.id, strategy.version, now);
+        if (require('./betzero-statistics-transition').isStrategy(strategy.id)) Object.assign(quality,{provisional:true,provisionalReason:'Provider statistics draw alignment is observational, not independently verified.'});
         const key = `${strategy.id}:${strategy.version}`, signature = JSON.stringify([rows,pending,quality,strategy.config.alertThresholds]);
         if (saved.get(key)?.signature === signature) return [versioned ? key : strategy.id,saved.get(key).value];
         const measured = rows.map(row => {
@@ -23,7 +24,7 @@ function forwardWindows(db, strategies, now = Date.now(), versioned = false) {
             let randomWins=0;
             if(usable && outcome) {
                 const random=seededRandom(`${SEED}:${strategy.id}:${strategy.version}:${row.target_draw_id}`);
-                if(randomSelections(strategy.selectionCount,random).every(x=>!balls.includes(x)))randomWins++;
+                if(gradeStrategy(strategy,randomSelections(strategy.selectionCount,random),balls)==='WIN')randomWins++;
             }
             return {targetDrawId:row.target_draw_id,status:row.status,usable,randomWins};
         });
@@ -39,7 +40,7 @@ function forwardWindows(db, strategies, now = Date.now(), versioned = false) {
                 else{losses++;currentWin=0;worstLoss=Math.max(worstLoss,++currentLoss);}
                 randomWins+=row.randomWins;chart.push({targetDrawId:row.targetDrawId,status:row.status});
             }
-            const n=wins+losses,theoretical=probabilityAllAbsent(strategy.selectionCount);
+            const n=wins+losses,theoretical=strategyProbability(strategy);
             const threshold=Math.min(...(strategy.config.alertThresholds || [3,5,7,10]));
             return [size,{...quality,requested:size,available:selected.length,settled:n,wins,losses,skipped,invalid,unverified,pending,
                 winRate:n?wins/n:null,confidenceInterval95:wilsonInterval(wins,n),currentLosingStreak:currentLoss,worstLosingStreak:worstLoss,longestWinningStreak:longestWin,

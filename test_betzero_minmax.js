@@ -75,7 +75,7 @@ test('disabled by default; historical override is reproducible, independently st
         assert.deepEqual(r.results.map(x=>x.result),repeated.results.map(x=>x.result));
     }
     assert.deepEqual(s.lab.strategies(),before);assert.equal(s.lab.listForwardPredictions().length,0);
-    assert.equal(before.find(x=>x.id===mm.ID).enabled,false);assert.equal(before.find(x=>x.id==='maximum_minimum').status,'UNVERIFIED');
+    assert.equal(before.find(x=>x.id===mm.ID).enabled,false);assert.equal(before.find(x=>x.id==='maximum_minimum'),undefined);
     const subset=smallBacktestRecords(records.slice().reverse(),'100',mm.ID);
     assert.equal(makeOpportunities(normalizeHistoricalDraws(subset).draws).opportunities.length,105);
     assert.throws(()=>s.lab.runBacktest(records,{strategyId:'maximum_minimum'}),/Unknown research/);

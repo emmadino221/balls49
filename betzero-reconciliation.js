@@ -5,7 +5,7 @@ const id = value => /^(0|[1-9][0-9]*)$/.test(String(value)) && Number.isSafeInte
 
 // Archive observation time is provenance, NEVER proof of the actual draw deadline.
 function planReconciliation(db, archive, { now = Date.now(), overdueMs = 300000, target, limit = 100, source = 'collector archive' } = {}) {
-    const { STRATEGIES, validBalls, validSelections, validateBetZeroPrediction } = require('./betzero-lab');
+    const { STRATEGIES, validBalls, validSelections, gradeStrategy } = require('./betzero-lab');
     if (!Array.isArray(archive)) throw new Error('Collector archive must be an array.');
     if (!Number.isSafeInteger(now) || !Number.isSafeInteger(overdueMs) || overdueMs < 300000
         || !Number.isInteger(limit) || limit < 1 || limit > 100 || (target !== undefined && !id(target))) throw new Error('Invalid reconciliation bounds.');
@@ -45,7 +45,7 @@ function planReconciliation(db, archive, { now = Date.now(), overdueMs = 300000,
         const definition = STRATEGIES.find(strategy => strategy.id === row.strategy_id && strategy.version === row.strategy_version);
         let selections; try { selections = JSON.parse(row.selections_json); } catch { selections = null; }
         if (!definition?.selectionCount || !validSelections(selections, definition.selectionCount)) { decision.reason = 'INVALID_STRATEGY_OR_SELECTIONS'; continue; }
-        Object.assign(decision, { action: 'SETTLE', outcome: validateBetZeroPrediction(selections, parsed[0].balls, definition.selectionCount),
+        Object.assign(decision, { action: 'SETTLE', outcome: gradeStrategy(definition, selections, parsed[0].balls),
             balls: parsed[0].balls, resultHash: parsed[0].resultHash, observedAt: new Date(Math.min(...parsed.map(value => value.observed))).toISOString(),
             original: row });
     }

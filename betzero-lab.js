@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const minmax = require('./betzero-minmax');
+const transitions = require('./betzero-statistics-transition');
 
 const RANDOM_REPETITIONS = 64;
 const ALERT_THRESHOLDS = [3, 5, 7, 10];
@@ -10,6 +11,7 @@ function describeEvaluation(data) {
         methodology: 'Legacy exploratory historical simulation. Its final_test segment is a reused holdout, not an enforced untouched final test.' };
 }
 const STRATEGIES = [
+    ...transitions.definitions,
     { id: minmax.ID, version: '2.0.0', selectionCount: 3, label: '3-Number Minimum/Maximum v2 - New switching strategy',
       status: 'RESEARCH_ONLY', kind: 'PREDICTION',
       description: 'MIN/MAX v2 research: keep after WIN, switch after LOSS. Independent state; explicit safe cutover required.',
@@ -18,60 +20,6 @@ const STRATEGIES = [
       status: 'RESEARCH_ONLY', kind: 'PREDICTION',
       description: 'User-specified MIN/MAX research: three adjacent numbers, five settled opportunities, switch after WIN and repeat after LOSS.',
       missingInformation: 'Research specification; not independently instructor-verified.' },
-    {
-        id: 'single_color_add_10',
-        version: '1.0.0',
-        label: 'Single-Color Add-10',
-        status: 'UNVERIFIED',
-        kind: 'PREDICTION',
-        description: 'Add 10 to qualifying single-color numbers from the previous draw.',
-        missingInformation: 'The exact definition of a qualifying single-color number is not verified.'
-    },
-    {
-        id: 'smallest_number_add_10',
-        version: '1.0.0',
-        label: 'Smallest-Number Add-10',
-        status: 'UNVERIFIED',
-        kind: 'PREDICTION',
-        description: 'Add 10 to the smallest number in the previous draw.',
-        missingInformation: 'Additional instructor conditions are not verified.'
-    },
-    {
-        id: 'color_pattern',
-        version: '1.0.0',
-        label: 'Color Pattern',
-        status: 'UNVERIFIED',
-        kind: 'PREDICTION',
-        description: 'Use historical color groups and the stated 7-9 values.',
-        missingInformation: 'The qualifying color groups and precise 7-9 rule are not verified.'
-    },
-    {
-        id: 'maximum_minimum',
-        version: '1.0.0',
-        label: 'Maximum/Minimum',
-        status: 'UNVERIFIED',
-        kind: 'PREDICTION',
-        description: 'Analyze alternating maximum/minimum sequences and changes.',
-        missingInformation: 'The sequence, add/subtract rule, and switching conditions are not verified.'
-    },
-    {
-        id: 'timing_skip_filter',
-        version: '1.0.0',
-        label: 'Timing and Skip Filter',
-        status: 'UNVERIFIED',
-        kind: 'FILTER',
-        description: 'Filter entries based on recent sequences and timing.',
-        missingInformation: 'The entry, waiting, and pattern-switch conditions are not verified.'
-    },
-    {
-        id: 'combined_strategy',
-        version: '1.0.0',
-        label: 'Combined Strategy',
-        status: 'UNVERIFIED',
-        kind: 'COMBINED',
-        description: 'Combine verified Add-10 signals and a verified timing filter.',
-        missingInformation: 'Required component rules and combination conditions are not verified.'
-    },
     {
         id: 'simple_smallest_number_add_10',
         version: '1.0.0',
@@ -124,6 +72,7 @@ function predictionFromStrategy(strategy, source) {
     if (!strategy.enabled) {
         return { status: 'SKIP', selections: [], conditions: { reason: 'Strategy is disabled.' } };
     }
+    if (transitions.isStrategy(strategy.id)) return { status:'SKIP', selections:[], conditions:{reason:'MISSING_STATISTICS_SNAPSHOTS'} };
     if (strategy.id === minmax.ID) return { status: 'SKIP', selections: [], conditions: { reason: 'STATEFUL_CONTEXT_REQUIRED' } };
     const definition = strategyDefinition(strategy.id, strategy.version);
     if (!definition?.selectionCount) {
@@ -155,6 +104,14 @@ function predictionFromStrategy(strategy, source) {
 function validateBetZeroPrediction(selections, actualBalls, selectionCount = 4) {
     if (!validBalls(actualBalls) || !validSelections(selections, selectionCount)) return 'INVALID';
     return selections.some(number => actualBalls.includes(number)) ? 'LOSS' : 'WIN';
+}
+
+function gradeStrategy(strategy, selections, balls) {
+    const status = validateBetZeroPrediction(selections, balls, strategy.selectionCount ?? 0);
+    return strategy.id === transitions.HIT && status !== 'INVALID' ? (status === 'WIN' ? 'LOSS' : 'WIN') : status;
+}
+function strategyProbability(strategy) {
+    return strategy.id === transitions.HIT ? 6 / 49 : probabilityAllAbsent(strategy.selectionCount);
 }
 
 function summarizePredictionRows(rows) {
@@ -292,7 +249,7 @@ function metricsForSegment(opportunities, strategy, seed, onProgress = () => {},
             continue;
         }
         predictions++;
-        const outcome = validateBetZeroPrediction(pick.selections, target.balls, strategy.selectionCount ?? 0);
+        const outcome = gradeStrategy(strategy, pick.selections, target.balls);
         if (outcome === 'WIN') {
             wins++;
             currentLosingStreak = 0;
@@ -305,12 +262,12 @@ function metricsForSegment(opportunities, strategy, seed, onProgress = () => {},
             worstLosingStreak = Math.max(worstLosingStreak, currentLosingStreak);
         }
         const count = pick.selections.length;
-        expectedWins += probabilityAllAbsent(count);
+        expectedWins += strategyProbability(strategy);
         for (let repetition = 0; repetition < RANDOM_REPETITIONS; repetition++) {
             const entryRandom = strategy.id === 'smallest_add10_step10_four'
                 ? seededRandom(`${seed}:${strategy.id}:${strategy.version}:${target.id}:${repetition}`) : random;
             const randomPick = randomSelections(count, entryRandom);
-            if (randomPick.every(number => !target.balls.includes(number))) randomWins++;
+            if (gradeStrategy(strategy, randomPick, target.balls) === 'WIN') randomWins++;
             randomTrials++;
         }
     }
@@ -331,7 +288,7 @@ function metricsForSegment(opportunities, strategy, seed, onProgress = () => {},
         currentLosingStreak, worstLosingStreak, currentWinningStreak, longestWinningStreak,
         theoreticalBaseline: {
             expectedWinRate: theoreticalRate,
-            probabilityByPickCount: { 1: probabilityAllAbsent(1), 2: probabilityAllAbsent(2), 3: probabilityAllAbsent(3), 4: probabilityAllAbsent(4) }
+            probabilityByPickCount: { 1: strategy.id === transitions.HIT ? 6 / 49 : probabilityAllAbsent(1), 2: probabilityAllAbsent(2), 3: probabilityAllAbsent(3), 4: probabilityAllAbsent(4) }
         },
         randomBaseline: {
             seed: String(seed),
@@ -487,6 +444,7 @@ function createBetZeroLab(db, options = {}) {
     `);
 
     require('./betzero-version-migration').migrateVersionKeys(db);
+    const statisticsStore = transitions.createStore(db);
 
     const insertStrategy = db.prepare(`INSERT OR IGNORE INTO betzero_lab_strategies
         (strategy_id, version, label, status, kind, description, missing_information)
@@ -526,8 +484,9 @@ function createBetZeroLab(db, options = {}) {
             s.description, s.missing_information AS missingInformation,
             c.enabled, c.config_json AS configJson, c.updated_at AS updatedAt
             FROM betzero_lab_strategies s JOIN betzero_lab_strategy_configs c
-            USING(strategy_id, version) ORDER BY s.strategy_id`).all().map(row => ({
+            USING(strategy_id, version) ORDER BY s.strategy_id`).all().filter(row => STRATEGIES.some(strategy => strategy.id === row.id)).map(row => ({
             ...row, label: strategyDefinition(row.id, row.version)?.displayLabel || row.label,
+            market: strategyDefinition(row.id, row.version)?.market || 'BETZERO',
             selectionCount: strategyDefinition(row.id, row.version)?.selectionCount || null,
             enabled: row.enabled === 1, config: JSON.parse(row.configJson)
         }));
@@ -746,7 +705,7 @@ function createBetZeroLab(db, options = {}) {
                     continue;
                 }
             }
-            const nextStatus = actualBalls ? validateBetZeroPrediction(selections, actualBalls, strategyDefinition(row.strategy_id, row.strategy_version).selectionCount) : 'INVALID';
+            const nextStatus = actualBalls ? gradeStrategy(strategyDefinition(row.strategy_id, row.strategy_version), selections, actualBalls) : 'INVALID';
             const nextBallsJson = actualBalls ? JSON.stringify(actualBalls) : null;
             const nextStatusDiffers = row.status !== nextStatus;
             const nextBallsDiffer = row.actual_balls_json !== nextBallsJson;
@@ -767,13 +726,16 @@ function createBetZeroLab(db, options = {}) {
         if (state && strategy.version === '2.0.0' && strategy.enabled && (!state.cutoverAt || predictedAt <= state.cutoverAt || targetDrawId <= state.afterTargetId || Date.parse(sourceRecord.settledAt) <= state.cutoverAt)) return;
         const prediction = state && strategy.enabled
             ? minmax.decide({ id: drawIdFromRecord(sourceRecord), balls: sourceBalls }, targetDrawId, minmaxHistory(targetDrawId, predictedAt), state, strategy.version)
-            : predictionFromStrategy(strategy, { balls: sourceBalls });
+            : transitions.isStrategy(strategy.id) && strategy.enabled
+                ? statisticsStore.predict(strategy, targetDrawId, transitions.SEED, predictedAt + 1)
+                : predictionFromStrategy(strategy, { balls: sourceBalls });
         const sourceId = drawIdFromRecord(sourceRecord);
         const predictionId = crypto.randomUUID();
         const sourceInput = {
             drawId: sourceId,
             settledAt: sourceRecord.settledAt,
-            balls: sourceBalls
+            balls: sourceBalls,
+            ...(transitions.isStrategy(strategy.id) ? {previousStatistics:statisticsStore.read(targetDrawId-2),statistics:statisticsStore.read(targetDrawId-1)} : {})
         };
         const inserted = db.prepare(`INSERT OR IGNORE INTO betzero_lab_forward_predictions
             (prediction_id, strategy_id, strategy_version, source_draw_id, target_draw_id, predicted_at,
@@ -786,12 +748,13 @@ function createBetZeroLab(db, options = {}) {
         if (state && strategy.enabled && inserted.changes) saveMinmaxState(minmax.afterDecision(state, prediction, targetDrawId), strategy.version);
     }
 
-    function ingestSnapshot({ current, clock, historyUpdates, snapshotAt }) {
+    function ingestSnapshot({ current, clock, historyUpdates, snapshotAt, numberStatistics }) {
         if (!Number.isSafeInteger(snapshotAt) || snapshotAt <= 0) throw new Error('Invalid lab snapshot timestamp.');
         const validatedAt = new Date(snapshotAt).toISOString();
         db.exec('BEGIN IMMEDIATE');
         try {
             let changedFromTarget = null;
+            if (numberStatistics) statisticsStore.remember(numberStatistics, now());
             for (const record of Array.isArray(historyUpdates) ? historyUpdates : []) {
                 rememberMinmaxResult(record, snapshotAt);
                 const changedTarget = settleRecord(record, validatedAt);
@@ -846,7 +809,9 @@ function createBetZeroLab(db, options = {}) {
             ? db.prepare(`SELECT * FROM betzero_lab_forward_predictions WHERE strategy_id = ? AND strategy_version = ?
                 ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`).all(strategyId, version, boundedLimit)
             : db.prepare(`SELECT * FROM betzero_lab_forward_predictions
-                ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`).all(boundedLimit);
+                WHERE ${STRATEGIES.map(() => '(strategy_id=? AND strategy_version=?)').join(' OR ')}
+                ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`)
+                .all(...STRATEGIES.flatMap(strategy => [strategy.id,strategy.version]),boundedLimit);
         return rows.map(row => ({
             predictionId: row.prediction_id,
             strategyId: row.strategy_id,
@@ -864,6 +829,9 @@ function createBetZeroLab(db, options = {}) {
         }));
     }
 
+    function inputQuality(strategyId) {
+        return transitions.isStrategy(strategyId) ? {provisional:true, provisionalReason:'Statistics are associated with the observed clock; provider draw alignment is not independently verified.'} : {};
+    }
     function stats(versioned = false) {
         const strategyList = strategies().filter(strategy => strategyDefinition(strategy.id, strategy.version) && (versioned || strategy.version === '1.0.0'));
         return Object.fromEntries(strategyList.map(strategy => [
@@ -873,7 +841,8 @@ function createBetZeroLab(db, options = {}) {
                 ...(strategy.id === minmax.ID ? { decisionState: minmaxState(strategy.version) } : {}),
                 ...require('./betzero-reconciliation').pendingQuality(db, strategy.id, strategy.version, now()),
                 ...summarizePredictionRows(predictionRows(strategy.id)
-                    .filter(row => row.strategy_version === strategy.version))
+                    .filter(row => row.strategy_version === strategy.version)),
+                ...inputQuality(strategy.id)
             }
         ]));
     }
@@ -881,7 +850,7 @@ function createBetZeroLab(db, options = {}) {
     function statsForVersion(strategyId, version) {
         const strategy = strategies().find(item => item.id === strategyId && item.version === version);
         if (!strategy) throw new Error('Unknown lab strategy version.');
-        return { ...strategy, ...(strategyId === minmax.ID ? {decisionState:minmaxState(version)} : {}), ...require('./betzero-reconciliation').pendingQuality(db, strategyId, version, now()), ...summarizePredictionRows(predictionRows(strategyId).filter(row => row.strategy_version === version)) };
+        return { ...strategy, ...(strategyId === minmax.ID ? {decisionState:minmaxState(version)} : {}), ...require('./betzero-reconciliation').pendingQuality(db, strategyId, version, now()), ...summarizePredictionRows(predictionRows(strategyId).filter(row => row.strategy_version === version)), ...inputQuality(strategyId) };
     }
 
     function alerts(limit = 100) {
@@ -930,6 +899,26 @@ function createBetZeroLab(db, options = {}) {
                 const snapshot = frozen ? {...s,enabled:frozen.enabled,config:frozen.config} : s;
                 return strategyId ? {...snapshot,enabled:true} : snapshot;
             });
+        const transitionStrategies = effectiveStrategies.filter(s => transitions.isStrategy(s.id) && s.enabled);
+        if (transitionStrategies.length && mode === 'SEALED_FINAL') throw Object.assign(new Error('Statistics strategies currently support exploratory testing only; snapshot cohorts are not sealed.'), {status:409});
+        if (transitionStrategies.length) {
+            const firstInput = opportunities[0].target.id - 2, last = opportunities.at(-1).target.id;
+            const protocols = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='betzero_lab_protocols'").get();
+            if (protocols && db.prepare("SELECT 1 FROM betzero_lab_protocols WHERE COALESCE(json_extract(specification,'$.contextFirst'),first_draw)<=? AND last_draw>=?").get(last,firstInput))
+                throw Object.assign(new Error('Statistics warm-up overlaps a protected cohort.'),{status:409});
+            if (protocols) db.prepare('INSERT INTO betzero_lab_exposures VALUES (?,?)').run(firstInput,last);
+        }
+        const targetSettledTimes = new Map();
+        for (const record of records) {
+            const id = drawIdFromRecord(record), time = Date.parse(record.settledAt || '');
+            if (id && Number.isFinite(time)) targetSettledTimes.set(id, Math.min(targetSettledTimes.get(id) ?? Infinity,time));
+        }
+        const transitionPicks = new Map(transitionStrategies.map(s => [s.id, new Map(opportunities.map(({target}) => {
+            const snapshot=statisticsStore.read(target.id-1);
+            const before = Math.min(snapshot?.deadline || 0, targetSettledTimes.get(target.id) ?? 0);
+            // The capture deadline is fixed before this target; never reconstruct statistics from its result.
+            return [target.id, statisticsStore.predict(s,target.id,safeSeed,before)];
+        }))]));
         const mm = effectiveStrategies.find(s => s.id === minmax.ID && s.enabled);
         const minmaxPicks = new Map(effectiveStrategies.filter(s=>s.id===minmax.ID && s.enabled).map(s=>[s.version,minmax.simulate(opportunities, extracted.opportunities, f=>onProgress(f*5),s.version)]));
         const resultRows = [];
@@ -966,7 +955,7 @@ function createBetZeroLab(db, options = {}) {
                 } else {
                     result = {
                         status: 'RESEARCH_ONLY',
-                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`, fraction => onProgress(5 + 65 * (resultRows.length + fraction) / (effectiveStrategies.length * Object.keys(segments).length)), strategy.id === minmax.ID ? minmaxPicks.get(strategy.version) : null)
+                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`, fraction => onProgress(5 + 65 * (resultRows.length + fraction) / (effectiveStrategies.length * Object.keys(segments).length)), strategy.id === minmax.ID ? minmaxPicks.get(strategy.version) : transitionPicks.get(strategy.id))
                     };
                 }
                 resultRows.push({ runId, strategyId: strategy.id, strategyVersion: strategy.version, segment, result });
@@ -986,6 +975,7 @@ function createBetZeroLab(db, options = {}) {
             eligibleOpportunities: opportunities.length,
             firstTargetDrawId: opportunities[0].target.id,
             lastTargetDrawId: opportunities.at(-1).target.id,
+            statisticsInputWarning: transitionStrategies.length ? 'Observed statistics clock association is provisional. Missing snapshots are skipped; no past strk values reconstructed.' : null,
             evaluationMode: mode, protocolId, researchStrategyId: strategyId, researchStrategyVersion: strategyId ? strategyVersion : null, initialization: mm ? 'Five preceding valid consecutive pairs; fresh simulation state; state continues across segments.' : null,
             split: { development: segments.development?.length || 0, validation: segments.validation?.length || 0, finalTest: segments.final_test.length },
             strategies: effectiveStrategies.map(strategy => ({
@@ -1014,9 +1004,9 @@ function createBetZeroLab(db, options = {}) {
             for (const [segment, rows] of Object.entries(segments)) {
                 for (const { source, target } of rows) {
                     if (simulatedPredictions.length % 100 === 0) onProgress(72 + 20 * simulatedPredictions.length / (effectiveStrategies.length * opportunities.length));
-                    const prediction = (strategy.id === minmax.ID && minmaxPicks.get(strategy.version)?.get(target.id)) || predictionFromStrategy(strategy, source);
+                    const prediction = transitionPicks.get(strategy.id)?.get(target.id) || (strategy.id === minmax.ID && minmaxPicks.get(strategy.version)?.get(target.id)) || predictionFromStrategy(strategy, source);
                     const status = prediction.status === 'PENDING'
-                        ? validateBetZeroPrediction(prediction.selections, target.balls, strategy.selectionCount ?? 0)
+                        ? gradeStrategy(strategy, prediction.selections, target.balls)
                         : 'SKIP';
                     simulatedPredictions.push({
                         predictionId: crypto.randomUUID(),
@@ -1030,7 +1020,7 @@ function createBetZeroLab(db, options = {}) {
                         strategyConfig: strategy.config,
                         selections: prediction.selections,
                         conditions: prediction.conditions,
-                        sourceInput: { drawId: source.id, balls: source.balls },
+                        sourceInput: { drawId: source.id, balls: source.balls, ...(transitions.isStrategy(strategy.id) ? {previousStatistics:statisticsStore.read(target.id-2),statistics:statisticsStore.read(target.id-1)} : {}) },
                         status,
                         actualBalls: target.balls
                     });
@@ -1129,6 +1119,7 @@ function createBetZeroLab(db, options = {}) {
             forwardWindows: require('./betzero-forward-metrics').forwardWindows(db, strategies(), now()),
             predictions: listForwardPredictions({ limit: 100 }),
             alerts: alerts(100),
+            numberStatistics: db.prepare('SELECT COUNT(*) AS snapshots, MIN(source_draw_id) AS firstSourceDraw, MAX(source_draw_id) AS lastSourceDraw, COALESCE(SUM(conflicted),0) AS conflicts FROM betzero_lab_number_statistics').get(),
             backtestRuns: listBacktestRuns(20)
         };
     }
@@ -1164,5 +1155,6 @@ module.exports = {
     seededRandom,
     randomSelections,
     validateBetZeroPrediction,
+    gradeStrategy, strategyProbability,
     wilsonInterval
 };

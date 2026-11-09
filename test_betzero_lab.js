@@ -53,7 +53,7 @@ function snapshot(lab, { currentId, sourceRecord, snapshotAt, targetRecord = nul
     });
 }
 
-test('BetZero lab registry includes tutorial strategies and disables unverified rules', t => {
+test('BetZero lab registry excludes retired tutorial placeholders', t => {
     const { lab } = openLab(t);
     const definitions = lab.strategies();
     assert.equal(definitions.length, STRATEGIES.length);
@@ -62,9 +62,7 @@ test('BetZero lab registry includes tutorial strategies and disables unverified 
         'maximum_minimum', 'timing_skip_filter', 'combined_strategy'
     ]) {
         const strategy = definitions.find(item => item.id === id);
-        assert.equal(strategy.status, 'UNVERIFIED');
-        assert.equal(strategy.enabled, false);
-        assert.ok(strategy.missingInformation.length > 0);
+        assert.equal(strategy, undefined);
     }
     const research = definitions.find(item => item.id === 'simple_smallest_number_add_10');
     assert.equal(research.status, 'RESEARCH_ONLY');
@@ -73,9 +71,9 @@ test('BetZero lab registry includes tutorial strategies and disables unverified 
     assert.match(research.missingInformation, /not the instructor-verified strategy/i);
 });
 
-test('strategy configuration cannot enable an unverified rule', t => {
+test('strategy configuration cannot enable a retired placeholder', t => {
     const { lab } = openLab(t);
-    assert.throws(() => lab.setStrategyEnabled('color_pattern', true), /Unverified strategies cannot be enabled/);
+    assert.throws(() => lab.setStrategyEnabled('color_pattern', true), /Unknown lab strategy/);
     assert.equal(lab.setStrategyEnabled('simple_smallest_number_add_10', false).enabled, false);
     assert.equal(lab.setStrategyEnabled('simple_smallest_number_add_10', true).enabled, true);
 });
@@ -246,8 +244,7 @@ test('backtests are reproducible, chronological, split by period, and exclude un
     const secondResearch = second.results.filter(row => row.strategyId === 'simple_smallest_number_add_10');
     assert.deepEqual(firstResearch.map(row => row.result), secondResearch.map(row => row.result));
     assert.ok(firstResearch.every(row => row.result.predictions > 0 && row.result.randomBaseline.trials > 0));
-    assert.ok(first.results.filter(row => row.result.status === 'UNVERIFIED')
-        .every(row => row.result.predictions === 0 && row.result.randomBaseline === null));
+    assert.equal(first.results.filter(row => row.result.status === 'UNVERIFIED').length, 0);
     assert.equal(lab.getBacktestRun(first.runId).results.length, STRATEGIES.length * 3);
     assert.equal(lab.getBacktestRun(first.runId).predictionTotal, 100 * STRATEGIES.length);
     assert.equal(lab.listBacktestRuns().length, 2);
@@ -330,7 +327,10 @@ const fourDefinition = () => ({ ...STRATEGIES.find(strategy => strategy.id === F
 
 test('four-number variant starts disabled and original experiment is relabeled without changing its identity', t => {
     const state = openLab(t, 1000);
-    assert.equal(state.lab.strategies().length, 10);
+    assert.equal(state.lab.strategies().length, 6);
+    for (const id of ['statistics_streak_drop_betzero', 'statistics_streak_drop_bet49']) {
+        assert.equal(state.lab.strategies().find(s => s.id === id).enabled, false);
+    }
     assert.equal(state.lab.strategies().find(s => s.id === FOUR).enabled, false);
     assert.equal(state.lab.strategies().find(s => s.id === FOUR).selectionCount, 4);
     assert.match(state.lab.strategies().find(s => s.id === SINGLE).label, /Single-number absence experiment/);

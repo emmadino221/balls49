@@ -3,11 +3,13 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { normalizeHistoricalDraws, makeOpportunities } = require('./betzero-lab');
+const transitions = require('./betzero-statistics-transition');
 const MINMAX = 'minimum_maximum_three';
 const MAX_PAIRS = 50000;
 const TIMEOUT_MS = 600000;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const rulesHash = () => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'betzero-lab.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-minmax.js'))).digest('hex');
+const statisticsHash = rows => crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+const rulesHash = () => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'betzero-lab.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-minmax.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-statistics-transition.js'))).digest('hex');
 
 function createJobStore(db, { now = Date.now } = {}) {
     db.exec(`CREATE TABLE IF NOT EXISTS betzero_lab_jobs (
@@ -31,6 +33,7 @@ function createJobStore(db, { now = Date.now } = {}) {
         if (db.prepare("SELECT id FROM betzero_lab_protocols WHERE COALESCE(json_extract(specification,'$.contextFirst'),first_draw) <= ? AND last_draw >= ?").get(last, first)) throw fail('This range overlaps a sealed final-test cohort. Choose another range.', 409);
     }
     function seal(input, strategies) {
+        if (strategies.some(s => transitions.isStrategy(s.id) && s.enabled)) throw fail('Statistics strategies require exploratory testing; snapshot cohorts cannot be sealed yet.',409);
         const first = Number(input.firstDraw), last = Number(input.lastDraw);
         if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 2 || last - first + 1 < 5 || last - first + 1 > MAX_PAIRS) throw fail('Choose 5–50,000 future target draws.');
         const contextFirst = strategies.some(s => s.id === MINMAX && s.enabled) ? Math.max(1, first - 6) : first;
@@ -66,6 +69,7 @@ function createJobStore(db, { now = Date.now } = {}) {
                 if (last - first + 1 < 5) throw fail('At least five source/target pairs are required.', 422);
                 let contextFirst = first - 1;
                 const selected = input.strategyId ? strategies.filter(s => s.id === input.strategyId && s.version === (input.strategyVersion || '1.0.0')).map(s => ({...s,enabled:true})) : strategies;
+                if (selected.some(s => transitions.isStrategy(s.id) && s.enabled)) contextFirst = Math.max(1, first - 2);
                 if (selected.some(s => s.id === MINMAX && s.enabled)) {
                     const prior = db.prepare('SELECT record_json FROM public_prediction_history WHERE sort_draw_id<? ORDER BY sort_draw_id DESC LIMIT 50001').all(first).map(r=>JSON.parse(r.record_json));
                     const pairs = makeOpportunities(normalizeHistoricalDraws(prior).draws).opportunities.slice(-5);
@@ -74,6 +78,10 @@ function createJobStore(db, { now = Date.now } = {}) {
                 if (last-contextFirst > MAX_PAIRS + 5) throw fail('Evaluation including initialization context exceeds bounded input size.',413);
                 assertExploratory(contextFirst, last);
                 payload = { contextFirst, researchStrategyId: input.strategyId || null, researchStrategyVersion: input.strategyId ? (input.strategyVersion || '1.0.0') : null, initialization:'five valid preceding pairs; fresh state', ...frozen(selected), first, last, window, seed: seedValue(input.seed), mode: 'EXPLORATORY' };
+            }
+            if (payload.strategies.some(s => transitions.isStrategy(s.id) && s.enabled)) {
+                const rows = db.prepare('SELECT * FROM betzero_lab_number_statistics WHERE source_draw_id BETWEEN ? AND ? ORDER BY source_draw_id').all(payload.first-2,payload.last-1);
+                payload.statisticsHash = statisticsHash(rows);
             }
             if (payload.rulesHash !== rulesHash()) throw fail('The frozen rule code differs from this installation. Do not reuse this protocol with changed code.', 409);
             const id = crypto.randomUUID();
@@ -130,4 +138,4 @@ function createJobStore(db, { now = Date.now } = {}) {
         list: () => db.prepare('SELECT id FROM betzero_lab_jobs ORDER BY created_at DESC LIMIT 20').all().map(r => get(r.id)),
         protocols: () => db.prepare('SELECT * FROM betzero_lab_protocols ORDER BY created_at DESC LIMIT 20').all().map(r => ({ id:r.id, state:r.state, jobId:r.job_id, ...JSON.parse(r.specification) })) };
 }
-module.exports = { createJobStore, rulesHash, MAX_PAIRS, TIMEOUT_MS };
+module.exports = { statisticsHash, createJobStore, rulesHash, MAX_PAIRS, TIMEOUT_MS };

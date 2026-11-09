@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { createJobStore, rulesHash } = require('./betzero-jobs');
+const { createJobStore, rulesHash, statisticsHash } = require('./betzero-jobs');
 const { createBetZeroLab } = require('./betzero-lab');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -38,6 +38,12 @@ function childRun(sitePath, temporary, job) {
     }
     const privateDb = connect(temporary);
     const lab = createBetZeroLab(privateDb);
+    if (spec.statisticsHash) {
+        const rows = site.prepare('SELECT * FROM betzero_lab_number_statistics WHERE source_draw_id BETWEEN ? AND ? ORDER BY source_draw_id').all(spec.first-2,spec.last-1);
+        if (statisticsHash(rows) !== spec.statisticsHash) throw new Error('Recorded statistics changed after this job was queued; create a new exploratory job.');
+        const insert = privateDb.prepare('INSERT INTO betzero_lab_number_statistics(source_draw_id,sample_json,signature,recorded_at,conflicted) VALUES(?,?,?,?,?)');
+        for (const row of rows) insert.run(row.source_draw_id,row.sample_json,row.signature,row.recorded_at,row.conflicted);
+    }
     for (const strategy of spec.strategies) {
         const actual = lab.strategies().find(s => s.id === strategy.id && s.version === strategy.version);
         if (!actual) throw new Error('Frozen strategy version is unavailable.');

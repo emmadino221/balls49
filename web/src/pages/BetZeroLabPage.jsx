@@ -78,7 +78,7 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
         <span>{saving ? 'Saving…' : strategy?.enabled ? 'Enabled — switch off' : 'Disabled — switch on'}</span>
       </button>
     </div>
-    <p className="betzero-pick-caption">{count === 1 ? 'Single-number absence research experiment' : `${count}-number research experiment`}</p>
+    <p className="betzero-pick-caption">{strategy?.market === 'BET49' ? 'Single-number appearance research: WIN when selected number appears' : count === 1 ? 'Single-number absence research experiment' : `${count}-number research experiment`}</p>
     {count === 4 && strategy && !strategy.enabled && !records.some(r => r.selections?.length === 4) && <p className="betzero-empty">4-number research predictions are disabled.</p>}
     {count === 3 && <>
       <p className="betzero-pick-caption">Method: {displayed?.conditions?.method || strategy?.decisionState?.method || 'Awaiting analysis'}</p>
@@ -86,6 +86,8 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
       {records[0]?.status === 'SKIP' && <p className="betzero-warning">Latest opportunity skipped: {records[0].conditions?.reason || 'No eligible prediction'}</p>}
       {strategy?.decisionState?.paused && <p className="betzero-warning">Result conflict - paused for review.</p>}
     </>}
+    {strategy?.id?.startsWith('statistics_streak_drop_') && <p className="betzero-warning">Requires two consecutive recorded 100-draw statistics snapshots. Fewer than four transitions: SKIP. Bet9ja does not supply a statistics draw ID; input alignment is observational and results are provisional. Historical draws alone cannot reconstruct these streaks.</p>}
+    {strategy?.id?.startsWith('statistics_streak_drop_') && records[0]?.status === 'SKIP' && <p>Latest skip: {records[0].conditions?.reason}</p>}
     {displayed ? <>
       <p className="betzero-pick-caption">{pending ? 'Latest pending record - draw timing not verified' : 'Last completed prediction'}</p>
       {valid ? <div className="betzero-number-balls" aria-label="Recorded selected numbers">{selections.map(n => <span key={n}>{n}</span>)}</div> : <p>No valid saved selection available.</p>}
@@ -296,7 +298,7 @@ export default function BetZeroLabPage({ session }) {
 
   async function toggleResearchStrategy(strategy, title) {
     if (!session?.admin || busy || strategySaveLock.current || !strategy || !['1.0.0','2.0.0'].includes(strategy.version)
-      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three'].includes(strategy.id)) return;
+      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three', 'statistics_streak_drop_betzero', 'statistics_streak_drop_bet49'].includes(strategy.id)) return;
     strategySaveLock.current = true;
     const enabled = !strategy.enabled;
     const confirmed = window.confirm(`${enabled ? 'Enable' : 'Disable'} ${title} (${strategy.label}, version ${strategy.version})?\n\n${enabled ? 'Future eligible research predictions will start. Missed draws will not be backfilled.' : 'New research selections will stop. Existing pending predictions can still settle.'}\n\nExisting history and alert thresholds are preserved. Other strategies are unchanged.\n\nResearch Predictions Only — No Automatic Betting. This does not start the backtesting worker.`);
@@ -385,6 +387,9 @@ export default function BetZeroLabPage({ session }) {
         <div className="betzero-simple-picks">
           <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} live={live} />
           <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} live={live} />
+          <p className="betzero-section-note">Statistics snapshots collected: {overview.numberStatistics?.snapshots ?? 0}. Conflicts: {overview.numberStatistics?.conflicts ?? 0}. Streak-drop research skips unavailable snapshot pairs.</p>
+          <PredictionCard strategy={overview.strategies.statistics_streak_drop_betzero} count={4} title="BetZero - Streak drop" name="strk 2 or 3 to 1; first four ascending" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} />
+          <PredictionCard strategy={overview.strategies.statistics_streak_drop_bet49} count={1} title="Bet49 - Streak drop" name="One seeded random number from the same four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} />
           {['1.0.0','2.0.0'].map(version => <PredictionCard key={version} strategy={overview.strategyVersions?.[`minimum_maximum_three@${version}`]} count={3}
             title={`Minimum/Maximum v${version} - ${version === '1.0.0' ? 'Legacy research' : 'New switching strategy'}`}
             name={version === '1.0.0' ? 'After WIN: switch / After LOSS: keep' : 'After WIN: keep / After LOSS: switch'}
@@ -522,7 +527,7 @@ export default function BetZeroLabPage({ session }) {
           {strategies.map(strategy => <article className="betzero-strategy-card" key={strategyKey(strategy)}>
             <div className="betzero-card-top"><StatusBadge value={strategy.status} /><span>{strategy.enabled ? 'Enabled' : 'Disabled'}</span></div>
             <h3>{strategy.label}</h3>
-            {strategy.selectionCount && <p><strong>{strategy.selectionCount === 1 ? 'One-number absence experiment — not a four-number BetZero prediction.' : strategy.selectionCount === 3 ? 'Exactly three distinct numbers - MIN/MAX research.' : 'Exactly four distinct numbers — newly designed research, not instructor-verified.'}</strong></p>}
+            {strategy.selectionCount && <p><strong>{strategy.market === 'BET49' ? 'One-number appearance research: selected number must occur.' : strategy.selectionCount === 1 ? 'One-number absence experiment — not a four-number BetZero prediction.' : strategy.selectionCount === 3 ? 'Exactly three distinct numbers - MIN/MAX research.' : 'Exactly four distinct numbers — newly designed research, not instructor-verified.'}</strong></p>}
             <p>{strategy.status === 'UNVERIFIED' ? strategy.missingInformation : strategy.description}</p>
             <div className="betzero-card-metrics">
               <span><small>Forward picks</small><strong>{strategy.totalPredictions ?? 0}</strong></span>
