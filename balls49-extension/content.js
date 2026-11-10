@@ -1461,7 +1461,7 @@ async function startApp() {
             'enabledGames', 'schedule', 'telegramChatId', 'step1Only', 
             'hiloStrategy', 'flatBetting', 'sniperMode', 'sniperStep', 'sniperResetLosses',
             'dynamicStakePercent', 'cbMaxLosses', 'cbCooldown',
-            'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
+            'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
         ], (data) => {
             if (data) {
                 // Strategy selection is automatic; retire any saved specific-strategy gate.

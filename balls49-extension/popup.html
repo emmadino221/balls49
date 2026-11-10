@@ -191,7 +191,7 @@
             <div class="section-label">💰 Base Stakes (₦)</div>
             <div class="grid-3" style="margin-bottom: 6px;">
                 <input type="number" id="stake-betzero" placeholder="BZ Stake">
-                <input type="number" id="stake-bet49" placeholder="Bet49 / number" title="Stake per number. Each prediction places 4-6 separate bets.">
+                <input type="number" id="stake-bet49" placeholder="Bet49 / number" title="Stake per number. Current Bet49 predictions place one number at 7.80 odds.">
                 <input type="number" id="stake-rainbow" placeholder="RB Stake">
                 <input type="number" id="stake-hilo" placeholder="H/L Stake">
             </div>
@@ -199,6 +199,9 @@
                 <input type="number" id="stake-totalColor" placeholder="TC 3-Way Stake">
                 <input type="number" id="stake-totalColor2" placeholder="TC 2-Way Stake">
                 <input type="number" id="stake-totalColor1" placeholder="Winning Color Stake">
+                <label for="bet49-profit-mode">Bet49 recovery target (7.80 odds)</label>
+                <select id="bet49-profit-mode"><option value="fixed">Same profit</option><option value="accumulating">Accumulating profit</option></select>
+                <small>Mode changes apply to the next recovery cycle. Each settled loss advances the target; skips do not.</small>
                 <label for="tc1-profit-mode">Winning Color recovery target</label>
                 <select id="tc1-profit-mode"><option value="fixed">Same profit as base bet</option><option value="accumulating">Accumulating profit</option></select>
                 <small>3.80 odds, including No Winning Color. Mode/base changes apply after the current sequence wins. Use individual mode; Winning Color has its own progression.</small>
@@ -324,6 +327,7 @@
 
 <script src="api.js"></script>
 <script src="tc1-staking.js"></script>
+<script src="bet49-staking.js"></script>
 <script src="popup.js"></script>
 <script src="history-presets.js"></script>
 </body>

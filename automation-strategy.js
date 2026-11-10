@@ -2,8 +2,9 @@
 
 const { historySuggestions } = require('./site-content');
 const crypto = require('crypto');
+const Bet49Staking = require('./balls49-extension/bet49-staking');
 const games = { betzero: 'u4', bet49: 'bet49', rainbow: 'color', hilo: 'sum', totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1' };
-const economics = { u4: [1.65, 1], bet49: [7.8, 6], color: [1.5, 1], sum: [2, 1], totalColor: [3.8, 3], totalColor2: [3.8, 2], totalColor1: [3.8, 1] };
+const economics = { u4: [1.65, 1], bet49: [7.8, 1], color: [1.5, 1], sum: [2, 1], totalColor: [3.8, 3], totalColor2: [3.8, 2], totalColor1: [3.8, 1] };
 const unifiedGames = ['u4', 'color', 'sum', 'totalColor'];
 const fail = message => Object.assign(new Error(message), { status: 409 });
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -19,14 +20,15 @@ function warningOnly(s) {
 function setupHash(plan) { return hash({ plans: plan.plans, reserve: plan.reserve }); }
 function recovery(s) { return !current(s)?.needsReview && Object.values(current(s)?.lanes || {}).some(l => l.deficit > 0 || l.attempts > 0); }
 
-function reserve(key, base, steps) {
+function reserve(key, base, steps, bet49ProfitMode = 'fixed') {
     const choices = key === 'unified' ? unifiedGames : [games[key]];
     let lost = 0;
     for (let i = 0; i < steps; i++) {
         let cost = 0;
         for (const k of choices) {
             const [odds, count] = economics[k];
-            const stake = i ? Math.ceil((lost + base * (odds - count)) / (odds - count)) : base;
+            const stake = k === 'bet49' ? Bet49Staking.nextStake(base, lost, i, bet49ProfitMode) : i ? Math.ceil((lost + base * (odds - count)) / (odds - count)) : base;
+            if (!stake) return Infinity;
             if (stake > 50000) return Infinity;
             cost = Math.max(cost, stake * count);
         }
@@ -45,13 +47,14 @@ function preview(input, records) {
     const capitalMode = input.capitalMode === true;
     const base = Number(input.base);
     if (capitalMode ? !Number.isSafeInteger(capital) || capital < 50 || capital > 10000000 : !Number.isSafeInteger(base) || base < 50 || base > 50000) throw fail(capitalMode ? 'Enter allocated capital from NGN 50 to 10,000,000.' : 'Enter a base stake from NGN 50 to 50,000.');
+    const bet49ProfitMode = Bet49Staking.mode(input.bet49ProfitMode);
     const history = historySuggestions(records, window);
     const plans = keys.map(key => {
         const market = history.markets.find(m => m.key === key), rule = market.gameplay;
         if (rule.status !== 'candidate') throw fail(`${market.name}: no eligible suggestion yet. Try a larger draw window or deselect this game.`);
         return { key, name: market.name, waitLosses: rule.waitLosses, pauseLosses: rule.pauseLosses, steps: Math.min(12, Math.max(rule.training.worstPlayedRun, rule.validation.worstPlayedRun) + 1) };
     });
-    const totalReserve = amount => plans.reduce((sum, p) => sum + reserve(p.key, amount, p.steps), 0);
+    const totalReserve = amount => plans.reduce((sum, p) => sum + reserve(p.key, amount, p.steps, bet49ProfitMode), 0);
     let fitted = base;
     if (capitalMode) {
         let lo = 50, hi = 50000; fitted = 0;
@@ -63,8 +66,8 @@ function preview(input, records) {
     }
     const required = totalReserve(fitted);
     if (!Number.isFinite(required)) throw fail('A recovery stake exceeds NGN 50,000. Reduce the base stake or choose another plan.');
-    const request = { games: keys, window, capitalMode, capital: capitalMode ? capital : 0, base: fitted, autoUpdate: input.autoUpdate === true, riskWarningOnly: input.autoUpdate === true && input.riskWarningOnly === true };
-    const result = { request, plans: plans.map(p => ({ ...p, base: fitted, reserve: reserve(p.key, fitted, p.steps) })), reserve: required, draws: history.draws, toDraw: history.toDraw };
+    const request = { bet49ProfitMode, games: keys, window, capitalMode, capital: capitalMode ? capital : 0, base: fitted, autoUpdate: input.autoUpdate === true, riskWarningOnly: input.autoUpdate === true && input.riskWarningOnly === true };
+    const result = { request, plans: plans.map(p => ({ ...p, ...(p.key === 'bet49' ? {profitMode: bet49ProfitMode} : {}), base: fitted, reserve: reserve(p.key, fitted, p.steps, bet49ProfitMode) })), reserve: required, draws: history.draws, toDraw: history.toDraw };
     return { ...result, token: hash(result) };
 }
 
@@ -79,6 +82,7 @@ function install(s, plan, previous) {
     for (const key of ['flatBetting', 'weightedStaking', 'bzRbRollover', 'hiloRollover', 'tc3Rollover']) config[key] = false;
     config.dynamicStakePercent = 0;
     config.tc1ProfitMode = 'fixed'; config.hiloMultiplier = 2;
+    config.bet49ProfitMode = Bet49Staking.mode(plan.request.bet49ProfitMode);
     config.strategyFilters = { u4: 'follow', color: 'follow' };
     config.summaryModelMarkets = { u4: false, color: false, sum: false, totalColor: false };
     for (const key of Object.keys(config.sniperSettings || {})) config.sniperSettings[key] = { enabled: false, step: 0, resetLosses: 0 };
@@ -117,6 +121,7 @@ function stake(s, key) {
     const lane = strategy.lanes[external], plan = strategy.plans.find(p => p.key === external);
     if (!lane || !plan || !economics[key]) return { stake: 0, odds: 0 };
     const [odds, count] = economics[key];
+    if (key === 'bet49') return { stake: Bet49Staking.nextStake(plan.base, lane.deficit, lane.attempts, strategy.request.bet49ProfitMode), odds };
     return { stake: lane.deficit ? Math.ceil((lane.deficit + plan.base * (odds - count)) / (odds - count)) : plan.base, odds };
 }
 
@@ -193,7 +198,7 @@ function checkExposure(s, payload, exposure) {
     const fields = ['stake', 'bet49Stake', 'colorStake', 'sumStake', 'tcStake', 'tc2Stake', 'tc1Stake'];
     let reason = fields.some(k => Number(payload[k] || 0) > 50000) ? 'Suggested stake exceeds the NGN 50,000 limit.' : '';
     if (!warningOnly(s) && strategy.available !== null && exposure > strategy.available) reason = 'Insufficient allocated capital for the next bet.';
-    if (payload.bet49Stake > 0 && payload.bet49?.length !== 6) reason = 'Bet49 strategy requires six numbers. Review the prediction.';
+    if (payload.bet49Stake > 0 && payload.bet49?.length !== 1) reason = 'Bet49 strategy requires one number. Review the prediction.';
     if (!reason) return true;
     s.stats.isHalted = true; s.stats.haltReason = reason; s.pendingBetPayload = null;
     return false;

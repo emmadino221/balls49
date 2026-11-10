@@ -41,6 +41,7 @@ const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layou
 const { getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
 
 const TC1Staking = require('./balls49-extension/tc1-staking');
+const Bet49Staking = require('./balls49-extension/bet49-staking');
 const { singleColorPrediction, singleColorWins } = require('./total-color');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -579,6 +580,7 @@ function getSession(clientId) {
     session.config.maxSteps.totalColor1 ??= 0;
     session.config.enabledGames.totalColor1 ??= false;
     session.config.tc1ProfitMode = TC1Staking.mode(session.config.tc1ProfitMode);
+    session.config.bet49ProfitMode = Bet49Staking.mode(session.config.bet49ProfitMode);
     return session;
 }
 
@@ -2067,8 +2069,12 @@ function getMartingaleStake(clientId, key, localStep, mlScore = 0) {
             for (let step = 1; step < localStep; step++) state.cycleLosses += Math.round(initialBaseUnit * Math.pow(7.8 / 6.8, step - 1));
             state.cycleTarget = initialBaseUnit * 6.8;
         }
-        const target = state.cycleTarget || initialBaseUnit * (7.8 - count);
-        return { stake: Math.ceil(((state.cycleLosses || 0) + target) / (7.8 - count)), odds: 7.8 };
+        // Preserve an already-started legacy recovery until its next settled win.
+        if (state.cycleTarget && !state.cycleMode) return { stake: Math.ceil(((state.cycleLosses || 0) + state.cycleTarget) / (7.8 - count)), odds: 7.8 };
+        if (count !== 1) return { stake: 0, odds: 7.8 };
+        return { stake: Bet49Staking.nextStake(state.cycleBase || initialBaseUnit, state.cycleLosses || 0,
+            state.cycleBets || 0, state.cycleMode || session.config.bet49ProfitMode), odds: 7.8 };
+
     }
     if (session.config.flatBetting || localStep <= 1) return { stake: initialBaseUnit, odds: walletConfig.odds };
 
@@ -3153,8 +3159,8 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                 const gLabel = key === 'totalColor1' ? 'Winning Color' : key === 'u4' ? '🎯 BetZero' : key === 'bet49' ? '🟠 Bet49' : key === 'color' ? '🌈 Rainbow' : key === 'sum' ? '📊 Hi/Lo' : key === 'totalColor' ? '🎨 TC (3W)' : '🎭 TC (2W)';
 
                 if (key === 'bet49') {
-                    if (activeWin) { state.cycleLosses = 0; state.cycleTarget = 0; }
-                    else state.cycleLosses = (state.cycleLosses || 0) + Number(details.stakes.bet49 || 0) * placedBet49.length;
+                    if (activeWin) { state.cycleLosses = 0; state.cycleTarget = 0; state.cycleBets = 0; state.cycleBase = null; state.cycleMode = null; }
+                    else { state.cycleLosses = (state.cycleLosses || 0) + Number(details.stakes.bet49 || 0) * placedBet49.length; state.cycleBets = (state.cycleBets || 0) + 1; }
                 }
                 if (key === 'totalColor1') {
                     if (activeWin) {
@@ -3704,6 +3710,8 @@ async function tick() {
                             totalColor1: hasTotalColor1 ? pred.totalColor1Pred.top1 : null,
                             tc2Stake: hasTotalColor2 ? tc2Stake : 0,
                             tc1Stake: hasTotalColor1 ? tc1Stake : 0,
+                            bet49CycleBase: session.martingaleState.bet49.cycleBase || bet49Stake,
+                            bet49CycleMode: session.martingaleState.bet49.cycleMode || session.config.bet49ProfitMode,
                             tc1CycleBase: session.martingaleState.totalColor1.cycleBase || tc1Stake,
                             tc1CycleMode: session.martingaleState.totalColor1.cycleMode || session.config.tc1ProfitMode,
                             
@@ -5199,7 +5207,10 @@ async function handleHttpRequest(req, res) {
                                 details.bet49Numbers = bet49Numbers(payload.bet49);
                                 details.unconfirmedBet49 = payload.unconfirmedBet49 || [];
                                 details.stakes.bet49 = payload.bet49Stake;
-                                session.martingaleState.bet49.cycleTarget ||= (session.config.initialStakes.bet49 || payload.bet49Stake) * (7.8 - details.bet49Numbers.length);
+                                if (!session.martingaleState.bet49.cycleTarget) {
+                                    session.martingaleState.bet49.cycleBase ||= payload.bet49CycleBase || session.config.initialStakes.bet49 || payload.bet49Stake;
+                                    session.martingaleState.bet49.cycleMode ||= Bet49Staking.mode(payload.bet49CycleMode);
+                                }
                                 details.odds.bet49 = session.wallets.bet49.odds;
                                 details.games.push('bet49');
                                 totalStake += payload.bet49Stake * details.bet49Numbers.length;
@@ -5362,6 +5373,7 @@ async function handleHttpRequest(req, res) {
                 }
 
                 if (cfg.tc1ProfitMode !== undefined) session.config.tc1ProfitMode = TC1Staking.mode(cfg.tc1ProfitMode);
+                if (cfg.bet49ProfitMode !== undefined) session.config.bet49ProfitMode = Bet49Staking.mode(cfg.bet49ProfitMode);
                 if (cfg.stakes) {
                     if (cfg.stakes.betzero !== undefined) session.config.initialStakes.u4 = validateNumber(cfg.stakes.betzero, 0, 50000, 0);
                     if (cfg.stakes.bet49 !== undefined) session.config.initialStakes.bet49 = validateNumber(cfg.stakes.bet49, 0, 50000, 0);

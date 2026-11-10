@@ -1,3 +1,4 @@
+import '../../../balls49-extension/bet49-staking.js';
 import OwnerTools from '../components/OwnerTools';
 import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
 import '../../../balls49-extension/tc1-staking.js';
@@ -46,7 +47,7 @@ function formatStake(value) {
   return `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function getRecommendedStake(marketId, baseAmount, step, prediction) {
+function getRecommendedStake(marketId, baseAmount, step, prediction, bet49ProfitMode = 'fixed') {
   const aliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
   const market = marketId === 'unified'
     ? aliases[prediction?.predicted?.unified?.key] || prediction?.predicted?.unified?.key
@@ -76,7 +77,7 @@ function getRecommendedStake(marketId, baseAmount, step, prediction) {
   for (let currentStep = 1; currentStep <= safeStep; currentStep += 1) {
     if (strategy.bet49) {
       if (!strategy.count) return null;
-      nextStake = Math.ceil((totalCost + base * (7.8 - strategy.count)) / (7.8 - strategy.count));
+      nextStake = strategy.count === 1 ? globalThis.Bet49Staking.nextStake(base, totalCost, currentStep - 1, bet49ProfitMode) : Math.ceil((totalCost + base * (7.8 - strategy.count)) / (7.8 - strategy.count));
     } else if (strategy.multiplier) {
       nextStake = roundMoney(currentStep === 1 ? base : nextStake * strategy.multiplier);
     } else if (strategy.costFactor) {
@@ -171,6 +172,7 @@ export default function PredictionsPage() {
   const [previousPrediction, setPreviousPrediction] = useState(null);
   const [predictionLastUpdated, setPredictionLastUpdated] = useState(null);
   const [stakePlans, setStakePlans] = useState({});
+  const [bet49ProfitMode, setBet49ProfitMode] = useState('fixed');
   const [stakeDrafts, setStakeDrafts] = useState({});
   const [stakePlanNotice, setStakePlanNotice] = useState('');
   const [stakePlanError, setStakePlanError] = useState('');
@@ -393,9 +395,9 @@ export default function PredictionsPage() {
                     ? <p className="stake-plan-message">Loading your saved stake plan…</p>
                     : stakePlans[activeGame.id]?.locked
                       ? <div className="stake-plan-locked">
-                        <div className="stake-plan-recommendation"><span>{activeGame.id === 'bet49' ? 'Estimated stake per number' : 'Recommended stake'}</span><strong>{getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction) === null
+                        <div className="stake-plan-recommendation"><span>{activeGame.id === 'bet49' ? 'Estimated stake per number' : 'Recommended stake'}</span><strong>{getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction, bet49ProfitMode) === null
                           ? 'Waiting for pick'
-                          : formatStake(getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction))}</strong></div>
+                          : formatStake(getRecommendedStake(activeGame.id, stakePlans[activeGame.id].baseAmount, stakePlans[activeGame.id].step, activeMarketPrediction, bet49ProfitMode))}</strong></div>
                         <div><span>Locked base stake</span><strong>{formatStake(stakePlans[activeGame.id].baseAmount)}</strong></div>
                         <div><span>Next step</span><strong>Step {stakePlans[activeGame.id].step}</strong></div>
 
@@ -409,6 +411,7 @@ export default function PredictionsPage() {
               {activeGame.id === 'totalColor1' && <p className="stake-plan-disclaimer">Fixed-profit estimate at 3.80 odds, rounded up to whole naira. Both recovery modes are available in the calculator and extension settings.</p>}
               {stakePlanError && sessionKind === 'account' && <p className="stake-plan-error" role="alert">{stakePlanError}</p>}
               {stakePlanNotice && <p className="stake-plan-notice" role="status">{stakePlanNotice}</p>}
+              {activeGame.id === 'bet49' && <label>Estimate profit mode<select value={bet49ProfitMode} onChange={e=>setBet49ProfitMode(e.target.value)}><option value="fixed">Same profit</option><option value="accumulating">Accumulating profit</option></select><small>Preview only. Choose the execution mode separately in Automation or the extension. Accumulating mode applies to single-number predictions.</small></label>}
               <p className="stake-plan-disclaimer">A loss advances this market’s step; a win returns it to Step 1. Skips do not change the step. Stakes are estimates only and do not place bets. Bet49 estimates assume the current number count at every step; actual recovery costs can differ when that count changes.</p>
             </section>
             <div className="prediction-card-meta">

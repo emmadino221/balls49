@@ -1,11 +1,14 @@
 import '../../../balls49-extension/tc1-staking.js';
+import '../../../balls49-extension/bet49-staking.js';
 import React, { useMemo, useState } from 'react';
 
 const strategies = [
   { id: 'betzero', label: 'BetZero', odds: 1.65, type: 'odds' },
   { id: 'bet494', label: 'Bet49 - 4 numbers', odds: 7.8, costFactor: 4, type: 'bet49' },
   { id: 'bet495', label: 'Bet49 - 5 numbers', odds: 7.8, costFactor: 5, type: 'bet49' },
-  { id: 'bet49', label: 'Bet49 - 6 numbers', odds: 7.8, costFactor: 6, type: 'bet49' },
+  { id: 'bet49', label: 'Bet49 - same profit (1 number)', odds: 7.8, costFactor: 1, type: 'bet49', mode: 'fixed' },
+  { id: 'bet49Accumulating', label: 'Bet49 - accumulating profit (1 number)', odds: 7.8, costFactor: 1, type: 'bet49', mode: 'accumulating' },
+  { id: 'bet496', label: 'Bet49 - legacy 6 numbers', odds: 7.8, costFactor: 6, type: 'bet49' },
   { id: 'rainbow', label: 'Rainbow Color', odds: 1.5, type: 'odds' },
   { id: 'hilo', label: 'High / Low · 2×', odds: 2, multiplier: 2, type: 'multiplier' },
   { id: 'hilo140', label: 'High / Low · 1.4× progression', odds: 2, multiplier: 1.4, type: 'multiplier' },
@@ -48,7 +51,8 @@ function buildSequence(strategy, baseStake, steps, customOdds) {
     let exposure;
 
     if (strategy.type === 'bet49') {
-      bet = Math.ceil((totalCost + baseStake * (odds - strategy.costFactor)) / (odds - strategy.costFactor));
+      bet = strategy.costFactor === 1 ? globalThis.Bet49Staking.nextStake(baseStake, totalCost, step - 1, strategy.mode) : Math.ceil((totalCost + baseStake * (odds - strategy.costFactor)) / (odds - strategy.costFactor));
+      if (!bet) { overflow = true; overflowAtStep = step; break; }
       exposure = bet * strategy.costFactor;
       profit = roundMoney(bet * odds - totalCost - exposure);
     } else if (strategy.type === 'totalColor1') {

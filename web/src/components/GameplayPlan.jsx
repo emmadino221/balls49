@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
+import '../../../balls49-extension/bet49-staking.js';
 
-const ECONOMICS = { betzero: [1.65, 1], rainbow: [1.5, 1], hilo: [2, 1], totalColor: [3.8, 3], totalColor2: [3.8, 2], totalColor1: [3.8, 1], bet49: [7.8, 6] };
+const ECONOMICS = { betzero: [1.65, 1], rainbow: [1.5, 1], hilo: [2, 1], totalColor: [3.8, 3], totalColor2: [3.8, 2], totalColor1: [3.8, 1], bet49: [7.8, 1] };
 const money = n => `NGN ${n.toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 const rate = n => n == null ? '--' : `${n}%`;
 
 export default function GameplayPlan({ markets, game, onGameChange, base, onBaseChange, automationWindow, automationDisabled }) {
+  const [bet49ProfitMode, setBet49ProfitMode] = useState('fixed');
   const market = markets.find(m => m.key === game);
   if (!market) return null;
   const plan = market.gameplay, economics = ECONOMICS[game];
@@ -18,7 +20,7 @@ export default function GameplayPlan({ markets, game, onGameChange, base, onBase
     const [odds, count] = economics, target = Number(base) * (odds - count);
     let lost = 0;
     for (let i = 0; i < steps; i++) {
-      const stake = i === 0 ? Number(base) : Math.ceil((lost + target) / (odds - count));
+      const stake = game === 'bet49' ? globalThis.Bet49Staking.nextStake(Number(base), lost, i, bet49ProfitMode) : i === 0 ? Number(base) : Math.ceil((lost + target) / (odds - count));
       const total = stake * count;
       lost += total;
       rows.push({ step: i + 1, stake, total, reserve: lost });
@@ -27,6 +29,7 @@ export default function GameplayPlan({ markets, game, onGameChange, base, onBase
   return <section className="content-card gameplay-plan">
     <span className="overline">YOUR GAME PLAN</span><h2>Choose a game. See your plan.</h2>
     <div className="resource-toolbar"><label>Game<select value={game} onChange={e => onGameChange(e.target.value)}>{markets.map(m => <option key={m.key} value={m.key}>{m.name}</option>)}</select></label><label>Base stake per selection (NGN)<input type="number" min="1" max="1000000" step="any" value={base} onChange={e => onBaseChange(e.target.value)} /></label></div>
+    {game === 'bet49' && <label>Bet49 profit<select value={bet49ProfitMode} onChange={e=>setBet49ProfitMode(e.target.value)}><option value="fixed">Same profit</option><option value="accumulating">Accumulating profit</option></select></label>}
     {!validBase && <p role="alert">Enter a stake from NGN 1 to NGN 1,000,000.</p>}
     <p className="insight-suggestion"><strong>{supported ? 'History-based plan to review' : plan?.status === 'weaker' ? 'This plan did not improve newer results' : 'More results needed'}</strong>{!supported && <><br />Observe longer. Any plan below is an illustration only.</>}</p>
     {hasRule && <>
@@ -38,14 +41,14 @@ export default function GameplayPlan({ markets, game, onGameChange, base, onBase
       </div>
       {economics ? <>
         {rows.length > 0 && <><div className="gameplay-reserve"><span>Illustrated reserve for {steps} attempts</span><strong>{money(rows.at(-1).reserve)}</strong><small>This entire amount can be lost. It is not a safe budget.</small></div>
-        <h3>Your stake amounts</h3><p>{economics[1]} selection{economics[1] > 1 ? 's' : ''} per draw. {game === 'bet49' && 'Uses 6 numbers; recalculate if the number count changes.'} Move down one row after each played loss.</p>
+        <h3>Your stake amounts</h3><p>{economics[1]} selection{economics[1] > 1 ? 's' : ''} per draw. {game === 'bet49' && 'Uses one number at 7.80 odds.'} Move down one row after each played loss.</p>
         <div className="gameplay-table" tabIndex="0" role="region" aria-label="Recovery stake table"><table><thead><tr><th>Attempt</th><th>Each selection</th><th>Total stake</th><th>Reserve so far</th></tr></thead><tbody>{rows.map(r => <tr key={r.step}><td>{r.step}</td><td>{money(r.stake)}</td><td>{money(r.total)}</td><td>{money(r.reserve)}</td></tr>)}</tbody></table></div>
         {worst + 1 > 12 && <p>Only 12 attempts shown. The historical losing run was longer.</p>}</>}
       </> : <p>For Unified stake amounts, select the game it picks. Each game has different odds.</p>}
       <details><summary>Why this plan?</summary><p>{plan.reason}</p><p>Older results: {plan.training.wins} wins / {plan.training.losses} losses ({rate(plan.training.winRate)}). Newer results: {plan.validation.wins} wins / {plan.validation.losses} losses ({rate(plan.validation.winRate)}). Playing every eligible pick on newer results: {rate(plan.baseline.winRate)}.</p><p>Worst played losing run: {worst}, including losses across pauses. Current observed run in this window: {market.currentLosses}. This is not your personal betting state or a live entry signal.</p><p>Rules are ranked by older-sample win rate, then shorter losing runs, then sample size. This compares results, not profit.</p></details>
-      <details><summary>How the amounts work</summary><p>The table uses a fixed base-profit target and one winning selection at {economics ? economics[0].toFixed(2) : "variable"} odds. It shows the historical played-loss run plus one attempt, capped at 12. It does not use your capital or personal loss budget.</p><p>Every row assumes earlier played attempts lost. Pauses and unplayed wins do not reset recovery. Skipped draws do not count as losses. Later stakes round up to whole naira. Fees, payout limits, partial bets and rollover modes are not included. These amounts do not change your extension settings.</p></details>
+      <details><summary>How the amounts work</summary><p>The table uses {game === 'bet49' && bet49ProfitMode === 'accumulating' ? 'an accumulating base-profit target (base profit times attempt)' : 'a fixed base-profit target'} and one winning selection at {economics ? economics[0].toFixed(2) : "variable"} odds. It shows the historical played-loss run plus one attempt, capped at 12. It does not use your capital or personal loss budget.</p><p>Every row assumes earlier played attempts lost. Pauses and unplayed wins do not reset recovery. Skipped draws do not count as losses. Later stakes round up to whole naira. Fees, payout limits, partial bets and rollover modes are not included. These amounts do not change your extension settings.</p></details>
     </>}
-    {automationWindow && <div className="gameplay-automation-action"><h3>Use this plan with your extension</h3><p><a href="automation.html">Choose multiple plans or calculate stakes from capital</a></p>{supported && !automationDisabled && Number.isSafeInteger(Number(base)) && Number(base)>=50 && Number(base)<=50000 ? <a className="btn btn-primary" href={`automation.html?suggestion=${encodeURIComponent(game)}&base=${Number(base)}&window=${automationWindow}`}>Preview automation setup</a> : <p>A supported plan, fresh history and a whole-naira base stake from 50 to 50,000 are needed to transfer settings.</p>}<p>Requires your linked extension access. On Automation, select multiple eligible plans or enter capital to calculate stakes. Preview and save while stopped.</p></div>}
+    {automationWindow && <div className="gameplay-automation-action"><h3>Use this plan with your extension</h3><p><a href="automation.html">Choose multiple plans or calculate stakes from capital</a></p>{supported && !automationDisabled && Number.isSafeInteger(Number(base)) && Number(base)>=50 && Number(base)<=50000 ? <a className="btn btn-primary" href={`automation.html?suggestion=${encodeURIComponent(game)}&base=${Number(base)}&window=${automationWindow}&bet49ProfitMode=${bet49ProfitMode}`}>Preview automation setup</a> : <p>A supported plan, fresh history and a whole-naira base stake from 50 to 50,000 are needed to transfer settings.</p>}<p>Requires your linked extension access. On Automation, select multiple eligible plans or enter capital to calculate stakes. Preview and save while stopped.</p></div>}
     <p className="resource-note">Past results do not guarantee future wins. No bets or settings are changed here.</p>
   </section>;
 }

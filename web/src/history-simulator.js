@@ -1,4 +1,5 @@
 import '../../balls49-extension/tc1-staking.js';
+import '../../balls49-extension/bet49-staking.js';
 
 export const simulationGames = [
   ['betzero', 'BetZero', 1.65], ['bet49', 'Bet49', 7.8], ['rainbow', 'Rainbow', 1.5],
@@ -30,10 +31,11 @@ export function simulateHistory(records, game, base, mode) {
       count = picks.length;
       hits = picks.filter(n => balls.includes(n)).length;
       if ((hits > 0) !== (outcome === 'WIN')) { result.stop = `Bet49 result disagrees with the recorded numbers at #${id}. Replay stopped.`; break; }
+      if (mode === 'accumulating' && count !== 1) { result.stop = `Accumulating Bet49 mode requires one selection; legacy multi-number draw #${id} was not replayed.`; break; }
       if (target === null) target = base * (odds - count);
     }
     let stake = base;
-    if (game === 'bet49') stake = Math.ceil((cycleLoss + target) / (odds - count));
+    if (game === 'bet49') stake = count === 1 && target === base * 6.8 ? globalThis.Bet49Staking.nextStake(base, cycleLoss, step - 1, mode) : Math.ceil((cycleLoss + target) / (odds - count));
     else if (game === 'totalColor1') stake = globalThis.TC1Staking.nextStake(base, cycleLoss, step - 1, mode);
     else if (step > 1) {
       if (game === 'hilo') stake = money(base * Math.pow(mode === '1.4' ? 1.4 : 2, step - 1));

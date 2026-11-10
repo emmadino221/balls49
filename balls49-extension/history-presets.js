@@ -2,7 +2,7 @@
 let appliedHistoryPreset = null;
 let historyPresetPreview = null;
 const PRESET_META = {
-    betzero: ['BetZero', 'u4', 1.65, 1], bet49: ['Bet49', 'bet49', 7.8, 6],
+    betzero: ['BetZero', 'u4', 1.65, 1], bet49: ['Bet49', 'bet49', 7.8, 1],
     rainbow: ['Rainbow', 'color', 1.5, 1], hilo: ['High/Low', 'sum', 2, 1],
     totalColor: ['Total Color 3-way', 'totalColor', 3.8, 3],
     totalColor2: ['Total Color 2-way', 'totalColor2', 3.8, 2],
@@ -12,7 +12,7 @@ const presetRate = stats => stats.settled ? stats.wins / stats.settled : 0;
 const presetValue = id => document.getElementById(id)?.value;
 function presetInputs() {
     return JSON.stringify(['auto-capital', 'preset-game-select', 'preset-profile-select',
-        'base-stake-percent', 'backtest-draws', 'preset-risk-percent', 'stop-loss'].map(presetValue));
+        'bet49-profit-mode', 'base-stake-percent', 'backtest-draws', 'preset-risk-percent', 'stop-loss'].map(presetValue));
 }
 async function fetchPresetHistory() {
     const response = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&presetHistory=1&draws=${encodeURIComponent(presetValue('backtest-draws'))}`);
@@ -44,7 +44,7 @@ function historySequenceCost(game, base, steps, profile, unified) {
         }
         if (game === 'totalColor1') stake = TC1Staking.nextStake(base, cost, step - 1, profile === 'winning_accumulating' ? 'accumulating' : 'fixed');
         else if (profile === 'flat') stake = base;
-        else if (game === 'bet49') stake = Math.ceil((cost + base * (odds - factor)) / (odds - factor));
+        else if (game === 'bet49') stake = Bet49Staking.nextStake(base, cost, step - 1, presetValue('bet49-profit-mode'));
         else stake = calculateStakeForStep(key, base, step, odds, 2);
         if (!Number.isFinite(stake) || stake <= 0) return Infinity;
         cost += stake * factor;
@@ -233,7 +233,7 @@ function describePreset() {
     document.getElementById('preset-profile-help').textContent = presetDescriptions[presetValue('preset-profile-select')] || '';
 }
 describePreset();
-for (const id of ['auto-capital', 'preset-game-select', 'preset-profile-select', 'base-stake-percent', 'backtest-draws', 'preset-risk-percent', 'stop-loss']) {
+for (const id of ['auto-capital', 'preset-game-select', 'preset-profile-select', 'bet49-profit-mode', 'base-stake-percent', 'backtest-draws', 'preset-risk-percent', 'stop-loss']) {
     document.getElementById(id).addEventListener('input', () => {
         describePreset();
         if (historyPresetPreview && historyPresetPreview.inputs !== presetInputs()) {
