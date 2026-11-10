@@ -11,7 +11,7 @@ function heartbeat(s, token) { const c = state(s); if (/^[a-f0-9]{32}$/.test(tok
 function settings(s) {
  const out = { stakes: {}, gameSteps: {}, enabledGames: {} };
  for (const [key, name] of Object.entries(aliases)) { out.stakes[name] = s.config.initialStakes[key]; out.gameSteps[name] = s.config.maxSteps[key]; out.enabledGames[name] = !!s.config.enabledGames[key]; }
- for (const key of ['takeProfit','stopLoss','hiloMultiplier','tc1ProfitMode','flatBetting','unifiedMode','sniperSettings','summaryModelMarkets','summaryModelTargets','bzRbRollover','hiloRollover','tc3Rollover','tc3RolloverTarget','cbMaxLosses','cbCooldown','shadowMode','weightedStaking']) out[key] = s.config[key];
+ for (const key of ['takeProfit','stopLoss','hiloMultiplier','tc1ProfitMode','bet49ProfitMode','flatBetting','unifiedMode','sniperSettings','summaryModelMarkets','summaryModelTargets','bzRbRollover','hiloRollover','tc3Rollover','tc3RolloverTarget','cbMaxLosses','cbCooldown','shadowMode','weightedStaking']) out[key] = s.config[key];
  return out;
 }
 function view(s) { guard(s); const c = state(s); return { suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, settledDraws: s.stats.settledDraws || 0, currentLossStreak: s.stats.currentLossStreak || 0, maxLossStreak: s.stats.maxLossStreak || 0, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
@@ -22,6 +22,7 @@ function normalize(input) {
  for (const [field,min,max] of [['takeProfit',0,10000000],['stopLoss',-10000000,0],['cbMaxLosses',0,50],['cbCooldown',0,300],['tc3RolloverTarget',2,10]]) { const n = Number(input[field] ?? (field === 'tc3RolloverTarget' ? 3 : 0)); if (!Number.isSafeInteger(n) || n < min || n > max) throw fail(`Invalid ${field}.`); out[field] = n; }
  out.hiloMultiplier = Number(input.hiloMultiplier); if (![1.4,2].includes(out.hiloMultiplier)) throw fail('Choose a supported High/Low multiplier.');
  out.tc1ProfitMode = input.tc1ProfitMode === 'accumulating' ? 'accumulating' : 'fixed';
+ out.bet49ProfitMode = input.bet49ProfitMode === 'accumulating' ? 'accumulating' : 'fixed';
  for (const key of ['flatBetting','unifiedMode','bzRbRollover','hiloRollover','tc3Rollover','shadowMode','weightedStaking']) out[key] = input[key] === true;
  if (out.unifiedMode && out.enabledGames.totalColor1) throw fail('Winning Color requires individual mode.');
  out.sniperSettings = {};

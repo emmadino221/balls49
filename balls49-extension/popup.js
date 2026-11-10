@@ -168,6 +168,7 @@ document.getElementById('sound-btn')?.addEventListener('click', () => {
 });
 
 function calculateStakeForStep(key, base, step, odds, hiloMultiplier = 2.0) {
+    if (key === 'bet49') return Bet49Staking.stakeAtStep(base, step, document.getElementById('bet49-profit-mode')?.value);
     if (key === 'totalColor1') return TC1Staking.stakeAtStep(base, step, document.getElementById('tc1-profit-mode')?.value);
     if (step <= 1) return base;
     if (key === 'sum') {
@@ -411,6 +412,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         ? 3
         : Math.min(10, Math.max(2, requestedTc3Target));
     if (tc3TargetInput) tc3TargetInput.value = String(tc3RolloverTarget);
+    const bet49ProfitMode = Bet49Staking.mode(document.getElementById('bet49-profit-mode')?.value);
     const tc1ProfitMode = TC1Staking.mode(document.getElementById('tc1-profit-mode')?.value);
     const hiloMultiplier = parseFloat(document.getElementById('hilo-multiplier')?.value) || 2.0;
     const baseStakePercent = Math.min(100, Math.max(0.01, parseFloat(document.getElementById('base-stake-percent')?.value) || 0.5));
@@ -439,7 +441,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
+        unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, bet49ProfitMode, baseStakePercent, backtestDraws, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
         shadowMode, weightedStaking 
     };
 
@@ -554,7 +556,7 @@ function loadParameters() {
     chrome.storage.sync.get([
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
-        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'tc1ProfitMode', 'baseStakePercent', 'backtestDraws',
+        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'baseStakePercent', 'backtestDraws',
         'tc3Rollover', 'tc3RolloverTarget', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking'
     ], (data) => {
         let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
@@ -603,6 +605,7 @@ function loadParameters() {
         setCheckState('shadowMode', data.shadowMode);
         setCheckState('weightedStaking', data.weightedStaking);
         setCheckState('tc3-rollover', data.tc3Rollover);
+        document.getElementById('bet49-profit-mode').value = Bet49Staking.mode(data.bet49ProfitMode);
         document.getElementById('tc1-profit-mode').value = TC1Staking.mode(data.tc1ProfitMode);
         if (document.getElementById('hilo-multiplier')) document.getElementById('hilo-multiplier').value = data.hiloMultiplier || '2.00';
         if (document.getElementById('base-stake-percent')) document.getElementById('base-stake-percent').value = data.baseStakePercent || '0.5';
