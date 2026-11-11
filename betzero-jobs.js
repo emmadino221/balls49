@@ -9,7 +9,7 @@ const MAX_PAIRS = 50000;
 const TIMEOUT_MS = 600000;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const statisticsHash = rows => crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex');
-const rulesHash = () => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'betzero-lab.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-minmax.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-statistics-transition.js'))).digest('hex');
+const rulesHash = () => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, 'betzero-lab.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-minmax.js'))).update(fs.readFileSync(path.join(__dirname, 'betzero-statistics-transition.js'))).update(fs.readFileSync(path.join(__dirname, 'high-low.js'))).digest('hex');
 
 function createJobStore(db, { now = Date.now } = {}) {
     db.exec(`CREATE TABLE IF NOT EXISTS betzero_lab_jobs (

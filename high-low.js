@@ -51,5 +51,20 @@ function predictHighLowFromBet49(prediction) {
     return { status: 'ACTIVE', range: total <= 148 ? 'LOW' : 'HIGH', reason: '', analysis };
 }
 
+// The High/Low result of one draw: the six balls total 148 or less (LOW), 149-151 (MID) or 152+ (HIGH).
+function highLowRange(balls) {
+    if (!Array.isArray(balls) || balls.length !== 6 || new Set(balls).size !== 6
+        || balls.some(n => !Number.isInteger(n) || n < 1 || n > 49)) return null;
+    const total = balls.reduce((sum, n) => sum + n, 0);
+    return total <= 148 ? 'LOW' : total <= 151 ? 'MID' : 'HIGH';
+}
+
+// A HIGH or LOW pick wins only when the draw lands in that range; MID loses for either pick.
+function gradeHighLow(pick, balls) {
+    const range = highLowRange(balls);
+    if (!range || (pick !== 'HIGH' && pick !== 'LOW')) return 'INVALID';
+    return range === pick ? 'WIN' : 'LOSS';
+}
+
 // Retain the earlier function for historical/offline callers only.
-module.exports = { predictHighLow, predictHighLowFromBet49 };
+module.exports = { predictHighLow, predictHighLowFromBet49, highLowRange, gradeHighLow };

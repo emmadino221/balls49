@@ -1,5 +1,5 @@
 'use strict';
-const { strategyProbability, gradeStrategy, seededRandom, randomSelections, wilsonInterval, validSelections, validBalls } = require('./betzero-lab');
+const { strategyProbability, gradeStrategy, seededRandom, randomPickFor, wilsonInterval, validBalls } = require('./betzero-lab');
 const SEED = 'betzero-forward-baseline-v1';
 const cache = new WeakMap();
 
@@ -25,7 +25,7 @@ function forwardWindows(db, strategies, now = Date.now(), versioned = false) {
             let randomWins=0;
             if(usable && outcome) {
                 const random=seededRandom(`${SEED}:${strategy.id}:${strategy.version}:${row.target_draw_id}`);
-                if(gradeStrategy(strategy,randomSelections(count,random),balls)==='WIN')randomWins++;
+                if(gradeStrategy(strategy,randomPickFor(strategy,count,random),balls)==='WIN')randomWins++;
             }
             return {targetDrawId:row.target_draw_id,status:row.status,usable,randomWins,count};
         });

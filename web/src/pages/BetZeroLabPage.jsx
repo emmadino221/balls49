@@ -75,6 +75,7 @@ const SKIP_REASONS = {
   FEWER_THAN_THREE_TRANSITIONS: 'fewer than three numbers dropped from streak 2 or 3 to 1',
   MISSING_LATEST_STATISTICS: 'the statistics for the latest draw were not available yet',
   NO_NUMBER_WITH_STREAK_ONE: 'no number had a streak of exactly 1',
+  MINMAX_V2_HAS_NO_PREDICTION: 'Minimum/Maximum v2 made no prediction for this draw (it must be switched on and predicting)',
 };
 function skipText(row) {
   const reason = row?.conditions?.reason;
@@ -124,7 +125,8 @@ function PredictionCard({ strategy, count, title, summary, onToggle, onReset, sa
   const enabled = Boolean(strategy?.enabled);
   const latestSkip = enabled && records[0]?.status === 'SKIP' ? records[0] : null;
   const selections = displayed?.selections || [];
-  const valid = (Array.isArray(count) ? count.includes(selections.length) : selections.length === count) && new Set(selections).size === selections.length && selections.every(n => Number.isInteger(n) && n >= 1 && n <= 49);
+  const isHighLow = strategy?.market === 'HIGH_LOW';
+  const valid = isHighLow ? selections.length === 1 && ['HIGH', 'LOW'].includes(selections[0]) : (Array.isArray(count) ? count.includes(selections.length) : selections.length === count) && new Set(selections).size === selections.length && selections.every(n => Number.isInteger(n) && n >= 1 && n <= 49);
   const forNextDraw = Boolean(pending && live?.reliable && String(pending.targetDrawId) === String(live?.clock?.drawId));
   const headline = !displayed ? 'No prediction yet'
     : resultMissing ? 'Latest prediction (result not received)'
@@ -151,7 +153,8 @@ function PredictionCard({ strategy, count, title, summary, onToggle, onReset, sa
     <div className="betzero-pick-main">
       <span className="betzero-pick-label">{headline}</span>
       {displayed ? <>
-        {valid ? <div className="betzero-number-balls" aria-label="Predicted numbers">{selections.map(n => <span key={n}>{n}</span>)}</div> : <p className="betzero-pick-empty">No valid saved selection available.</p>}
+        {valid && isHighLow ? <div className={`betzero-highlow is-${selections[0].toLowerCase()}`} aria-label="Predicted range">{selections[0]}</div>
+          : valid ? <div className="betzero-number-balls" aria-label="Predicted numbers">{selections.map(n => <span key={n}>{n}</span>)}</div> : <p className="betzero-pick-empty">No valid saved selection available.</p>}
         <div className="betzero-pick-target"><strong>Draw #{displayed.targetDrawId}</strong><StatusBadge value={resultMissing ? 'NO_RESULT' : displayed.status} /></div>
         {latestSkip && <p className="betzero-pick-hint">Draw #{latestSkip.targetDrawId} was skipped: {skipText(latestSkip)}.</p>}
         {!enabled && <p className="betzero-pick-hint">Switched off, so no new predictions are being made.</p>}
@@ -172,7 +175,8 @@ function PredictionCard({ strategy, count, title, summary, onToggle, onReset, sa
       <summary>More information</summary>
       <dl className="betzero-pick-facts">
         {strategy?.description && <Fact label="How it works">{strategy.description}</Fact>}
-        <Fact label="A win means">{strategy?.market === 'BET49' ? 'The predicted number is drawn.' : 'None of the predicted numbers are drawn.'}</Fact>
+        <Fact label="A win means">{isHighLow ? 'HIGH wins when the six drawn numbers add up to 152 or more. LOW wins when they add up to 148 or less. A total of 149 to 151 is a loss for both.' : strategy?.market === 'BET49' ?'The predicted number is drawn.' : 'None of the predicted numbers are drawn.'}</Fact>
+        {isHighLow && displayed?.conditions?.followsMethod && <Fact label="Minimum/Maximum v2 method">{displayed.conditions.followsMethod}{Array.isArray(displayed.conditions.minmaxSelections) ? ` (numbers ${displayed.conditions.minmaxSelections.join(', ')})` : ''}</Fact>}
         {isMinmax && <Fact label="Current method">{displayed?.conditions?.method || decision?.method || 'Not chosen yet (needs five completed draws in a row)'}</Fact>}
         {isMinmax && !decision?.paused && decision?.pending && <Fact label="Waiting on">The result of draw #{decision.pending} before the next prediction.</Fact>}
         {isMinmax && !decision?.paused && !decision?.pending && decision?.released && <Fact label="Set aside">The result of draw #{decision.released.targetDrawId} never arrived ({dateTime(decision.released.at)}), so the method restarts from the latest five draws.</Fact>}
@@ -389,7 +393,7 @@ export default function BetZeroLabPage({ session }) {
 
   async function toggleResearchStrategy(strategy, title) {
     if (!session?.admin || busy || strategySaveLock.current || !strategy || !['1.0.0','2.0.0','3.0.0'].includes(strategy.version)
-      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three', 'statistics_streak_drop_betzero', 'statistics_streak_drop_bet49'].includes(strategy.id)) return;
+      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three', 'minmax_high_low', 'statistics_streak_drop_betzero', 'statistics_streak_drop_bet49'].includes(strategy.id)) return;
     // The first time v2 is switched on it must go through the confirmed cutover.
     if (strategy.id === 'minimum_maximum_three' && strategy.version === '2.0.0' && !strategy.enabled && !strategy.decisionState?.cutoverAt) return cutoverMinmax();
     strategySaveLock.current = true;
@@ -480,6 +484,7 @@ export default function BetZeroLabPage({ session }) {
     { key: 'statistics_streak_drop_bet49@3.0.0', count: 1, title: 'Bet49 - Streak 1', summary: 'One number picked from the streak-1 numbers.', statistics: true },
     ...(minmaxCutOver ? [] : [{ key: 'minimum_maximum_three@1.0.0', count: 3, title: 'Minimum/Maximum v1', summary: 'Three numbers. After a win: switch method. After a loss: keep.', review: true }]),
     { key: 'minimum_maximum_three@2.0.0', count: 3, title: 'Minimum/Maximum v2', summary: 'Three numbers. After a win: keep method. After a loss: switch.', review: true },
+    { key: 'minmax_high_low@1.0.0', count: 1, title: 'HIGH/LOW', summary: 'Follows Minimum/Maximum v2: MAX gives HIGH, MIN gives LOW. Needs v2 switched on.' },
   ];
   const activeCount = cards.filter(card => versions[card.key]?.enabled).length;
 

@@ -3,6 +3,19 @@
 const crypto = require('node:crypto');
 const minmax = require('./betzero-minmax');
 const transitions = require('./betzero-statistics-transition');
+const { gradeHighLow } = require('./high-low');
+
+// HIGH/LOW follows Minimum/Maximum v2: its MAX method predicts HIGH, its MIN method predicts LOW.
+const HIGH_LOW_ID = 'minmax_high_low';
+// Chance that six different balls from 1-49 total 148 or less (the same as 152 or more, by symmetry).
+const HIGH_LOW_PROBABILITY = (() => {
+    const ways = Array.from({ length: 7 }, () => new Array(301).fill(0));
+    ways[0][0] = 1;
+    for (let ball = 1; ball <= 49; ball++) for (let count = 6; count >= 1; count--)
+        for (let sum = 300; sum >= ball; sum--) ways[count][sum] += ways[count - 1][sum - ball];
+    const total = ways[6].reduce((sum, value) => sum + value, 0);
+    return ways[6].slice(0, 149).reduce((sum, value) => sum + value, 0) / total;
+})();
 
 const RANDOM_REPETITIONS = 64;
 const ALERT_THRESHOLDS = [3, 5, 7, 10];
@@ -22,6 +35,10 @@ const STRATEGIES = [
     { id: minmax.ID, version: '1.0.0', selectionCount: 3, label: '3-Number Minimum/Maximum',
       status: 'RESEARCH_ONLY', kind: 'PREDICTION',
       description: 'User-specified MIN/MAX research: three adjacent numbers, five settled opportunities, switch after WIN and repeat after LOSS.',
+      missingInformation: 'Research specification; not independently instructor-verified.' },
+    { id: HIGH_LOW_ID, version: '1.0.0', selectionCount: 1, market: 'HIGH_LOW', label: 'HIGH/LOW - follows Minimum/Maximum v2',
+      status: 'RESEARCH_ONLY', kind: 'PREDICTION',
+      description: 'Follows Minimum/Maximum v2 for the same draw: HIGH when v2 uses its MAX method, LOW when it uses its MIN method. No prediction when v2 has none.',
       missingInformation: 'Research specification; not independently instructor-verified.' },
     {
         id: 'simple_smallest_number_add_10',
@@ -76,7 +93,7 @@ function predictionFromStrategy(strategy, source) {
         return { status: 'SKIP', selections: [], conditions: { reason: 'Strategy is disabled.' } };
     }
     if (transitions.isStrategy(strategy.id)) return { status:'SKIP', selections:[], conditions:{reason:'MISSING_STATISTICS_SNAPSHOTS'} };
-    if (strategy.id === minmax.ID) return { status: 'SKIP', selections: [], conditions: { reason: 'STATEFUL_CONTEXT_REQUIRED' } };
+    if (strategy.id === minmax.ID || strategy.id === HIGH_LOW_ID) return { status: 'SKIP', selections: [], conditions: { reason: 'STATEFUL_CONTEXT_REQUIRED' } };
     const definition = strategyDefinition(strategy.id, strategy.version);
     if (!definition?.selectionCount) {
         return { status: 'SKIP', selections: [], conditions: { reason: strategy.missingInformation } };
@@ -109,13 +126,28 @@ function validateBetZeroPrediction(selections, actualBalls, selectionCount = 4) 
     return selections.some(number => actualBalls.includes(number)) ? 'LOSS' : 'WIN';
 }
 
+// Turns a Minimum/Maximum decision (a fresh one or a saved row) into the HIGH/LOW pick for the same draw.
+function highLowFromMinmax(decision) {
+    const method = ['PENDING', 'WIN', 'LOSS'].includes(decision?.status) ? decision.conditions?.method : null;
+    if (method !== 'MAX' && method !== 'MIN') return { status: 'SKIP', selections: [], conditions: {
+        reason: 'MINMAX_V2_HAS_NO_PREDICTION', minmaxStatus: decision?.status || 'NONE', minmaxReason: decision?.conditions?.reason || null } };
+    return { status: 'PENDING', selections: [method === 'MAX' ? 'HIGH' : 'LOW'],
+        conditions: { model: 'MINMAX_V2_HIGH_LOW', followsMethod: method, minmaxSelections: decision.selections } };
+}
+
 function gradeStrategy(strategy, selections, balls) {
     const count = Array.isArray(selections) ? selections.length : 0;
+    if (strategy?.id === HIGH_LOW_ID) return gradeHighLow(count === 1 ? selections[0] : null, balls);
     if (!transitions.acceptsCount(strategy, count)) return 'INVALID';
     const status = validateBetZeroPrediction(selections, balls, count);
     return strategy.id === transitions.HIT && status !== 'INVALID' ? (status === 'WIN' ? 'LOSS' : 'WIN') : status;
 }
+// A random pick of the same kind as the strategy's own, for the matched random baseline.
+function randomPickFor(strategy, count, random) {
+    return strategy?.id === HIGH_LOW_ID ? [random() < 0.5 ? 'HIGH' : 'LOW'] : randomSelections(count, random);
+}
 function strategyProbability(strategy, count = strategy.selectionCount) {
+    if (strategy?.id === HIGH_LOW_ID) return count === 1 ? HIGH_LOW_PROBABILITY : null;
     if (!transitions.acceptsCount(strategy, count)) return null;
     return strategy.id === transitions.HIT ? 6 / 49 : probabilityAllAbsent(count);
 }
@@ -272,7 +304,7 @@ function metricsForSegment(opportunities, strategy, seed, onProgress = () => {},
         for (let repetition = 0; repetition < RANDOM_REPETITIONS; repetition++) {
             const entryRandom = strategy.id === 'smallest_add10_step10_four'
                 ? seededRandom(`${seed}:${strategy.id}:${strategy.version}:${target.id}:${repetition}`) : random;
-            const randomPick = randomSelections(count, entryRandom);
+            const randomPick = randomPickFor(strategy, count, entryRandom);
             if (gradeStrategy(strategy, randomPick, target.balls) === 'WIN') randomWins++;
             randomTrials++;
         }
@@ -294,7 +326,7 @@ function metricsForSegment(opportunities, strategy, seed, onProgress = () => {},
         currentLosingStreak, worstLosingStreak, currentWinningStreak, longestWinningStreak,
         theoreticalBaseline: {
             expectedWinRate: theoreticalRate,
-            probabilityByPickCount: { 1: strategy.id === transitions.HIT ? 6 / 49 : probabilityAllAbsent(1), 2: probabilityAllAbsent(2), 3: probabilityAllAbsent(3), 4: probabilityAllAbsent(4) }
+            probabilityByPickCount: strategy.id === HIGH_LOW_ID ? { 1: HIGH_LOW_PROBABILITY } : { 1: strategy.id === transitions.HIT ? 6 / 49 : probabilityAllAbsent(1), 2: probabilityAllAbsent(2), 3: probabilityAllAbsent(3), 4: probabilityAllAbsent(4) }
         },
         randomBaseline: {
             seed: String(seed),
@@ -852,7 +884,12 @@ function createBetZeroLab(db, options = {}) {
             && minmaxState('2.0.0').cutoverAt) return;
         const state = strategy.id === minmax.ID ? minmaxState(strategy.version) : null;
         if (state && strategy.version === '2.0.0' && strategy.enabled && (!state.cutoverAt || predictedAt <= state.cutoverAt || targetDrawId <= state.afterTargetId || Date.parse(sourceRecord.settledAt) <= state.cutoverAt)) return;
-        const prediction = state && strategy.enabled
+        const followed = strategy.id === HIGH_LOW_ID && strategy.enabled
+            ? db.prepare(`SELECT status, selections_json, conditions_json FROM betzero_lab_forward_predictions
+                WHERE strategy_id=? AND strategy_version='2.0.0' AND target_draw_id=?`).get(minmax.ID, String(targetDrawId)) : null;
+        const prediction = strategy.id === HIGH_LOW_ID && strategy.enabled
+            ? highLowFromMinmax(followed && { status: followed.status, selections: JSON.parse(followed.selections_json), conditions: JSON.parse(followed.conditions_json) })
+            : state && strategy.enabled
             ? minmax.decide({ id: drawIdFromRecord(sourceRecord), balls: sourceBalls }, targetDrawId, minmaxHistory(targetDrawId, predictedAt), state, strategy.version)
             : transitions.isStrategy(strategy.id) && strategy.enabled
                 ? statisticsStore.predict(strategy, targetDrawId, transitions.SEED, predictedAt + 1)
@@ -970,7 +1007,8 @@ function createBetZeroLab(db, options = {}) {
                     }
                 }
                 if (usable) {
-                    for (const strategy of strategies()) {
+                    // HIGH/LOW reads the Minimum/Maximum v2 prediction for this draw, so it is saved last.
+                    for (const strategy of strategies().sort((a, b) => (a.id === HIGH_LOW_ID) - (b.id === HIGH_LOW_ID))) {
                         if (strategyDefinition(strategy.id, strategy.version)) saveForwardPrediction(strategy, sourceRecord, sourceBalls, targetDrawId, recordedAt,
                             { observedAt, expectedTargetAt, snapshotAt, recordedAt, sourceVia });
                     }
@@ -1109,6 +1147,11 @@ function createBetZeroLab(db, options = {}) {
         }))]));
         const mm = effectiveStrategies.find(s => s.id === minmax.ID && s.enabled);
         const minmaxPicks = new Map(effectiveStrategies.filter(s=>s.id===minmax.ID && s.enabled).map(s=>[s.version,minmax.simulate(opportunities, extracted.opportunities, f=>onProgress(f*5),s.version)]));
+        // HIGH/LOW replays Minimum/Maximum v2 over the same draws, whether or not v2 itself is in this run.
+        const highLowPicks = effectiveStrategies.some(s => s.id === HIGH_LOW_ID && s.enabled)
+            ? new Map([...(minmaxPicks.get('2.0.0') || minmax.simulate(opportunities, extracted.opportunities, () => {}, '2.0.0'))]
+                .map(([targetId, pick]) => [targetId, highLowFromMinmax(pick)])) : null;
+        const picksFor = s => s.id === minmax.ID ? minmaxPicks.get(s.version) : s.id === HIGH_LOW_ID ? highLowPicks : transitionPicks.get(`${s.id}@${s.version}`);
         const resultRows = [];
         for (const strategy of effectiveStrategies) {
             const effectiveStrategy = effectiveStrategies.find(item => item.id === strategy.id && item.version === strategy.version);
@@ -1143,7 +1186,7 @@ function createBetZeroLab(db, options = {}) {
                 } else {
                     result = {
                         status: 'RESEARCH_ONLY',
-                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`, fraction => onProgress(5 + 65 * (resultRows.length + fraction) / (effectiveStrategies.length * Object.keys(segments).length)), strategy.id === minmax.ID ? minmaxPicks.get(strategy.version) : transitionPicks.get(`${strategy.id}@${strategy.version}`))
+                        ...metricsForSegment(rows, effectiveStrategy, `${safeSeed}:${segment}`, fraction => onProgress(5 + 65 * (resultRows.length + fraction) / (effectiveStrategies.length * Object.keys(segments).length)), picksFor(strategy))
                     };
                 }
                 resultRows.push({ runId, strategyId: strategy.id, strategyVersion: strategy.version, segment, result });
@@ -1192,7 +1235,7 @@ function createBetZeroLab(db, options = {}) {
             for (const [segment, rows] of Object.entries(segments)) {
                 for (const { source, target } of rows) {
                     if (simulatedPredictions.length % 100 === 0) onProgress(72 + 20 * simulatedPredictions.length / (effectiveStrategies.length * opportunities.length));
-                    const prediction = transitionPicks.get(`${strategy.id}@${strategy.version}`)?.get(target.id) || (strategy.id === minmax.ID && minmaxPicks.get(strategy.version)?.get(target.id)) || predictionFromStrategy(strategy, source);
+                    const prediction = picksFor(strategy)?.get(target.id) || predictionFromStrategy(strategy, source);
                     const status = prediction.status === 'PENDING'
                         ? gradeStrategy(strategy, prediction.selections, target.balls)
                         : 'SKIP';
@@ -1348,6 +1391,6 @@ module.exports = {
     seededRandom,
     randomSelections,
     validateBetZeroPrediction,
-    gradeStrategy, strategyProbability,
+    gradeStrategy, strategyProbability, randomPickFor, HIGH_LOW_ID,
     wilsonInterval
 };
