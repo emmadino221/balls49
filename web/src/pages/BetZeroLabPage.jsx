@@ -204,7 +204,9 @@ export default function BetZeroLabPage({ session }) {
   const [lastDraw, setLastDraw] = useState('');
   const requestInFlight = useRef(false);
 
-  const strategies = useMemo(() => Object.values(overview?.strategyVersions || overview?.strategies || {}), [overview]);
+  // Streak-drop v1 and v2 are retired in favour of streak-1 v3; their saved history is kept but they are no longer offered.
+  const strategies = useMemo(() => Object.values(overview?.strategyVersions || overview?.strategies || {})
+    .filter(strategy => !(strategy.id?.startsWith('statistics_streak_drop_') && ['1.0.0', '2.0.0'].includes(strategy.version))), [overview]);
   const selectedStrategy = strategies.find(strategy => strategyKey(strategy) === selectedStrategyId) || strategies.find(strategy => strategy.id === 'simple_smallest_number_add_10') || strategies[0] || null;
 
   const refreshJobs = useCallback(async () => {
@@ -466,10 +468,6 @@ export default function BetZeroLabPage({ session }) {
           <p className="betzero-section-note">Statistics snapshots collected: {overview.numberStatistics?.snapshots ?? 0}. Conflicts: {overview.numberStatistics?.conflicts ?? 0}. Streak-drop research skips unavailable snapshot pairs.</p>
           <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@3.0.0']} count={[1,2,3,4]} title="BetZero - Streak 1 v3" name="Numbers whose streak is exactly 1; removed when it reaches 2" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
           <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@3.0.0']} count={1} title="Bet49 - Streak 1 v3" name="One seeded random number from the streak-1 numbers" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
-          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@1.0.0']} count={4} title="BetZero - Streak drop v1" name="strk 2 or 3 to 1; first four ascending" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
-          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@1.0.0']} count={1} title="Bet49 - Streak drop v1" name="One seeded random number from the same four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
-          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@2.0.0']} count={[3,4]} title="BetZero - Streak drop v2" name="Use three qualifiers, or first four when more qualify" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
-          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@2.0.0']} count={1} title="Bet49 - Streak drop v2" name="One seeded random number from the same three or four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
           <p className="betzero-section-note">Streak-drop v1 and v2 have separate history and settings. V2 starts disabled; enabling it does not disable v1 or backfill missed draws.</p>
           {!overview.strategyVersions?.['minimum_maximum_three@2.0.0']?.decisionState?.cutoverAt && <PredictionCard strategy={overview.strategyVersions?.['minimum_maximum_three@1.0.0']} count={3}
             title="Minimum/Maximum v1.0.0"

@@ -463,6 +463,11 @@ function createBetZeroLab(db, options = {}) {
         insertConfig.run(strategy.id, strategy.version, strategy.id === 'simple_smallest_number_add_10' ? 1 : 0,
             JSON.stringify({ alertThresholds: ALERT_THRESHOLDS }), now());
     }
+    // One-time retirement: streak-drop v1/v2 stop predicting now that streak-1 v3 replaces them. History is kept.
+    if (db.prepare(`INSERT OR IGNORE INTO betzero_lab_state(state_key, state_value) VALUES ('streak_drop_v1_v2_retired_at', ?)`).run(String(now())).changes) {
+        db.prepare(`UPDATE betzero_lab_strategy_configs SET enabled=0, updated_at=? WHERE enabled=1 AND strategy_id IN (?,?) AND version IN ('1.0.0','2.0.0')`)
+            .run(now(), transitions.ZERO, transitions.HIT);
+    }
     db.prepare(`INSERT OR IGNORE INTO betzero_lab_state(state_key, state_value) VALUES ('started_at', ?)`)
         .run(String(now()));
     db.prepare(`INSERT OR IGNORE INTO betzero_lab_state(state_key, state_value) VALUES ('last_snapshot_at', ?)`)
