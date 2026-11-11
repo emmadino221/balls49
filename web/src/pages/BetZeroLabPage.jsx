@@ -73,6 +73,8 @@ const SKIP_REASONS = {
   STATISTICS_NOT_AVAILABLE_BEFORE_TARGET: 'the statistics arrived too late for this draw',
   FEWER_THAN_FOUR_TRANSITIONS: 'fewer than four numbers dropped from streak 2 or 3 to 1',
   FEWER_THAN_THREE_TRANSITIONS: 'fewer than three numbers dropped from streak 2 or 3 to 1',
+  MISSING_LATEST_STATISTICS: 'the statistics for the latest draw were not available yet',
+  NO_NUMBER_WITH_STREAK_ONE: 'no number had a streak of exactly 1',
 };
 function skipText(row) {
   const reason = row?.conditions?.reason;
@@ -121,13 +123,13 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
       <span className="betzero-enablement-caption">Research Predictions Only — No Automatic Betting</span>
       <button type="button" role="switch" aria-checked={Boolean(strategy?.enabled)}
         aria-label={`${title} research predictions`} aria-busy={saving}
-        disabled={!strategy || !['1.0.0','2.0.0'].includes(strategy.version) || controlsBusy}
+        disabled={!strategy || !['1.0.0','2.0.0','3.0.0'].includes(strategy.version) || controlsBusy}
         className="betzero-enable-switch" onClick={() => onToggle(strategy, title)}>
         <span className="betzero-switch-track" aria-hidden="true"><span /></span>
         <span>{saving ? 'Saving…' : strategy?.enabled ? 'Enabled — switch off' : 'Disabled — switch on'}</span>
       </button>
     </div>
-    <p className="betzero-pick-caption">{strategy?.market === 'BET49' ? 'Single-number appearance research: WIN when selected number appears' : count === 1 ? 'Single-number absence research experiment' : `${Array.isArray(count) ? count.join(' or ') : count}-number research experiment`}</p>
+    <p className="betzero-pick-caption">{strategy?.market === 'BET49' ? 'Single-number appearance research: WIN when selected number appears' : count === 1 ? 'Single-number absence research experiment' : `${Array.isArray(count) ? (count.length > 2 ? `${count[0]} to ${count.at(-1)}` : count.join(' or ')) : count}-number research experiment`}</p>
     {count === 4 && strategy && !strategy.enabled && !records.some(r => r.selections?.length === 4) && <p className="betzero-empty">4-number research predictions are disabled.</p>}
     {count === 3 && <>
       <p className="betzero-pick-caption">Method: {displayed?.conditions?.method || strategy?.decisionState?.method || 'Awaiting analysis'}</p>
@@ -139,7 +141,9 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
       {!decision?.paused && !decision?.pending && decision?.released && <p className="betzero-pick-caption">The result of draw #{decision.released.targetDrawId} never arrived, so that prediction was set aside ({dateTime(decision.released.at)}) and the method restarts from the latest five draws.</p>}
     </>}
     {isStreakDrop && <>
-      <p className="betzero-warning">{strategy.enabled
+      <p className="betzero-warning">{strategy.version === '3.0.0'
+        ? `${strategy.enabled ? 'Enabled.' : 'Disabled, so it makes no predictions. Switch on to start.'} Each draw it uses the numbers whose streak is exactly 1 in the latest statistics (the first four when more qualify). A number is removed as soon as its streak becomes 2.`
+        : strategy.enabled
         ? `Enabled. A prediction appears only when at least ${strategy.version === '2.0.0' ? 'three' : 'four'} numbers drop from streak 2 or 3 to 1 between two consecutive draws; most draws are skipped.`
         : `Disabled, so it makes no predictions. Switch on to start. It then predicts only when at least ${strategy.version === '2.0.0' ? 'three' : 'four'} numbers drop from streak 2 or 3 to 1 between two consecutive draws, so most draws are skipped.`} Results are provisional because Bet9ja statistics carry no draw ID.</p>
       <p className="betzero-pick-caption">{statisticsStatus(statistics)}</p>
@@ -354,7 +358,7 @@ export default function BetZeroLabPage({ session }) {
   }
 
   async function toggleResearchStrategy(strategy, title) {
-    if (!session?.admin || busy || strategySaveLock.current || !strategy || !['1.0.0','2.0.0'].includes(strategy.version)
+    if (!session?.admin || busy || strategySaveLock.current || !strategy || !['1.0.0','2.0.0','3.0.0'].includes(strategy.version)
       || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three', 'statistics_streak_drop_betzero', 'statistics_streak_drop_bet49'].includes(strategy.id)) return;
     // The first time v2 is switched on it must go through the confirmed cutover.
     if (strategy.id === 'minimum_maximum_three' && strategy.version === '2.0.0' && !strategy.enabled && !strategy.decisionState?.cutoverAt) return cutoverMinmax();
@@ -460,6 +464,8 @@ export default function BetZeroLabPage({ session }) {
           <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} live={live} />
           <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} live={live} />
           <p className="betzero-section-note">Statistics snapshots collected: {overview.numberStatistics?.snapshots ?? 0}. Conflicts: {overview.numberStatistics?.conflicts ?? 0}. Streak-drop research skips unavailable snapshot pairs.</p>
+          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@3.0.0']} count={[1,2,3,4]} title="BetZero - Streak 1 v3" name="Numbers whose streak is exactly 1; removed when it reaches 2" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
+          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@3.0.0']} count={1} title="Bet49 - Streak 1 v3" name="One seeded random number from the streak-1 numbers" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
           <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@1.0.0']} count={4} title="BetZero - Streak drop v1" name="strk 2 or 3 to 1; first four ascending" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
           <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@1.0.0']} count={1} title="Bet49 - Streak drop v1" name="One seeded random number from the same four" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
           <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@2.0.0']} count={[3,4]} title="BetZero - Streak drop v2" name="Use three qualifiers, or first four when more qualify" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />

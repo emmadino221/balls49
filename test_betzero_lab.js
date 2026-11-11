@@ -327,7 +327,7 @@ const fourDefinition = () => ({ ...STRATEGIES.find(strategy => strategy.id === F
 
 test('four-number variant starts disabled and original experiment is relabeled without changing its identity', t => {
     const state = openLab(t, 1000);
-    assert.equal(state.lab.strategies().length, 8);
+    assert.equal(state.lab.strategies().length, 10);
     for (const id of ['statistics_streak_drop_betzero', 'statistics_streak_drop_bet49']) {
         assert.equal(state.lab.strategies().find(s => s.id === id).enabled, false);
     }
@@ -378,7 +378,8 @@ test('strict counts, distinctness and range apply to both research contracts', (
         assert.equal(validateBetZeroPrediction(selections, actual, 4), 'INVALID');
     }
     assert.equal(validateBetZeroPrediction([13, 23, 33, 43], actual, 1), 'INVALID');
-    assert.equal(validateBetZeroPrediction([13, 23], actual, 2), 'INVALID');
+    assert.equal(validateBetZeroPrediction([13, 23], actual, 2), 'WIN'); // two picks are valid for streak-1 v3
+    assert.equal(validateBetZeroPrediction([13, 23], actual, 3), 'INVALID');
     assert.equal(validateBetZeroPrediction([13, 23, 33, 43], actual, 4), 'WIN');
     for (const hit of [13, 23, 33, 43]) assert.equal(validateBetZeroPrediction([13, 23, 33, 43], [1, 2, 3, 4, 5, hit], 4), 'LOSS');
 });

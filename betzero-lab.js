@@ -48,7 +48,7 @@ function strategyDefinition(id, version) {
 }
 
 function validSelections(selections, count) {
-    return [1, 3, 4].includes(count) && Array.isArray(selections) && selections.length === count
+    return [1, 2, 3, 4].includes(count) && Array.isArray(selections) && selections.length === count
         && new Set(selections).size === count
         && selections.every(number => Number.isInteger(number) && number >= 1 && number <= 49);
 }
@@ -494,7 +494,7 @@ function createBetZeroLab(db, options = {}) {
             ...row, label: strategyDefinition(row.id, row.version)?.displayLabel || row.label,
             market: strategyDefinition(row.id, row.version)?.market || 'BETZERO',
             selectionCount: strategyDefinition(row.id, row.version)?.selectionCount || null,
-            selectionCounts: row.id === transitions.ZERO && row.version === '2.0.0' ? [3,4] : [strategyDefinition(row.id, row.version)?.selectionCount].filter(Boolean),
+            selectionCounts: row.id === transitions.ZERO && row.version === '3.0.0' ? [1,2,3,4] : row.id === transitions.ZERO && row.version === '2.0.0' ? [3,4] : [strategyDefinition(row.id, row.version)?.selectionCount].filter(Boolean),
             enabled: row.enabled === 1, config: JSON.parse(row.configJson)
         }));
     }

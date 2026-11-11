@@ -95,6 +95,34 @@ test('review resolution resumes a paused strategy and repeated conflicting feeds
     assert.notEqual(s.row(10).conditions.reason,'RESULT_CONFLICT_REVIEW_REQUIRED');
 });
 
+test('streak-1 v3 predicts from the latest statistics alone and drops a number once its streak is 2',t=>{
+    const s=setup(t);
+    const sample=(source,values={})=>({btc:11090,period:'100',sourceDrawId:source,targetDrawId:source+1,
+        requestedAt:source*1000+100,receivedAt:source*1000+110,deadline:(source+1)*1000,
+        response:{data:{stats:Array.from({length:49},(_,i)=>({sel:String(i+1),strk:String(values[i+1] ?? 0)}))}}});
+    const zero={id:transitions.ZERO,version:'3.0.0'},hit={id:transitions.HIT,version:'3.0.0'};
+    const first=transitions.normalize(sample(10,{5:1,9:1,20:1,31:2}));
+    assert.deepEqual(transitions.pick(zero,null,first,11).selections,[5,9,20]);
+    const one=transitions.pick(hit,null,first,11);
+    assert.equal(one.selections.length,1);assert.ok([5,9,20].includes(one.selections[0]));
+    assert.deepEqual(transitions.pick(hit,null,first,11),one);
+    // 9 moved to streak 2 and is removed; more than four qualifiers are capped at the first four.
+    assert.deepEqual(transitions.pick(zero,null,transitions.normalize(sample(11,{5:1,9:2,20:1})),12).selections,[5,20]);
+    assert.deepEqual(transitions.pick(zero,null,transitions.normalize(sample(11,{1:1,2:1,3:1,4:1,5:1})),12).selections,[1,2,3,4]);
+    assert.equal(transitions.pick(zero,null,transitions.normalize(sample(11,{9:2})),12).conditions.reason,'NO_NUMBER_WITH_STREAK_ONE');
+    assert.equal(transitions.pick(zero,null,first,12).conditions.reason,'MISSING_LATEST_STATISTICS');
+    // Live: once switched on, one sample is enough and a two-number BetZero pick is graded.
+    assert.equal(s.lab.strategies().filter(x=>x.version==='3.0.0').length,2);
+    s.lab.setStrategyConfig(transitions.ZERO,{version:'3.0.0',enabled:true});
+    const rows=target=>s.lab.listForwardPredictions({strategyId:transitions.ZERO,strategyVersion:'3.0.0'}).find(x=>x.targetDrawId===String(target));
+    s.setTime(10200);
+    s.lab.ingestSnapshot({current:{drawId:'11'},clock:{drawId:'11',timeLeftSeconds:60,observedAt:10200},snapshotAt:10200,historyUpdates:[record(10,a)],numberStatistics:sample(10,{5:1,9:1})});
+    assert.equal(rows(11).status,'PENDING');assert.deepEqual(rows(11).selections,[5,9]);
+    s.setTime(11200);
+    s.lab.ingestSnapshot({current:{drawId:'12'},clock:{drawId:'12',timeLeftSeconds:60,observedAt:11200},snapshotAt:11200,historyUpdates:[record(11,b)],numberStatistics:sample(11,{5:1,9:2})});
+    assert.equal(rows(11).status,'WIN');assert.deepEqual(rows(12).selections,[5]);
+});
+
 test('statistics samples without a provider status are accepted and rejections are explained',t=>{
     const s=setup(t);
     const sample=(source,values={},rows=49)=>({btc:11090,period:'100',sourceDrawId:source,targetDrawId:source+1,

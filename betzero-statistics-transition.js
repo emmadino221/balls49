@@ -14,8 +14,15 @@ definitions.push(...definitions.map(s => ({ ...s, version: '2.0.0',
     label: s.id === ZERO ? 'BetZero - Streak drop v2 (3 or 4 numbers)' : 'Bet49 - Streak drop v2 (one from 3 or 4)',
     description: 'Consecutive observed 100-draw statistics: strk 2 or 3 to 1; use three when exactly three qualify, otherwise first four ascending. Skip fewer than three. Bet49 selects one seeded random candidate.'
 })));
+// v3 needs only the latest statistics: every number whose current streak is exactly 1.
+// A number leaves the selection by itself as soon as its streak moves to 2 (or anything else).
+definitions.push(...definitions.filter(s => s.version === '1.0.0').map(s => ({ ...s, version: '3.0.0',
+    label: s.id === ZERO ? 'BetZero - Streak 1 v3 (up to 4 numbers)' : 'Bet49 - Streak 1 v3 (one of the streak-1 numbers)',
+    description: 'Latest observed 100-draw statistics: numbers whose strk is exactly 1; first four ascending, fewer when fewer qualify. A number is dropped once its strk is no longer 1. Skip when none qualify. Bet49 selects one seeded random candidate.'
+})));
 
 function acceptsCount(strategy, count) {
+    if (strategy.id === ZERO && strategy.version === '3.0.0') return count >= 1 && count <= 4;
     if (strategy.id === ZERO && strategy.version === '2.0.0') return count === 3 || count === 4;
     return count === strategy.selectionCount;
 }
@@ -68,6 +75,25 @@ function describe(raw) {
 
 function pick(strategy, previous, current, targetId, seed = SEED) {
     const skip = reason => ({ status:'SKIP', selections:[], conditions:{reason, market:strategy.id === HIT ? 'BET49' : 'BETZERO'} });
+    if (strategy.version === '3.0.0') {
+        const market = strategy.id === HIT ? 'BET49' : 'BETZERO';
+        if (!current) return skip('MISSING_LATEST_STATISTICS');
+        if (current.conflicted) return skip('CONFLICTING_STATISTICS_SNAPSHOTS');
+        if (current.targetDrawId !== targetId) return skip('MISSING_LATEST_STATISTICS');
+        const qualified = current.values.flatMap((v,i) => v === 1 ? [i+1] : []);
+        if (!qualified.length) return { ...skip('NO_NUMBER_WITH_STREAK_ONE'), conditions:{reason:'NO_NUMBER_WITH_STREAK_ONE',market,qualified,requiredMinimum:1} };
+        const candidates = qualified.slice(0,4);
+        const randomSeed = `${seed}:${strategy.version}:${targetId}:${current.signature}`;
+        let index;
+        for (let nonce=0; index === undefined; nonce++) {
+            const bytes = crypto.createHash('sha256').update(`${randomSeed}:${nonce}`).digest();
+            for (const byte of bytes) if (byte < 252) { index=byte % candidates.length; break; }
+        }
+        return { status:'PENDING', selections:strategy.id === HIT ? [candidates[index]] : candidates,
+            conditions:{model:'OBSERVED_STATISTICS_STREAK_ONE', market, qualified, betzeroCandidates:candidates,
+                randomSeed:strategy.id === HIT ? randomSeed : null, currentHash:current.signature,
+                sourceDrawId:current.sourceDrawId, inputReceivedAt:current.receivedAt, providerDrawAlignmentVerified:false} };
+    }
     if (!previous || !current) return skip('MISSING_STATISTICS_SNAPSHOTS');
     if (previous.conflicted || current.conflicted) return skip('CONFLICTING_STATISTICS_SNAPSHOTS');
     if (current.targetDrawId !== targetId || previous.targetDrawId !== current.sourceDrawId
@@ -120,7 +146,7 @@ function createStore(db) {
     }
     function remember(raw, now) { return rememberDetailed(raw, now).stored; }
     function predict(strategy, target, seed, before = Infinity) {
-        const previous=read(target-2), current=read(target-1);
+        const previous=strategy.version === '3.0.0' ? null : read(target-2), current=read(target-1);
         if ([previous,current].some(s => s && (s.receivedAt >= before || s.recordedAt >= before)))
             return {status:'SKIP',selections:[],conditions:{reason:'STATISTICS_NOT_AVAILABLE_BEFORE_TARGET'}};
         return pick(strategy,previous,current,target,seed);
