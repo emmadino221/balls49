@@ -249,6 +249,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'GET /admin/betzero-lab', 'GET /admin/betzero-lab/predictions', 'GET /admin/betzero-lab/backtests',
     'POST /admin/betzero-lab/backtests', 'POST /admin/betzero-lab/strategy-config', 'POST /admin/betzero-lab/minmax-cutover',
+    'POST /admin/betzero-lab/minmax-review', 'POST /admin/betzero-lab/reset-history',
     'GET /admin/betzero-lab/jobs', 'POST /admin/betzero-lab/jobs', 'POST /admin/betzero-lab/job-cancel',
     'GET /admin/betzero-lab/protocols', 'POST /admin/betzero-lab/protocols',
     'POST /internal/prediction-snapshot', 'POST /internal/virtual-football-snapshot',

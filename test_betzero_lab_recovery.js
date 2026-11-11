@@ -147,6 +147,15 @@ test('resetting one strategy history archives its rows, clears its totals and le
     assert.equal(s.row(8,SINGLE).status,'LOSS');
 });
 
+test('every lab admin action is reachable on the public website',()=>{
+    // In public mode the server answers 404 for any route missing from PUBLIC_SITE_ROUTES.
+    const source=require('node:fs').readFileSync(require('node:path').join(__dirname,'bot.js'),'utf8');
+    const allowed=source.slice(source.indexOf('const PUBLIC_SITE_ROUTES'),source.indexOf('function isAllowedApiOrigin'));
+    const handled=[...new Set([...source.matchAll(/pathname === '(\/admin\/betzero-lab\/[a-z-]+)'/g)].map(match=>match[1]))];
+    assert.ok(handled.includes('/admin/betzero-lab/reset-history'));
+    for (const route of handled) assert.ok(allowed.includes(`'POST ${route}'`),`${route} is not allowed in public mode`);
+});
+
 test('statistics samples without a provider status are accepted and rejections are explained',t=>{
     const s=setup(t);
     const sample=(source,values={},rows=49)=>({btc:11090,period:'100',sourceDrawId:source,targetDrawId:source+1,
