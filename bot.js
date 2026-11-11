@@ -477,6 +477,20 @@ let lastDrawId = null, predSentForId = null, lastPrediction = null;
 let lastGlobalDrawId = null; 
 let publicClock = { drawId: null, timeLeftSeconds: null, drawDate: null, observedAt: null };
 let labNumberStatistics = null;
+// Research-only: recent completed results straight from the draw archive, so the Lab can
+// settle and continue across the daily reset. Never used for production predictions.
+let labRecentResults = [];
+function rememberLabRecentResults(draws) {
+    const byId = new Map(labRecentResults.map(item => [item.drawId, item]));
+    for (const draw of Array.isArray(draws) ? draws : []) {
+        const drawId = Number(draw?.id);
+        const balls = String(draw?.dr || '').split(',').map(Number);
+        if (!Number.isSafeInteger(drawId) || drawId < 1 || balls.length !== 6 || new Set(balls).size !== 6
+            || !balls.every(n => Number.isInteger(n) && n >= 1 && n <= 49)) continue;
+        if (!byId.has(drawId)) byId.set(drawId, { drawId, balls });
+    }
+    labRecentResults = [...byId.values()].sort((a, b) => a.drawId - b.drawId).slice(-40);
+}
 let globalDefaultStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, totalColor1: 0 };
 
 const processedDrawIds = new Set();
@@ -1159,6 +1173,7 @@ async function publishPredictionSnapshot() {
             current: buildPublicFeedCurrent(),
             clock: publicClock,
             numberStatistics: labNumberStatistics,
+            labResults: labRecentResults,
             historyUpdates
         };
         const body = JSON.stringify(snapshot);
@@ -3354,6 +3369,7 @@ async function tick() {
         var drawsData = await apiGet('/draws?settle=' + encodeURIComponent(settlementIds));
         checkDailyHistoryReset();
         var draws = [...(drawsData.draws || []), ...(drawsData.settlementDraws || [])];
+        try { rememberLabRecentResults(draws); } catch { /* research-only side channel */ }
 
         if (lastPrediction && lastPrediction.telegramPredictionQueued !== true) {
             const hasLegacyPredictionRecord = lastPrediction.telegramPredictionQueued === undefined
@@ -3467,8 +3483,13 @@ async function tick() {
             labNumberStatistics = null;
             const statisticsReceivedAt = Date.now();
             const sourceResult = predictionLog.find(r => Number(r.drawId) === Number(nextId)-1 && r.result?.balls?.length === 6);
+            // After the daily reset the prediction log no longer holds the source draw; the
+            // archive result fetched earlier in this tick proves it completed before the request.
+            const sourceCompleted = sourceResult
+                ? Date.parse(sourceResult.settledAt) <= statisticsRequestedAt
+                : labRecentResults.some(item => item.drawId === Number(nextId)-1);
             const statisticsDeadline = Number(publicClock.observedAt) + Number(publicClock.timeLeftSeconds)*1000;
-            if (sourceResult && Date.parse(sourceResult.settledAt) <= statisticsRequestedAt
+            if (sourceCompleted
                 && String(publicClock.drawId) === String(nextId) && statisticsRequestedAt - publicClock.observedAt <= 30000
                 && statisticsReceivedAt < statisticsDeadline) {
                 labNumberStatistics = { btc:11090,period:'100',sourceDrawId:Number(nextId)-1,targetDrawId:Number(nextId),
@@ -3960,7 +3981,9 @@ async function handleHttpRequest(req, res) {
                         clock: snapshot.clock,
                         historyUpdates: normalizedHistoryUpdates.map(item => item.record),
                         snapshotAt,
-                        numberStatistics: snapshot.numberStatistics
+                        numberStatistics: snapshot.numberStatistics,
+                        // Validated again inside the Lab; bounded here so a bad feed cannot grow the work.
+                        labResults: Array.isArray(snapshot.labResults) ? snapshot.labResults.slice(-60) : []
                     });
                 } catch (error) {
                     console.error('[BetZeroLab] Could not process a prediction snapshot; the production feed was stored.', error);
@@ -4255,6 +4278,17 @@ async function handleHttpRequest(req, res) {
 
     if (parsedUrl.pathname === '/admin/betzero-lab/minmax-cutover') {
         return require('./betzero-cutover-api').handleCutoverApi({req,res,session:siteSession(req),lab:betzeroLab,readJson:readRequestJson,sendJson});
+    }
+
+    if (parsedUrl.pathname === '/admin/betzero-lab/minmax-review') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed.' });
+        if (!betzeroLab) return sendJson(res, 503, { error: 'BetZero lab storage is unavailable; check the server log.' });
+        let request;
+        try { request = await readRequestJson(req); }
+        catch { return sendJson(res, 400, { error: 'Invalid review request.' }); }
+        try { return sendJson(res, 200, betzeroLab.resolveMinmaxReview({ confirmed: request?.confirmed })); }
+        catch (error) { return sendJson(res, error.status || 500, { error: error.status ? error.message : 'The MIN/MAX review could not be resolved.' }); }
     }
 
     if (parsedUrl.pathname === '/admin/betzero-lab/strategy-config' && req.method === 'POST') {

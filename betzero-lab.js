@@ -6,6 +6,9 @@ const transitions = require('./betzero-statistics-transition');
 
 const RANDOM_REPETITIONS = 64;
 const ALERT_THRESHOLDS = [3, 5, 7, 10];
+// A MIN/MAX prediction whose result is still missing this long after its draw stops blocking new ones.
+const MINMAX_RESULT_OVERDUE_MS = 15 * 60 * 1000;
+const MAX_LAB_RESULTS = 60;
 function describeEvaluation(data) {
     return data.evaluationMode ? data : { ...data, evaluationMode: 'LEGACY_EXPLORATORY',
         methodology: 'Legacy exploratory historical simulation. Its final_test segment is a reused holdout, not an enforced untouched final test.' };
@@ -636,10 +639,68 @@ function createBetZeroLab(db, options = {}) {
         return { ...plan, dryRun: false, applied };
     }
 
+    // Only the prediction a version is actively waiting on blocks a cutover. Abandoned
+    // PENDING rows (released because their result never arrived) no longer block forever.
     function assertMinmaxClear() {
-        const conflict = ['1.0.0','2.0.0'].some(v=>{const state=minmaxState(v);return state.pending || state.paused;});
-        const unresolved = db.prepare("SELECT COUNT(*) n FROM betzero_lab_forward_predictions WHERE strategy_id=? AND status IN ('PENDING','INVALID')").get(minmax.ID).n;
-        if (conflict || unresolved) throw Object.assign(new Error('Cutover blocked: unresolved MIN/MAX predictions or correction conflicts require review.'),{status:409});
+        const problems = [];
+        for (const version of ['1.0.0','2.0.0']) {
+            const state = minmaxState(version), label = version === '1.0.0' ? 'v1' : 'v2';
+            if (state.paused) problems.push(`${label} is paused for review of a conflicting result${state.conflictDrawId ? ` (draw ${state.conflictDrawId})` : ''}`);
+            else if (state.pending) problems.push(`${label} is still waiting for the result of draw ${state.pending}`);
+        }
+        const invalid = db.prepare("SELECT COUNT(*) n FROM betzero_lab_forward_predictions WHERE strategy_id=? AND status='INVALID'").get(minmax.ID).n;
+        if (invalid) problems.push(`${invalid} MIN/MAX prediction${invalid === 1 ? ' has' : 's have'} an invalid saved result`);
+        if (problems.length) throw Object.assign(new Error(`Cutover blocked: ${problems.join('; ')}. Unresolved MIN/MAX predictions or correction conflicts require review.`),{status:409});
+    }
+    function resolveMinmaxReview({confirmed} = {}) {
+        if (confirmed !== true) throw Object.assign(new Error('Explicit confirmation is required to resolve the MIN/MAX review.'),{status:400});
+        db.exec('BEGIN IMMEDIATE');
+        try {
+            const resolved = [];
+            for (const version of ['1.0.0','2.0.0']) {
+                const state = minmaxState(version);
+                if (!state.paused) continue;
+                const { paused, conflictDrawId, ...rest } = state;
+                const reviewed = [...new Set([...(Array.isArray(state.reviewedConflictDrawIds) ? state.reviewedConflictDrawIds : []), conflictDrawId]
+                    .filter(Number.isSafeInteger))].slice(-50);
+                // The conflicting draw stays excluded from history; the method restarts from clean evidence.
+                saveMinmaxState({ ...rest, pending: null, method: null, reviewedConflictDrawIds: reviewed,
+                    reviewResolvedAt: now(), lastReviewedConflictDrawId: conflictDrawId ?? null }, version);
+                resolved.push({ version, conflictDrawId: conflictDrawId ?? null });
+            }
+            if (!resolved.length) throw Object.assign(new Error('MIN/MAX is not paused; there is nothing to resolve.'),{status:409});
+            db.exec('COMMIT');
+            return { resolved };
+        } catch(error) {db.exec('ROLLBACK');throw error;}
+    }
+    // Repairs a MIN/MAX version that is stuck waiting on a prediction. Runs only while a
+    // snapshot is being ingested, inside its transaction.
+    function healMinmax(snapshotAt, validatedAt) {
+        let changedFromTarget = null;
+        for (const version of ['1.0.0','2.0.0']) {
+            const state = minmaxState(version);
+            if (!state.pending || state.paused) continue;
+            const target = Number(state.pending);
+            const row = db.prepare(`SELECT status, predicted_at, conditions_json FROM betzero_lab_forward_predictions
+                WHERE strategy_id=? AND strategy_version=? AND target_draw_id=?`).get(minmax.ID, version, String(target));
+            const release = reason => saveMinmaxState({ ...state, pending: null, method: null,
+                released: { targetDrawId: target, at: snapshotAt, reason } }, version);
+            if (!row || row.status === 'SKIP') { release('NO_OPEN_PREDICTION'); continue; }
+            if (row.status === 'WIN' || row.status === 'LOSS') { saveMinmaxState(minmax.settle(state, target, row.status, version), version); continue; }
+            if (row.status !== 'PENDING') continue;
+            const stored = db.prepare('SELECT balls_json, conflicted FROM betzero_lab_minmax_draws WHERE draw_id=?').get(target);
+            if (stored && !stored.conflicted) {
+                const changed = settleRecord({ drawId: target, result: { balls: JSON.parse(stored.balls_json) } }, validatedAt, { pendingOnly: true, minmaxOnly: true });
+                if (changed !== null && (changedFromTarget === null || changed < changedFromTarget)) changedFromTarget = changed;
+                continue;
+            }
+            let expected = NaN;
+            try { expected = Number(JSON.parse(row.conditions_json)?.timing?.expectedTargetAt); } catch { /* fall back to the prediction time */ }
+            if (!Number.isFinite(expected)) expected = Date.parse(row.predicted_at);
+            // The result never arrived (for example the draw in flight at the daily reset).
+            if (Number.isFinite(expected) && snapshotAt - expected >= MINMAX_RESULT_OVERDUE_MS) release('RESULT_NOT_RECEIVED');
+        }
+        return changedFromTarget;
     }
     function cutoverMinmax({fromVersion,toVersion,confirmed} = {}) {
         if (fromVersion !== '1.0.0' || toVersion !== '2.0.0' || confirmed !== true) throw Object.assign(new Error('Explicit confirmation of v1 to v2 cutover is required.'),{status:400});
@@ -676,11 +737,14 @@ function createBetZeroLab(db, options = {}) {
         const settledAt = Date.parse(record.settledAt || '');
         if (Number.isFinite(settledAt) && settledAt > observedAt) return;
         const json = JSON.stringify([...balls].sort((a,b)=>a-b));
-        const previous = db.prepare('SELECT balls_json FROM betzero_lab_minmax_draws WHERE draw_id=?').get(id);
+        const previous = db.prepare('SELECT balls_json, conflicted FROM betzero_lab_minmax_draws WHERE draw_id=?').get(id);
         if (previous && previous.balls_json !== json) {
+            // Pause once, when the conflict is first seen; a repeated feed of the same
+            // conflicting result must not undo an administrator's resolved review.
+            if (previous.conflicted) return;
             db.prepare('UPDATE betzero_lab_minmax_draws SET conflicted=1 WHERE draw_id=?').run(id);
             for (const version of ['1.0.0','2.0.0']) saveMinmaxState({ ...minmaxState(version), paused: true, conflictDrawId: id }, version);
-        } else db.prepare('INSERT OR IGNORE INTO betzero_lab_minmax_draws(draw_id,balls_json,observed_at) VALUES(?,?,?)').run(id,json,observedAt);
+        } else if (!previous) db.prepare('INSERT OR IGNORE INTO betzero_lab_minmax_draws(draw_id,balls_json,observed_at) VALUES(?,?,?)').run(id,json,observedAt);
     }
     function minmaxHistory(target, recordedAt) {
         return db.prepare(`SELECT s.draw_id sid,s.balls_json sb,t.draw_id tid,t.balls_json tb
@@ -689,7 +753,7 @@ function createBetZeroLab(db, options = {}) {
             ORDER BY t.draw_id DESC LIMIT 5`).all(target,recordedAt,recordedAt).reverse().map(r => ({
                 source:{id:r.sid,balls:JSON.parse(r.sb)}, target:{id:r.tid,balls:JSON.parse(r.tb)} }));
     }
-    function settleRecord(record, validatedAt) {
+    function settleRecord(record, validatedAt, options = {}) {
         const targetId = drawIdFromRecord(record);
         if (targetId === null || !record?.result || typeof record.result !== 'object') return null;
         const rows = db.prepare(`SELECT * FROM betzero_lab_forward_predictions
@@ -700,14 +764,21 @@ function createBetZeroLab(db, options = {}) {
         let changed = false;
         for (const row of rows) {
             if (!strategyDefinition(row.strategy_id, row.strategy_version)?.selectionCount) continue;
+            // Recovery sources may only settle open predictions; they never revise settled ones.
+            if (options.pendingOnly && (row.status !== 'PENDING' || !actualBalls)) continue;
+            if (options.minmaxOnly && row.strategy_id !== minmax.ID) continue;
             const selections = JSON.parse(row.selections_json);
             if (row.strategy_id === minmax.ID) {
-                if (!actualBalls || minmaxState(row.strategy_version).paused) continue;
+                const state = minmaxState(row.strategy_version);
+                if (!actualBalls || state.paused) continue;
                 if (row.status !== 'PENDING') {
-                    if (row.actual_balls_json && JSON.stringify(JSON.parse(row.actual_balls_json).sort((a,b)=>a-b)) !== JSON.stringify([...actualBalls].sort((a,b)=>a-b)))
-                        saveMinmaxState({ ...minmaxState(row.strategy_version), paused:true, conflictDrawId:targetId },row.strategy_version);
+                    if (row.actual_balls_json && JSON.stringify(JSON.parse(row.actual_balls_json).sort((a,b)=>a-b)) !== JSON.stringify([...actualBalls].sort((a,b)=>a-b))
+                        && !(Array.isArray(state.reviewedConflictDrawIds) && state.reviewedConflictDrawIds.includes(targetId)))
+                        saveMinmaxState({ ...state, paused:true, conflictDrawId:targetId },row.strategy_version);
                     continue;
                 }
+                // A draw with two different reported results is never graded automatically.
+                if (db.prepare('SELECT conflicted FROM betzero_lab_minmax_draws WHERE draw_id=?').get(targetId)?.conflicted) continue;
             }
             const nextStatus = actualBalls ? gradeStrategy(strategyDefinition(row.strategy_id, row.strategy_version), selections, actualBalls) : 'INVALID';
             const nextBallsJson = actualBalls ? JSON.stringify(actualBalls) : null;
@@ -755,20 +826,61 @@ function createBetZeroLab(db, options = {}) {
         if (state && strategy.enabled && inserted.changes) saveMinmaxState(minmax.afterDecision(state, prediction, targetDrawId), strategy.version);
     }
 
-    function ingestSnapshot({ current, clock, historyUpdates, snapshotAt, numberStatistics }) {
+    // Recent completed results sent by the worker straight from the draw archive. They are a
+    // recovery source only: complete, unique six-ball results for distinct draws.
+    function normalizeLabResults(value) {
+        if (!Array.isArray(value)) return [];
+        const byId = new Map();
+        for (const item of value.slice(-MAX_LAB_RESULTS)) {
+            const id = Number(item?.drawId);
+            const balls = Array.isArray(item?.balls) ? item.balls.map(Number) : null;
+            if (!Number.isSafeInteger(id) || id < 1 || !validBalls(balls)) continue;
+            byId.set(id, byId.has(id) ? null : balls);
+        }
+        return [...byId].filter(([, balls]) => balls).sort((a, b) => a[0] - b[0]).map(([drawId, balls]) => ({ drawId, balls }));
+    }
+    // Keeps the first decisive outcome per source draw so the 5-second feed repeats do not hide it.
+    function recordStatisticsIngest(outcome, snapshotAt) {
+        let previous = null;
+        try { previous = JSON.parse(getState.get('statistics_last_ingest')?.state_value || 'null'); } catch { previous = null; }
+        if (previous && previous.outcome === outcome.outcome && previous.reason === outcome.reason
+            && previous.sourceDrawId === outcome.sourceDrawId) return;
+        if (previous && outcome.sourceDrawId !== null && previous.sourceDrawId === outcome.sourceDrawId
+            && !['STORED','CONFLICT'].includes(outcome.outcome)) return;
+        setState.run('statistics_last_ingest', JSON.stringify({ ...outcome, at: snapshotAt }));
+    }
+
+    function ingestSnapshot({ current, clock, historyUpdates, snapshotAt, numberStatistics, labResults }) {
         if (!Number.isSafeInteger(snapshotAt) || snapshotAt <= 0) throw new Error('Invalid lab snapshot timestamp.');
         const validatedAt = new Date(snapshotAt).toISOString();
         db.exec('BEGIN IMMEDIATE');
         try {
             let changedFromTarget = null;
-            if (numberStatistics) statisticsStore.remember(numberStatistics, now());
-            for (const record of Array.isArray(historyUpdates) ? historyUpdates : []) {
+            const noteChange = changedTarget => {
+                if (changedTarget !== null && (changedFromTarget === null || changedTarget < changedFromTarget)) changedFromTarget = changedTarget;
+            };
+            recordStatisticsIngest(numberStatistics
+                ? statisticsStore.rememberDetailed(numberStatistics, now())
+                : { stored: false, outcome: 'NOT_PROVIDED', reason: null, sourceDrawId: null, targetDrawId: null }, snapshotAt);
+            const updates = Array.isArray(historyUpdates) ? historyUpdates : [];
+            for (const record of updates) {
                 rememberMinmaxResult(record, snapshotAt);
-                const changedTarget = settleRecord(record, validatedAt);
-                if (changedTarget !== null && (changedFromTarget === null || changedTarget < changedFromTarget)) {
-                    changedFromTarget = changedTarget;
+                noteChange(settleRecord(record, validatedAt));
+            }
+            // Results the normal history feed never delivered (daily reset, restarts) still
+            // settle open predictions and keep the MIN/MAX result history continuous.
+            const recentResults = normalizeLabResults(labResults);
+            if (recentResults.length) {
+                const updatedIds = new Set(updates.filter(record => record?.result && typeof record.result === 'object').map(drawIdFromRecord));
+                const pendingTargets = new Set(db.prepare("SELECT DISTINCT target_draw_id AS target FROM betzero_lab_forward_predictions WHERE status='PENDING'")
+                    .all().map(row => Number(row.target)));
+                for (const item of recentResults) {
+                    const record = { drawId: item.drawId, result: { balls: item.balls } };
+                    rememberMinmaxResult(record, snapshotAt);
+                    if (pendingTargets.has(item.drawId) && !updatedIds.has(item.drawId)) noteChange(settleRecord(record, validatedAt, { pendingOnly: true }));
                 }
             }
+            noteChange(healMinmax(snapshotAt, validatedAt));
 
             const targetDrawId = Number(current?.drawId);
             const clockDrawId = Number(clock?.drawId);
@@ -776,23 +888,41 @@ function createBetZeroLab(db, options = {}) {
             const observedAt = Number(clock?.observedAt);
             const recordedAt = Math.max(snapshotAt, now());
             const expectedTargetAt = observedAt + timeLeft * 1000;
-            const targetAlreadySettled = (Array.isArray(historyUpdates) ? historyUpdates : []).some(record =>
-                drawIdFromRecord(record) === targetDrawId && record?.result && typeof record.result === 'object');
+            const targetAlreadySettled = updates.some(record =>
+                drawIdFromRecord(record) === targetDrawId && record?.result && typeof record.result === 'object')
+                || recentResults.some(item => item.drawId === targetDrawId);
             if (Number.isSafeInteger(targetDrawId) && targetDrawId > 1 && clockDrawId === targetDrawId
                 && !targetAlreadySettled && Number.isFinite(timeLeft) && timeLeft > 0 && timeLeft <= 300
                 && Number.isSafeInteger(observedAt) && observedAt > 0 && observedAt <= snapshotAt
                 && snapshotAt - observedAt <= 30000 && recordedAt < expectedTargetAt) {
-                const sourceRecord = (Array.isArray(historyUpdates) ? historyUpdates : []).find(record =>
+                let sourceRecord = updates.find(record =>
                     drawIdFromRecord(record) === targetDrawId - 1 && record?.result && typeof record.result === 'object');
-                const sourceBalls = ballsFromRecord(sourceRecord);
+                let sourceBalls = ballsFromRecord(sourceRecord);
+                let sourceVia = 'HISTORY_UPDATE';
                 const settledAt = Date.parse(sourceRecord?.settledAt || '');
                 const lastSnapshotAt = Number(getState.get('last_snapshot_at')?.state_value) || 0;
                 const startedAt = Number(getState.get('started_at')?.state_value) || 0;
-                if (sourceRecord && validBalls(sourceBalls) && Number.isFinite(settledAt)
-                    && settledAt > Math.max(lastSnapshotAt, startedAt) && settledAt <= snapshotAt) {
+                let usable = Boolean(sourceRecord && validBalls(sourceBalls) && Number.isFinite(settledAt)
+                    && settledAt > Math.max(lastSnapshotAt, startedAt) && settledAt <= snapshotAt);
+                if (!usable) {
+                    // The source result and the open draw can arrive in different snapshots, and
+                    // after the daily reset the source is absent from the history feed. If nothing
+                    // was recorded for this still-open target, use the archived source result.
+                    const fallback = recentResults.find(item => item.drawId === targetDrawId - 1);
+                    const stored = fallback && db.prepare('SELECT balls_json, observed_at, conflicted FROM betzero_lab_minmax_draws WHERE draw_id=?').get(targetDrawId - 1);
+                    if (stored && !stored.conflicted && stored.observed_at <= snapshotAt
+                        && stored.balls_json === JSON.stringify([...fallback.balls].sort((a, b) => a - b))
+                        && !db.prepare('SELECT 1 FROM betzero_lab_forward_predictions WHERE target_draw_id=? LIMIT 1').get(String(targetDrawId))) {
+                        sourceRecord = { drawId: String(targetDrawId - 1), result: { balls: fallback.balls }, settledAt: new Date(stored.observed_at).toISOString() };
+                        sourceBalls = fallback.balls;
+                        sourceVia = 'ARCHIVE_RESULT';
+                        usable = true;
+                    }
+                }
+                if (usable) {
                     for (const strategy of strategies()) {
                         if (strategyDefinition(strategy.id, strategy.version)) saveForwardPrediction(strategy, sourceRecord, sourceBalls, targetDrawId, recordedAt,
-                            { observedAt, expectedTargetAt, snapshotAt, recordedAt });
+                            { observedAt, expectedTargetAt, snapshotAt, recordedAt, sourceVia });
                     }
                 }
             }
@@ -1126,7 +1256,10 @@ function createBetZeroLab(db, options = {}) {
             forwardWindows: require('./betzero-forward-metrics').forwardWindows(db, strategies(), now()),
             predictions: listForwardPredictions({ limit: 100 }),
             alerts: alerts(100),
-            numberStatistics: db.prepare('SELECT COUNT(*) AS snapshots, MIN(source_draw_id) AS firstSourceDraw, MAX(source_draw_id) AS lastSourceDraw, COALESCE(SUM(conflicted),0) AS conflicts FROM betzero_lab_number_statistics').get(),
+            numberStatistics: {
+                ...db.prepare('SELECT COUNT(*) AS snapshots, MIN(source_draw_id) AS firstSourceDraw, MAX(source_draw_id) AS lastSourceDraw, COALESCE(SUM(conflicted),0) AS conflicts FROM betzero_lab_number_statistics').get(),
+                lastIngest: (() => { try { return JSON.parse(getState.get('statistics_last_ingest')?.state_value || 'null'); } catch { return null; } })()
+            },
             backtestRuns: listBacktestRuns(20)
         };
     }
@@ -1136,6 +1269,7 @@ function createBetZeroLab(db, options = {}) {
         setStrategyConfig,
         setStrategyEnabled,
         cutoverMinmax,
+        resolveMinmaxReview,
         ingestSnapshot,
         reconcileArchive,
         listForwardPredictions,

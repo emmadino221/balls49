@@ -1,0 +1,123 @@
+'use strict';
+// Synthetic fixtures verify recovery mechanics only; they are not reported performance.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const {DatabaseSync} = require('node:sqlite');
+const mm = require('./betzero-minmax');
+const transitions = require('./betzero-statistics-transition');
+const {createBetZeroLab} = require('./betzero-lab');
+const SINGLE = 'simple_smallest_number_add_10';
+const a = [3,8,17,23,36,44], b = [4,10,18,24,35,40], c = [7,12,19,25,32,38];
+const record = (id,balls=a) => ({drawId:String(id), result:{balls}, settledAt:new Date(id*1000+100).toISOString()});
+function setup(t) {
+    const db=new DatabaseSync(':memory:');let time=1;
+    const lab=createBetZeroLab(db,{now:()=>time});
+    t.after(()=>db.close());
+    lab.setStrategyEnabled(mm.ID,true);
+    return {db,lab,setTime(value){time=value;},state:(version='1.0.0')=>lab.statsForVersion(mm.ID,version).decisionState,
+        rows:(id=mm.ID)=>lab.listForwardPredictions({strategyId:id}),row:(target,id=mm.ID)=>lab.listForwardPredictions({strategyId:id}).find(x=>x.targetDrawId===String(target))};
+}
+function ingest(s,target,records,extra={}) {
+    s.lab.ingestSnapshot({current:{drawId:String(target)},clock:{drawId:String(target),timeLeftSeconds:60,observedAt:target*1000},snapshotAt:target*1000,historyUpdates:records,...extra});
+}
+// Draws 1-6 give MIN as the starting method; the MIN/MAX prediction for draw 7 is [2,3,4].
+function openPrediction(s) {
+    ingest(s,7,Array.from({length:6},(_,i)=>record(i+1,i===5?b:a)));
+    assert.equal(s.row(7).status,'PENDING');assert.deepEqual(s.row(7).selections,[3,4,5]);assert.equal(s.state().pending,7);
+}
+
+test('a result missing from the history feed is settled from the archive results and predictions continue',t=>{
+    const s=setup(t);openPrediction(s);
+    // Daily reset: draw 7 never appears in historyUpdates; only the archive results carry it.
+    ingest(s,8,[],{labResults:[{drawId:7,balls:c}]});
+    assert.equal(s.row(7).status,'WIN');assert.deepEqual(s.row(7).actualBalls,c);
+    assert.equal(s.row(7,SINGLE).status,'WIN');
+    const next=s.row(8);
+    assert.equal(next.status,'PENDING');assert.equal(next.conditions.method,'MAX');assert.deepEqual(next.selections,[37,38,39]);
+    assert.equal(next.conditions.timing.sourceVia,'ARCHIVE_RESULT');
+    assert.deepEqual(s.row(8,SINGLE).selections,[17]);
+    assert.equal(s.state().pending,8);
+    // Repeating the same snapshot content changes nothing and never revises a settled row.
+    const before=JSON.stringify(s.lab.listForwardPredictions());
+    ingest(s,8,[],{labResults:[{drawId:7,balls:c}]});
+    ingest(s,8,[],{labResults:[{drawId:7,balls:[...c].reverse()}]});
+    assert.equal(JSON.stringify(s.lab.listForwardPredictions()),before);
+    assert.equal(s.db.prepare('SELECT COUNT(*) n FROM betzero_lab_result_revisions').get().n,0);
+    assert.ok(!s.state().paused);
+});
+
+test('archive results never predict a draw that already has a result, and malformed entries are ignored',t=>{
+    const s=setup(t);openPrediction(s);
+    ingest(s,8,[],{labResults:[{drawId:7,balls:c},{drawId:8,balls:a}]});
+    assert.equal(s.row(8),undefined);
+    ingest(s,9,[],{labResults:[{drawId:8,balls:[1,1,2,3,4,5]},{drawId:'x',balls:a},null,{drawId:8.5,balls:a}]});
+    assert.equal(s.row(9),undefined);
+    // Two different results for one draw inside a single feed are both discarded.
+    ingest(s,11,[],{labResults:[{drawId:10,balls:a},{drawId:10,balls:b}]});
+    assert.equal(s.row(11),undefined);assert.ok(!s.state().paused);
+});
+
+test('a prediction whose result never arrives stops blocking after the overdue window',t=>{
+    const s=setup(t);openPrediction(s);
+    ingest(s,9,[record(8,c)]);
+    assert.equal(s.row(9).conditions.reason,'UNRESOLVED_PREDICTION');assert.equal(s.state().pending,7);
+    const recent=[1994,1995,1996,1997,1998].map(id=>({drawId:id,balls:a})).concat({drawId:1999,balls:b});
+    ingest(s,2000,[record(1999,b)],{labResults:recent});
+    const state=s.state();
+    assert.equal(state.released.targetDrawId,7);assert.equal(state.released.reason,'RESULT_NOT_RECEIVED');
+    assert.equal(s.row(2000).status,'PENDING');assert.equal(s.row(2000).conditions.method,'MIN');
+    assert.equal(s.row(7).status,'PENDING'); // history is preserved for manual reconciliation
+    // The abandoned row no longer blocks a cutover; the active one still does.
+    assert.throws(()=>s.lab.cutoverMinmax({fromVersion:'1.0.0',toVersion:'2.0.0',confirmed:true}),/blocked: v1 is still waiting for the result of draw 2000/);
+    // Switching v1 off stops new predictions, so the open one settles and the cutover is clear.
+    s.lab.setStrategyEnabled(mm.ID,false);
+    ingest(s,2001,[record(2000,c)]);
+    assert.equal(s.row(2000).status,'WIN');assert.equal(s.row(2001).status,'SKIP');
+    s.setTime(2001500);
+    assert.equal(s.lab.cutoverMinmax({fromVersion:'1.0.0',toVersion:'2.0.0',confirmed:true}).toVersion,'2.0.0');
+});
+
+test('review resolution resumes a paused strategy and repeated conflicting feeds do not pause it again',t=>{
+    const s=setup(t);openPrediction(s);
+    ingest(s,8,[record(7,c)]);
+    ingest(s,9,[record(7,a),record(8,b)]);
+    assert.equal(s.state().paused,true);assert.equal(s.state().conflictDrawId,7);
+    assert.throws(()=>s.lab.resolveMinmaxReview({}),/confirmation/);
+    assert.throws(()=>s.lab.cutoverMinmax({fromVersion:'1.0.0',toVersion:'2.0.0',confirmed:true}),/blocked: v1 is paused/);
+    const settled=JSON.stringify(s.row(7));
+    assert.equal(s.lab.resolveMinmaxReview({confirmed:true}).resolved.length,2);
+    assert.throws(()=>s.lab.resolveMinmaxReview({confirmed:true}),/nothing to resolve/);
+    assert.ok(!s.state().paused);assert.equal(s.state().pending,null);
+    ingest(s,10,[record(7,a),record(9,c)],{labResults:[{drawId:7,balls:a}]});
+    assert.ok(!s.state().paused);assert.ok(!s.state('2.0.0').paused);
+    assert.equal(JSON.stringify(s.row(7)),settled);
+    assert.equal(s.db.prepare('SELECT conflicted FROM betzero_lab_minmax_draws WHERE draw_id=7').get().conflicted,1);
+    assert.notEqual(s.row(10).conditions.reason,'RESULT_CONFLICT_REVIEW_REQUIRED');
+});
+
+test('statistics samples without a provider status are accepted and rejections are explained',t=>{
+    const s=setup(t);
+    const sample=(source,values={},rows=49)=>({btc:11090,period:'100',sourceDrawId:source,targetDrawId:source+1,
+        requestedAt:source*1000+100,receivedAt:source*1000+110,deadline:(source+1)*1000,
+        response:{data:{stats:Array.from({length:rows},(_,i)=>({sel:String(i+1),strk:String(values[i+1] ?? 0)}))}}});
+    assert.ok(transitions.normalize(sample(10)));
+    assert.equal(transitions.inspect(sample(10,{},48)).reason,'ROW_COUNT_NOT_49');
+    assert.equal(transitions.inspect({...sample(10),response:null}).reason,'NO_PROVIDER_RESPONSE');
+    const send=(raw,at)=>{s.setTime(at);s.lab.ingestSnapshot({current:null,clock:{},historyUpdates:[],snapshotAt:at,numberStatistics:raw});};
+    send(null,10050);
+    assert.equal(s.lab.overview().numberStatistics.lastIngest.outcome,'NOT_PROVIDED');
+    send(sample(10,{},48),10120);
+    let last=s.lab.overview().numberStatistics.lastIngest;
+    assert.equal(last.outcome,'REJECTED');assert.equal(last.reason,'ROW_COUNT_NOT_49');assert.equal(last.shape.rows,48);
+    assert.deepEqual(last.shape.firstRowKeys,['sel','strk']);
+    send(sample(10),10130);
+    assert.equal(s.lab.overview().numberStatistics.snapshots,1);
+    assert.equal(s.lab.overview().numberStatistics.lastIngest.outcome,'STORED');
+    // The worker repeats the same sample every few seconds, even after the draw closes.
+    send(sample(10),10140);send(sample(10),11500);
+    last=s.lab.overview().numberStatistics.lastIngest;
+    assert.equal(last.outcome,'STORED');assert.equal(last.sourceDrawId,10);assert.equal(last.at,10130);
+    send(sample(10,{1:3}),10150);
+    assert.equal(s.lab.overview().numberStatistics.lastIngest.outcome,'CONFLICT');
+    assert.equal(s.lab.overview().numberStatistics.conflicts,1);
+});
