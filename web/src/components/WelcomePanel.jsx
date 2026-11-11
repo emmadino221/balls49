@@ -25,13 +25,13 @@ export default function WelcomePanel() {
         <p className="welcome-time"><span aria-hidden="true" />{greeting} &middot; {date} Lagos</p>
         <h1 aria-busy={accountLoading}>{accountLoading
           ? <span className="welcome-greeting-skeleton" role="status" aria-label="Loading your welcome message" />
-          : <>{account ? 'Welcome back' : 'Welcome to emmy-bet'}{account?.name ? <>,<br />{account.name}.</> : '.'}</>}</h1>
+          : <>{account ? 'Welcome back' : 'Welcome to emmy-bet'}{account?.name ? <>,<br /><span className="welcome-name">{account.name}.</span></> : '.'}</>}</h1>
         <p>Your picks, results and game insights. All in one place.</p>
         <div className="welcome-actions"><a className="btn btn-primary" href="predictions.html">View 49ja predictions</a><a className="btn btn-secondary" href={account ? 'account.html' : 'free-trial.html'}>{account ? 'My account' : 'Start free trial'}</a></div>
       </div>
       <aside className="welcome-feature">
         <span className="overline">49JA / TRACK RECORD</span>
-        <div className="welcome-ball-art" aria-hidden="true"><span>4</span><span>9</span></div>
+        <div className="welcome-ball-art" aria-hidden="true"><span>4</span><span className="is-blue">11</span><span className="is-green">21</span><span>34</span><span className="is-blue">38</span><span className="is-yellow">49</span></div>
         <h2>Every draw tells a story.</h2>
         <p>Explore settled results, market performance and daily streak records.</p>
         <a href="history.html">Explore result history &rarr;</a>
@@ -49,7 +49,7 @@ export default function WelcomePanel() {
           ['03', 'Virtual Football', 'Browse the virtual football prediction feed.', 'virtual-football.html', 'virtual'],
           ['04', 'Prediction History', 'Review recorded picks beside draw results.', 'history.html', 'history'],
           ['05', 'Game plans', 'Explore suggestions based on recorded history.', 'suggestions.html', 'plans'],
-        ].map(([number, title, text, href, type]) => <a className={`home-destination-card home-destination-${type}`} key={href} href={href}>
+        ].map(([number, title, text, href, type]) => <a className={`home-destination-card home-destination-${type}`} key={href} href={href} data-reveal style={{ '--reveal-index': Number(number) - 1 }}>
           <span className="home-destination-number">{number}</span>
           <span className="home-destination-arrow" aria-hidden="true">↗</span>
           <span className="home-destination-kind">{type === 'casino' ? 'CASINO MARKETS' : type === 'football' || type === 'virtual' ? 'FOOTBALL' : type === 'history' ? 'TRACK RECORD' : 'STRATEGY'}</span>

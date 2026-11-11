@@ -1,5 +1,6 @@
 import React from 'react';
 import WelcomePanel from '../components/WelcomePanel.jsx';
+import useReveal from '../components/useReveal.js';
 import './home-light.css';
 import './home-page.css';
 
@@ -25,12 +26,13 @@ const featureCards = [
 ];
 
 export default function HomePage() {
+  const revealRef = useReveal();
   return (
-    <main className="home-page">
+    <main className="home-page" ref={revealRef}>
       <WelcomePanel />
 
       <section className="home-proof-strip" aria-label="Platform highlights">
-        <div className="page-container proof-strip-inner">
+        <div className="page-container proof-strip-inner" data-reveal>
           <div className="proof-brand"><span className="proof-brand-mark">E</span><span>THE GAME, IN A CLEARER LIGHT.</span></div>
           <div className="proof-item"><strong>08</strong><span>Casino markets</span></div>
           <span className="proof-separator" aria-hidden="true" />
@@ -42,7 +44,7 @@ export default function HomePage() {
 
       <section className="section value-section cinematic-value-section">
         <div className="page-container">
-          <div className="cinematic-section-heading">
+          <div className="cinematic-section-heading" data-reveal>
             <div>
               <span className="overline">A MORE THOUGHTFUL EXPERIENCE</span>
               <h2>Less noise.<br /><span>More perspective.</span></h2>
@@ -50,8 +52,8 @@ export default function HomePage() {
             <p>Designed to make every signal easier to understand—from the first look to the final result.</p>
           </div>
           <div className="feature-grid cinematic-feature-grid">
-            {featureCards.map((feature) => (
-              <article className="feature-card cinematic-feature-card" key={feature.number}>
+            {featureCards.map((feature, index) => (
+              <article className="feature-card cinematic-feature-card" key={feature.number} data-reveal style={{ '--reveal-index': index }}>
                 <div className="cinematic-feature-top">
                   <span className="feature-icon" aria-hidden="true">{feature.icon}</span>
                   <span className="feature-number">{feature.number}</span>
@@ -66,7 +68,7 @@ export default function HomePage() {
       </section>
 
       <section className="home-final-cta">
-        <div className="page-container final-cta-inner">
+        <div className="page-container final-cta-inner" data-reveal>
           <div>
             <span className="overline">YOUR NEXT VIEW STARTS HERE</span>
             <h2>Step into the<br /><span>signal room.</span></h2>

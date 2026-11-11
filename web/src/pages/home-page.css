@@ -1,5 +1,5 @@
 .site.home-site .home-page {
-  --home-accent: #d8f58b;
+  --home-accent: #e9bd5b;
   --home-accent-strong: #19a875;
   --home-panel-shadow: 0 18px 48px rgba(5, 15, 10, .1);
 }
@@ -33,9 +33,9 @@
   right: 27%;
   width: 290px;
   aspect-ratio: 1;
-  border: 1px solid rgba(216, 245, 139, .12);
+  border: 1px solid rgba(233, 189, 91, .12);
   border-radius: 50%;
-  box-shadow: 0 0 0 24px rgba(216, 245, 139, .025), 0 0 0 54px rgba(216, 245, 139, .018);
+  box-shadow: 0 0 0 24px rgba(233, 189, 91, .025), 0 0 0 54px rgba(233, 189, 91, .018);
   content: '';
   pointer-events: none;
 }
@@ -79,7 +79,7 @@
   width: min(100%, 440px);
   height: clamp(44px, 6vw, 76px);
   border-radius: 11px;
-  background: linear-gradient(100deg, rgba(216, 245, 139, .08) 20%, rgba(216, 245, 139, .23) 45%, rgba(216, 245, 139, .08) 70%);
+  background: linear-gradient(100deg, rgba(233, 189, 91, .08) 20%, rgba(233, 189, 91, .23) 45%, rgba(233, 189, 91, .08) 70%);
   background-size: 220% 100%;
   animation: home-greeting-shimmer 1.5s ease-in-out infinite;
 }
@@ -101,12 +101,12 @@
   border-color: var(--home-accent);
   color: #142414;
   background: var(--home-accent);
-  box-shadow: 0 10px 24px rgba(173, 211, 105, .17);
+  box-shadow: 0 10px 24px rgba(201, 154, 58, .17);
 }
 
 .site.home-site .welcome-actions .btn-primary:hover {
-  border-color: #e5ffa0;
-  background: #e5ffa0;
+  border-color: #f6d583;
+  background: #f6d583;
   transform: translateY(-2px);
 }
 
@@ -117,8 +117,8 @@
 }
 
 .site.home-site .welcome-actions .btn-secondary:hover {
-  border-color: rgba(216, 245, 139, .5);
-  background: rgba(216, 245, 139, .08);
+  border-color: rgba(233, 189, 91, .5);
+  background: rgba(233, 189, 91, .08);
 }
 
 .site.home-site .welcome-feature {
@@ -130,7 +130,7 @@
   justify-content: center;
   overflow: hidden;
   padding: 23px;
-  border-color: rgba(216, 245, 139, .18);
+  border-color: rgba(233, 189, 91, .18);
   border-radius: 18px;
   background:
     radial-gradient(ellipse at 50% 35%, rgba(55, 116, 67, .2), transparent 48%),
@@ -144,7 +144,7 @@
   position: absolute;
   width: 210px;
   aspect-ratio: 1;
-  border: 1px solid rgba(216, 245, 139, .1);
+  border: 1px solid rgba(233, 189, 91, .1);
   border-radius: 50%;
   content: '';
   pointer-events: none;
@@ -204,18 +204,18 @@
   min-height: 38px;
   margin-top: 12px;
   padding: 0 12px;
-  border: 1px solid rgba(216, 245, 139, .2);
+  border: 1px solid rgba(233, 189, 91, .2);
   border-radius: 9px;
   color: var(--home-accent);
-  background: rgba(216, 245, 139, .055);
+  background: rgba(233, 189, 91, .055);
   font-size: 11px;
   transition: background .18s ease, transform .18s ease, border-color .18s ease;
 }
 
 .site.home-site .welcome-feature a:hover {
   transform: translateY(-1px);
-  border-color: rgba(216, 245, 139, .42);
-  background: rgba(216, 245, 139, .1);
+  border-color: rgba(233, 189, 91, .42);
+  background: rgba(233, 189, 91, .1);
 }
 
 .site.home-site .home-destinations {
@@ -324,7 +324,7 @@
 .site.home-site .welcome-shortcuts > a:hover .home-destination-arrow {
   transform: translate(2px, -2px);
   color: var(--home-accent-ink, #173b2d);
-  background: var(--home-accent, #d8f58b);
+  background: var(--home-accent, #e9bd5b);
 }
 
 .site.home-site .home-destination-kind {
