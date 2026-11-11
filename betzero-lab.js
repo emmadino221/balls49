@@ -5,7 +5,7 @@ const minmax = require('./betzero-minmax');
 const transitions = require('./betzero-statistics-transition');
 const { gradeHighLow } = require('./high-low');
 
-// HIGH/LOW follows Minimum/Maximum v2: its MAX method predicts HIGH, its MIN method predicts LOW.
+// HIGH/LOW follows Minimum/Maximum v2: its MAX method predicts LOW, its MIN method predicts HIGH.
 const HIGH_LOW_ID = 'minmax_high_low';
 // Chance that six different balls from 1-49 total 148 or less (the same as 152 or more, by symmetry).
 const HIGH_LOW_PROBABILITY = (() => {
@@ -38,7 +38,7 @@ const STRATEGIES = [
       missingInformation: 'Research specification; not independently instructor-verified.' },
     { id: HIGH_LOW_ID, version: '1.0.0', selectionCount: 1, market: 'HIGH_LOW', label: 'HIGH/LOW - follows Minimum/Maximum v2',
       status: 'RESEARCH_ONLY', kind: 'PREDICTION',
-      description: 'Follows Minimum/Maximum v2 for the same draw: HIGH when v2 uses its MAX method, LOW when it uses its MIN method. No prediction when v2 has none.',
+      description: 'Follows Minimum/Maximum v2 for the same draw: LOW when v2 uses its MAX method, HIGH when it uses its MIN method. No prediction when v2 has none.',
       missingInformation: 'Research specification; not independently instructor-verified.' },
     {
         id: 'simple_smallest_number_add_10',
@@ -131,7 +131,7 @@ function highLowFromMinmax(decision) {
     const method = ['PENDING', 'WIN', 'LOSS'].includes(decision?.status) ? decision.conditions?.method : null;
     if (method !== 'MAX' && method !== 'MIN') return { status: 'SKIP', selections: [], conditions: {
         reason: 'MINMAX_V2_HAS_NO_PREDICTION', minmaxStatus: decision?.status || 'NONE', minmaxReason: decision?.conditions?.reason || null } };
-    return { status: 'PENDING', selections: [method === 'MAX' ? 'HIGH' : 'LOW'],
+    return { status: 'PENDING', selections: [method === 'MAX' ? 'LOW' : 'HIGH'],
         conditions: { model: 'MINMAX_V2_HIGH_LOW', followsMethod: method, minmaxSelections: decision.selections } };
 }
 

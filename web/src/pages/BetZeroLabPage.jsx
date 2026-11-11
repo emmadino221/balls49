@@ -484,7 +484,7 @@ export default function BetZeroLabPage({ session }) {
     { key: 'statistics_streak_drop_bet49@3.0.0', count: 1, title: 'Bet49 - Streak 1', summary: 'One number picked from the streak-1 numbers.', statistics: true },
     ...(minmaxCutOver ? [] : [{ key: 'minimum_maximum_three@1.0.0', count: 3, title: 'Minimum/Maximum v1', summary: 'Three numbers. After a win: switch method. After a loss: keep.', review: true }]),
     { key: 'minimum_maximum_three@2.0.0', count: 3, title: 'Minimum/Maximum v2', summary: 'Three numbers. After a win: keep method. After a loss: switch.', review: true },
-    { key: 'minmax_high_low@1.0.0', count: 1, title: 'HIGH/LOW', summary: 'Follows Minimum/Maximum v2: MAX gives HIGH, MIN gives LOW. Needs v2 switched on.' },
+    { key: 'minmax_high_low@1.0.0', count: 1, title: 'HIGH/LOW', summary: 'Follows Minimum/Maximum v2: MAX gives LOW, MIN gives HIGH. Needs v2 switched on.' },
   ];
   const activeCount = cards.filter(card => versions[card.key]?.enabled).length;
 

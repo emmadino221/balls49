@@ -177,19 +177,19 @@ test('HIGH/LOW follows the v2 method for the same draw and is graded by the draw
     s.lab.setStrategyEnabled(HIGH_LOW_ID,true);s.lab.cutoverMinmax(request);
     ingest(s,7,b,11000); // v2 does not predict the cutover draw, so HIGH/LOW has nothing to follow.
     assert.equal(row(7).status,'SKIP');assert.equal(row(7).conditions.reason,'MINMAX_V2_HAS_NO_PREDICTION');
-    ingest(s,8,c,12000); // v2 predicts with MIN -> LOW.
-    assert.equal(row(8).status,'PENDING');assert.deepEqual(row(8).selections,['LOW']);assert.equal(row(8).conditions.followsMethod,'MIN');
-    ingest(s,9,b,14000);assert.equal(row(8).status,'WIN'); // draw 8 totals 131
-    assert.deepEqual(row(9).selections,['LOW']);
-    ingest(s,10,b,15000); // v2 lost draw 9 and switches to MAX -> HIGH for draw 10.
-    assert.equal(row(9).status,'WIN');assert.deepEqual(row(10).selections,['HIGH']);assert.equal(row(10).conditions.followsMethod,'MAX');
-    ingest(s,11,b,16000);assert.equal(row(10).status,'LOSS');
+    ingest(s,8,c,12000); // v2 predicts with MIN -> HIGH.
+    assert.equal(row(8).status,'PENDING');assert.deepEqual(row(8).selections,['HIGH']);assert.equal(row(8).conditions.followsMethod,'MIN');
+    ingest(s,9,b,14000);assert.equal(row(8).status,'LOSS'); // draw 8 totals 131
+    assert.deepEqual(row(9).selections,['HIGH']);
+    ingest(s,10,b,15000); // v2 lost draw 9 and switches to MAX -> LOW for draw 10.
+    assert.equal(row(9).status,'LOSS');assert.deepEqual(row(10).selections,['LOW']);assert.equal(row(10).conditions.followsMethod,'MAX');
+    ingest(s,11,b,16000);assert.equal(row(10).status,'WIN');
     const stats=s.lab.overview().strategyVersions[`${HIGH_LOW_ID}@1.0.0`];
-    assert.equal(stats.wins,2);assert.equal(stats.losses,1);assert.equal(stats.market,'HIGH_LOW');
+    assert.equal(stats.wins,1);assert.equal(stats.losses,2);assert.equal(stats.market,'HIGH_LOW');
     const records=Array.from({length:60},(_,i)=>({drawId:String(i+1),result:{balls:[a,b,c][(i*i+i)%3]}}));
     const run=s.lab.runBacktest(records,{window:'all',strategyId:HIGH_LOW_ID,strategyVersion:'1.0.0'});
     const tested=s.lab.getBacktestRun(run.runId),made=tested.predictions.filter(p=>p.status!=='SKIP');
     assert.ok(made.length>0);
-    for(const p of made) {assert.deepEqual(p.selections,[p.conditions.followsMethod==='MAX'?'HIGH':'LOW']);assert.equal(p.status,p.selections[0]==='LOW'?'WIN':'LOSS');} // every fixture draw totals LOW
+    for(const p of made) {assert.deepEqual(p.selections,[p.conditions.followsMethod==='MAX'?'LOW':'HIGH']);assert.equal(p.status,p.selections[0]==='LOW'?'WIN':'LOSS');} // every fixture draw totals LOW
     const totals=tested.results.reduce((sum,r)=>sum+r.result.wins+r.result.losses,0);assert.equal(totals,made.length);
 });
