@@ -60,6 +60,12 @@ const STRATEGIES = [
     }
 ];
 
+// Versions the Lab no longer offers. Their saved history stays in the database, but the Lab
+// does not list them, show their records or offer them for testing.
+const RETIRED = new Set([`${transitions.ZERO}@1.0.0`, `${transitions.ZERO}@2.0.0`, `${transitions.HIT}@1.0.0`, `${transitions.HIT}@2.0.0`, `${minmax.ID}@1.0.0`]);
+const isRetired = (id, version) => RETIRED.has(`${id}@${version}`);
+const activeDefinitions = () => STRATEGIES.filter(strategy => !isRetired(strategy.id, strategy.version));
+
 function strategyDefinition(id, version) {
     return STRATEGIES.find(strategy => strategy.id === id && strategy.version === version);
 }
@@ -1034,9 +1040,9 @@ function createBetZeroLab(db, options = {}) {
             ? db.prepare(`SELECT * FROM betzero_lab_forward_predictions WHERE strategy_id = ? AND strategy_version = ?
                 ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`).all(strategyId, version, boundedLimit)
             : db.prepare(`SELECT * FROM betzero_lab_forward_predictions
-                WHERE ${STRATEGIES.map(() => '(strategy_id=? AND strategy_version=?)').join(' OR ')}
+                WHERE ${activeDefinitions().map(() => '(strategy_id=? AND strategy_version=?)').join(' OR ')}
                 ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`)
-                .all(...STRATEGIES.flatMap(strategy => [strategy.id,strategy.version]),boundedLimit);
+                .all(...activeDefinitions().flatMap(strategy => [strategy.id,strategy.version]),boundedLimit);
         return rows.map(row => ({
             predictionId: row.prediction_id,
             strategyId: row.strategy_id,
@@ -1076,7 +1082,7 @@ function createBetZeroLab(db, options = {}) {
     function statsForVersion(strategyId, version) {
         const strategy = strategies().find(item => item.id === strategyId && item.version === version);
         if (!strategy) throw new Error('Unknown lab strategy version.');
-        return { ...strategy, ...(strategyId === minmax.ID ? {decisionState:minmaxState(version)} : {}), ...require('./betzero-reconciliation').pendingQuality(db, strategyId, version, now()), ...summarizePredictionRows(predictionRows(strategyId).filter(row => row.strategy_version === version)), ...inputQuality(strategyId) };
+        return { ...strategy, ...(strategyId === minmax.ID ? {decisionState:minmaxState(version)} : {}), ...require('./betzero-reconciliation').pendingQuality(db, strategyId, version, now()), ...summarizePredictionRows(predictionRows(strategyId).filter(row => row.strategy_version === version)), historyResetAt: historyResetAt(strategyId, version), ...inputQuality(strategyId) };
     }
 
     function alerts(limit = 100) {
@@ -1119,6 +1125,8 @@ function createBetZeroLab(db, options = {}) {
         if (strategyId && mode === 'SEALED_FINAL') throw Object.assign(new Error('Sealed strategy selection must come from its frozen protocol.'), {status:409});
         const effectiveStrategies = strategies().filter(strategy => strategyDefinition(strategy.id, strategy.version))
             .filter(s => !strategyId || (s.id === strategyId && s.version === strategyVersion))
+            // Retired versions that are switched off are left out of test runs entirely.
+            .filter(s => strategyId || frozenStrategies || s.enabled || !isRetired(s.id, s.version))
             .filter(s => !frozenStrategies || frozenStrategies.some(f=>f.id===s.id && f.version===s.version))
             .map(s => {
                 const frozen = frozenStrategies?.find(f=>f.id===s.id && f.version===s.version);
@@ -1341,15 +1349,17 @@ function createBetZeroLab(db, options = {}) {
     }
 
     function overview() {
+        const active = strategies().filter(strategy => !isRetired(strategy.id, strategy.version));
+        const current = entries => Object.fromEntries(Object.entries(entries).filter(([, strategy]) => !isRetired(strategy.id, strategy.version)));
         return {
             mode: 'EXPERIMENTAL_ONLY',
             warning: 'EXPERIMENTAL — NOT FOR REAL-MONEY BETTING. No bets or subscriber publishing are enabled.',
-            strategies: stats(),
-            strategyVersions: stats(true),
-            forwardVersionWindows: require('./betzero-forward-metrics').forwardWindows(db, strategies(), now(), true),
-            forwardWindows: require('./betzero-forward-metrics').forwardWindows(db, strategies(), now()),
+            strategies: current(stats()),
+            strategyVersions: current(stats(true)),
+            forwardVersionWindows: require('./betzero-forward-metrics').forwardWindows(db, active, now(), true),
+            forwardWindows: require('./betzero-forward-metrics').forwardWindows(db, active, now()),
             predictions: listForwardPredictions({ limit: 100 }),
-            alerts: alerts(100),
+            alerts: alerts(500).filter(alert => !isRetired(alert.strategyId, alert.strategyVersion)).slice(0, 100),
             numberStatistics: {
                 ...db.prepare('SELECT COUNT(*) AS snapshots, MIN(source_draw_id) AS firstSourceDraw, MAX(source_draw_id) AS lastSourceDraw, COALESCE(SUM(conflicted),0) AS conflicts FROM betzero_lab_number_statistics').get(),
                 lastIngest: (() => { try { return JSON.parse(getState.get('statistics_last_ingest')?.state_value || 'null'); } catch { return null; } })()
@@ -1391,6 +1401,6 @@ module.exports = {
     seededRandom,
     randomSelections,
     validateBetZeroPrediction,
-    gradeStrategy, strategyProbability, randomPickFor, HIGH_LOW_ID,
+    gradeStrategy, strategyProbability, randomPickFor, HIGH_LOW_ID, isRetired,
     wilsonInterval
 };

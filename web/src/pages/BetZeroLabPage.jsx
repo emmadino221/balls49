@@ -236,9 +236,8 @@ export default function BetZeroLabPage({ session }) {
   const [lastDraw, setLastDraw] = useState('');
   const requestInFlight = useRef(false);
 
-  // Streak-drop v1 and v2 are retired in favour of streak-1 v3; their saved history is kept but they are no longer offered.
-  const strategies = useMemo(() => Object.values(overview?.strategyVersions || overview?.strategies || {})
-    .filter(strategy => !(strategy.id?.startsWith('statistics_streak_drop_') && ['1.0.0', '2.0.0'].includes(strategy.version))), [overview]);
+  // The server only sends the predictions the Lab currently offers.
+  const strategies = useMemo(() => Object.values(overview?.strategyVersions || overview?.strategies || {}), [overview]);
   const selectedStrategy = strategies.find(strategy => strategyKey(strategy) === selectedStrategyId) || strategies.find(strategy => strategy.id === 'simple_smallest_number_add_10') || strategies[0] || null;
 
   const refreshJobs = useCallback(async () => {
@@ -476,13 +475,11 @@ export default function BetZeroLabPage({ session }) {
   const selectedOverall = backtest?.data?.overallByVersion?.[strategyKey(selectedStrategy)] || (backtest?.data?.overall && selectedStrategy && backtest.data.overall.strategyId === selectedStrategy.id && (backtest.data.overall.strategyVersion || '1.0.0') === selectedStrategy.version ? backtest.data.overall : null);
 
   const versions = overview?.strategyVersions || {};
-  const minmaxCutOver = Boolean(versions['minimum_maximum_three@2.0.0']?.decisionState?.cutoverAt);
   const cards = [
     { key: 'simple_smallest_number_add_10@1.0.0', count: 1, title: '1-Number BetZero', summary: 'Smallest number of the last draw + 10.' },
     { key: 'smallest_add10_step10_four@1.0.0', count: 4, title: '4-Number BetZero', summary: 'Smallest + 10, then steps of 10.' },
     { key: 'statistics_streak_drop_betzero@3.0.0', count: [1,2,3,4], title: 'BetZero - Streak 1', summary: 'Up to four numbers whose streak is exactly 1.', statistics: true },
     { key: 'statistics_streak_drop_bet49@3.0.0', count: 1, title: 'Bet49 - Streak 1', summary: 'One number picked from the streak-1 numbers.', statistics: true },
-    ...(minmaxCutOver ? [] : [{ key: 'minimum_maximum_three@1.0.0', count: 3, title: 'Minimum/Maximum v1', summary: 'Three numbers. After a win: switch method. After a loss: keep.', review: true }]),
     { key: 'minimum_maximum_three@2.0.0', count: 3, title: 'Minimum/Maximum v2', summary: 'Three numbers. After a win: keep method. After a loss: switch.', review: true },
     { key: 'minmax_high_low@1.0.0', count: 1, title: 'HIGH/LOW', summary: 'Follows Minimum/Maximum v2: MAX gives LOW, MIN gives HIGH. Needs v2 switched on.' },
   ];
@@ -523,10 +520,6 @@ export default function BetZeroLabPage({ session }) {
             onToggle={toggleResearchStrategy} onReset={resetHistory} saving={savingStrategyId === card.key.split('@')[0]} controlsBusy={busy} live={live}
             statistics={card.statistics ? overview.numberStatistics : undefined} onResolveReview={card.review ? resolveMinmaxReview : undefined} />)}
         </div>
-        {!minmaxCutOver && <details className="betzero-inline-details"><summary>Switch Minimum/Maximum from v1 to v2</summary>
-          <p>v2 starts on its own from five eligible past draws. A prediction still waiting for its result, or a result conflict, blocks the switch. Existing history is kept. Going back to v1 afterwards needs a separate review.</p>
-          <button type="button" className="btn btn-secondary" disabled={busy} onClick={cutoverMinmax}>Review v1 to v2 switch</button>
-        </details>}
       </section>
       <section className="betzero-section" aria-labelledby="test-strategy-title">
         <div className="betzero-section-heading"><div><span className="overline">EXPLORE PAST DRAWS</span><h2 id="test-strategy-title">Test My Strategy</h2></div></div>

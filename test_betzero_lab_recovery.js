@@ -135,7 +135,7 @@ test('resetting one strategy history archives its rows, clears its totals and le
     const result=s.lab.resetStrategyHistory({strategyId:mm.ID,version:'1.0.0',confirmed:true});
     assert.equal(result.archived,2);assert.equal(result.resetAt,8500);
     assert.deepEqual(s.rows(),[]);
-    const stats=s.lab.overview().strategyVersions[`${mm.ID}@1.0.0`];
+    const stats=s.lab.statsForVersion(mm.ID,'1.0.0');
     assert.equal(stats.wins,0);assert.equal(stats.losses,0);assert.equal(stats.last100.length,0);assert.equal(stats.historyResetAt,8500);
     assert.equal(stats.decisionState.pending,null);
     assert.equal(s.db.prepare('SELECT COUNT(*) n FROM betzero_lab_streak_events WHERE strategy_id=?').get(mm.ID).n,0);
@@ -181,4 +181,16 @@ test('statistics samples without a provider status are accepted and rejections a
     send(sample(10,{1:3}),10150);
     assert.equal(s.lab.overview().numberStatistics.lastIngest.outcome,'CONFLICT');
     assert.equal(s.lab.overview().numberStatistics.conflicts,1);
+});
+test('the lab overview only offers the six current predictions',t=>{
+    const s=setup(t);openPrediction(s);
+    const overview=s.lab.overview();
+    assert.deepEqual(Object.keys(overview.strategyVersions).sort(),['minimum_maximum_three@2.0.0','minmax_high_low@1.0.0','simple_smallest_number_add_10@1.0.0',
+        'smallest_add10_step10_four@1.0.0','statistics_streak_drop_bet49@3.0.0','statistics_streak_drop_betzero@3.0.0']);
+    assert.deepEqual(Object.keys(overview.forwardVersionWindows).map(key=>key.replace(':','@')).sort(),Object.keys(overview.strategyVersions).sort());
+    // The retired MIN/MAX v1 made a prediction above; its records stay stored but are not listed.
+    assert.equal(s.rows().length,1);
+    assert.ok(overview.predictions.length>0);
+    assert.ok(overview.predictions.every(row=>`${row.strategyId}@${row.strategyVersion}` in overview.strategyVersions));
+    assert.ok(s.lab.listForwardPredictions().every(row=>`${row.strategyId}@${row.strategyVersion}` in overview.strategyVersions));
 });

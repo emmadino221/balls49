@@ -64,7 +64,7 @@ test('atomic cutover preserves old state/config/history, initializes separately,
     // Settle MIN [6,7,8] with b (WIN), then same MIN method on new source.
     ingest(s,9,b,14000);assert.equal(state(s,'2.0.0').method,'MIN');
     const overview=s.lab.overview();assert.equal(overview.strategyVersions[`${mm.ID}@2.0.0`].wins,1);
-    assert.equal(overview.strategyVersions[`${mm.ID}@1.0.0`].wins,0);
+    assert.equal(overview.strategyVersions[`${mm.ID}@1.0.0`],undefined);assert.equal(s.lab.statsForVersion(mm.ID,'1.0.0').wins,0);
     assert.deepEqual(state(s,'1.0.0'),old);
     ingest(s,10,b,15000);assert.equal(state(s,'2.0.0').method,'MAX');
     ingest(s,11,b,16000);assert.equal(state(s,'2.0.0').method,'MIN');

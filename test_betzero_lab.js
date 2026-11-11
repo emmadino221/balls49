@@ -11,8 +11,10 @@ const {
     createBetZeroLab,
     probabilityAllAbsent,
     validateBetZeroPrediction,
-    predictionFromStrategy, validSelections, seededRandom, randomSelections
+    predictionFromStrategy, validSelections, seededRandom, randomSelections, isRetired
 } = require('./betzero-lab');
+// Test runs leave out retired versions that are switched off.
+const OFFERED = STRATEGIES.filter(strategy => !isRetired(strategy.id, strategy.version)).length;
 
 function openLab(t, now = Date.now()) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'balls49-betzero-lab-'));
@@ -245,8 +247,8 @@ test('backtests are reproducible, chronological, split by period, and exclude un
     assert.deepEqual(firstResearch.map(row => row.result), secondResearch.map(row => row.result));
     assert.ok(firstResearch.every(row => row.result.predictions > 0 && row.result.randomBaseline.trials > 0));
     assert.equal(first.results.filter(row => row.result.status === 'UNVERIFIED').length, 0);
-    assert.equal(lab.getBacktestRun(first.runId).results.length, STRATEGIES.length * 3);
-    assert.equal(lab.getBacktestRun(first.runId).predictionTotal, 100 * STRATEGIES.length);
+    assert.equal(lab.getBacktestRun(first.runId).results.length, OFFERED * 3);
+    assert.equal(lab.getBacktestRun(first.runId).predictionTotal, 100 * OFFERED);
     assert.equal(lab.listBacktestRuns().length, 2);
 });
 
@@ -268,7 +270,7 @@ test('backtests persist per-draw picks and outcomes separately from forward pred
     assert.ok(prediction.predictedAt);
     assert.ok(prediction.actualBalls.includes(18));
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM betzero_lab_forward_predictions').get().count, 0);
-    assert.equal(stored.predictionTotal, 7 * STRATEGIES.length);
+    assert.equal(stored.predictionTotal, 7 * OFFERED);
 
     const changedFuture = records.map(row => ({ ...row, result: { balls: [...row.result.balls] } }));
     changedFuture[1].result.balls[0] = 19;

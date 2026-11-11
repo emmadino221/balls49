@@ -101,14 +101,14 @@ test('forward state survives restart, missing settlement, disable/re-enable and 
     assert.equal(s.lab.listForwardPredictions({strategyId:mm.ID})[0].conditions.reason,'UNRESOLVED_PREDICTION');
     s.lab.setStrategyEnabled(mm.ID,false);
     ingest(s,10,[record(7,c),record(9,b)]);
-    assert.equal(s.lab.overview().strategies[mm.ID].decisionState.method,'MAX');
+    assert.equal(s.lab.statsForVersion(mm.ID,'1.0.0').decisionState.method,'MAX');
     s.lab.setStrategyEnabled(mm.ID,true);s.reopen();
     ingest(s,11,[record(10,b)]);
     pick=s.lab.listForwardPredictions({strategyId:mm.ID})[0];assert.equal(pick.conditions.method,'MAX');
     const settled=s.lab.listForwardPredictions({strategyId:mm.ID}).find(x=>x.targetDrawId==='7');
     assert.equal(settled.status,'WIN');
     ingest(s,12,[record(7,a),record(11,c)]);
-    assert.equal(s.lab.overview().strategies[mm.ID].decisionState.paused,true);
+    assert.equal(s.lab.statsForVersion(mm.ID,'1.0.0').decisionState.paused,true);
     assert.deepEqual(s.lab.listForwardPredictions({strategyId:mm.ID}).find(x=>x.targetDrawId==='7'),settled);
     assert.deepEqual(s.lab.strategies().filter(x=>x.id!==mm.ID),oldConfig);
 });
@@ -138,12 +138,12 @@ test('prediction and decision state commit atomically; malformed results and dup
     assert.equal(s.db.prepare('SELECT COUNT(*) n FROM betzero_lab_minmax_state').get().n,0);
     assert.equal(s.lab.listForwardPredictions({strategyId:mm.ID}).length,0);
     s.db.exec('DROP TRIGGER fail_minmax');ingest(s,7,records);
-    const state=s.lab.overview().strategies[mm.ID].decisionState;
-    ingest(s,7,records);assert.deepEqual(s.lab.overview().strategies[mm.ID].decisionState,state);
+    const state=s.lab.statsForVersion(mm.ID,'1.0.0').decisionState;
+    ingest(s,7,records);assert.deepEqual(s.lab.statsForVersion(mm.ID,'1.0.0').decisionState,state);
     ingest(s,8,[record(7,[1,1,2,3,4,5])]);
-    assert.deepEqual(s.lab.overview().strategies[mm.ID].decisionState,state);
+    assert.deepEqual(s.lab.statsForVersion(mm.ID,'1.0.0').decisionState,state);
     assert.equal(s.lab.listForwardPredictions({strategyId:mm.ID})[0].status,'PENDING');
-    s.reopen();assert.deepEqual(s.lab.overview().strategies[mm.ID].decisionState,state);
+    s.reopen();assert.deepEqual(s.lab.statsForVersion(mm.ID,'1.0.0').decisionState,state);
 });
 
 test('new strategy full-run streaks match saved rows across reporting boundaries',t=>{
