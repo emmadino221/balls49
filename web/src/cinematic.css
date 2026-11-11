@@ -434,3 +434,209 @@
 /* Light theme keeps the green brand accent on the hero action. */
 .site.home-site:not(.dark-theme) .welcome-actions .btn-primary { color: #fff; border-color: #087653; background: #087653; box-shadow: 0 10px 25px rgba(8, 118, 83, .16); }
 .site.home-site:not(.dark-theme) .welcome-actions .btn-primary:hover { color: #fff; border-color: #065c40; background: #065c40; }
+
+/* =====================================================================
+   Draw balls (site-wide): glossy, coloured by the 49ja colour rule.
+   ===================================================================== */
+.site .ball-number:is(.ball-red, .ball-blue, .ball-green, .ball-yellow) {
+  --ball: #d94a43;
+  --ball-light: #ff9a8f;
+  --ball-dark: #7d1f1b;
+  border: 0;
+  color: #fff;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, .8) 0 5%, transparent 17%),
+    radial-gradient(circle at 36% 30%, var(--ball-light), var(--ball) 52%, var(--ball-dark) 100%);
+  box-shadow: inset -2px -3px 5px rgba(0, 0, 0, .34), 0 3px 7px rgba(0, 0, 0, .28);
+  font-family: var(--font-display);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .45);
+}
+.site .ball-number.ball-blue { --ball: #2f7de1; --ball-light: #8cc2ff; --ball-dark: #123c7c; }
+.site .ball-number.ball-green { --ball: #25a565; --ball-light: #86e6ae; --ball-dark: #0d5733; }
+.site .ball-number.ball-yellow { --ball: #e9b93a; --ball-light: #ffe89a; --ball-dark: #8e6510; color: #2a1d02; text-shadow: none; }
+
+/* =====================================================================
+   Predictions page
+   ===================================================================== */
+.site .prediction-clean-layout :is(.prediction-intro h1, .prediction-section-heading h2, .clean-prediction-card > h3) { font-family: var(--font-display); }
+
+/* Stage: headline on the left, live draw clock on the right. */
+.site .prediction-clean-layout .prediction-stage { display: grid; gap: 14px; margin-bottom: 14px; }
+.site .prediction-clean-layout .prediction-stage > * { margin: 0; }
+.site.cinematic-site .prediction-clean-layout .prediction-intro { min-height: 0; padding: clamp(24px, 3.4vw, 40px); padding-bottom: clamp(40px, 4vw, 52px); }
+.site.cinematic-site .prediction-clean-layout .prediction-intro::before { display: none; }
+.site.cinematic-site .prediction-clean-layout .prediction-intro h1 { max-width: 100%; font-size: clamp(32px, 4.2vw, 50px); letter-spacing: -.055em; line-height: 1.06; }
+.site.cinematic-site .prediction-clean-layout .prediction-intro p { max-width: 520px; }
+
+.site .prediction-clean-layout .countdown-display {
+  font-family: var(--font-display);
+  letter-spacing: -.04em;
+  line-height: 1;
+}
+.site .prediction-clean-layout .prediction-last-updated { display: block; margin-top: 6px; }
+
+@media (min-width: 1000px) {
+  .site .prediction-clean-layout .prediction-stage { grid-template-columns: minmax(0, 1.5fr) minmax(300px, .82fr); }
+  .site .prediction-clean-layout .prediction-countdown {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-content: space-between;
+    gap: 16px;
+    padding: 26px;
+    border-radius: 17px;
+  }
+  .site .prediction-clean-layout .countdown-copy { grid-column: 1 / -1; }
+  .site .prediction-clean-layout .countdown-display {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font-size: clamp(54px, 5.4vw, 76px);
+    text-align: left;
+  }
+  .site .prediction-clean-layout .countdown-live { align-self: end; margin-bottom: 8px; padding: 6px 10px; }
+}
+
+/* Dark: the clock is the brightest thing on the page. */
+.site.dark-theme .prediction-clean-layout .prediction-intro {
+  border-color: rgba(233, 189, 91, .2);
+  background:
+    radial-gradient(ellipse at 0 0, rgba(233, 189, 91, .13), transparent 48%),
+    radial-gradient(ellipse at 100% 100%, rgba(31, 122, 76, .2), transparent 50%),
+    linear-gradient(125deg, #101c15, #070d0a 76%);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .4), inset 0 1px rgba(255, 255, 255, .05);
+}
+.site.dark-theme .prediction-clean-layout .prediction-countdown {
+  border-color: rgba(233, 189, 91, .28);
+  background:
+    radial-gradient(ellipse at 20% 100%, rgba(233, 189, 91, .14), transparent 60%),
+    linear-gradient(160deg, #131f17, #080e0b);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .4), inset 0 1px rgba(255, 255, 255, .06);
+}
+.site.dark-theme .prediction-clean-layout .countdown-display {
+  background: linear-gradient(180deg, #fff3cf, #e9bd5b 58%, #b98a2e);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 26px rgba(233, 189, 91, .22));
+}
+.site.dark-theme .prediction-clean-layout .countdown-live { border-color: var(--glass-line); background: rgba(255, 255, 255, .04); }
+.site.dark-theme .prediction-clean-layout .countdown-live.is-live { border-color: rgba(74, 222, 128, .32); color: #86efac; background: rgba(74, 222, 128, .08); }
+.site.dark-theme .prediction-clean-layout .countdown-live.is-live i { background: #4ade80; box-shadow: 0 0 0 4px rgba(74, 222, 128, .14), 0 0 12px rgba(74, 222, 128, .6); animation: cine-pulse 2.4s ease-in-out infinite; }
+
+/* Final ten seconds: the clock turns urgent. */
+.site .prediction-clean-layout .prediction-countdown.is-final { border-color: rgba(251, 113, 133, .55); animation: cine-final 1s ease-in-out infinite; }
+.site .prediction-clean-layout .prediction-countdown.is-final .countdown-display { color: #e11d48; }
+.site.dark-theme .prediction-clean-layout .prediction-countdown.is-final .countdown-display {
+  background: linear-gradient(180deg, #ffe4e6, #fb7185 60%, #e11d48);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 26px rgba(251, 113, 133, .35));
+}
+@keyframes cine-final { 50% { box-shadow: 0 0 0 4px rgba(251, 113, 133, .12), 0 0 46px rgba(251, 113, 133, .2); } }
+
+/* Access strip */
+.site.dark-theme .prediction-clean-layout .prediction-access-state {
+  border-color: var(--glass-line);
+  background: var(--glass);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04);
+}
+.site.dark-theme .prediction-clean-layout .prediction-access-state .access-state-icon { border-color: var(--gold-line); color: var(--gold-bright); background: var(--gold-soft); }
+
+/* Market list */
+.site.dark-theme .prediction-clean-layout .prediction-market-tabs { border-color: var(--glass-line); background: rgba(9, 15, 12, .7); box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 20px 50px rgba(0, 0, 0, .3); }
+.site.dark-theme .prediction-clean-layout .prediction-market-tab { border-color: transparent; background: transparent; }
+.site.dark-theme .prediction-clean-layout .prediction-market-tab:hover { border-color: var(--glass-line); background: rgba(255, 255, 255, .035); }
+.site.dark-theme .prediction-clean-layout .prediction-market-tab.is-active {
+  border-color: var(--gold-line);
+  background: linear-gradient(90deg, rgba(233, 189, 91, .18), rgba(233, 189, 91, .03));
+  box-shadow: inset 3px 0 var(--gold-bright), 0 0 30px rgba(233, 189, 91, .07);
+}
+.site.dark-theme .prediction-clean-layout .prediction-market-tab.is-active .market-tab-index {
+  border-color: transparent;
+  color: var(--gold-ink);
+  background: linear-gradient(145deg, #f8d98a, #d9a441);
+  box-shadow: 0 4px 12px rgba(201, 154, 58, .3);
+}
+.site .prediction-clean-layout .market-tab-index { font-family: var(--font-display); }
+.site.dark-theme .prediction-clean-layout .market-tab-index { border-color: var(--glass-line); background: rgba(255, 255, 255, .03); }
+.site.dark-theme .prediction-clean-layout .market-tab-state { border-color: var(--glass-line); background: transparent; }
+.site.dark-theme .prediction-clean-layout .market-tab-state.is-unlocked { border-color: rgba(74, 222, 128, .35); color: #4ade80; background: rgba(74, 222, 128, .1); }
+.site.dark-theme .prediction-clean-layout .locked-label.prediction-active-label { color: #4ade80; }
+
+/* Main card and the pick spotlight */
+.site.dark-theme .prediction-clean-layout .clean-prediction-card {
+  border-color: rgba(233, 189, 91, .18);
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(233, 189, 91, .08), transparent 40%),
+    linear-gradient(160deg, #111c15, #090f0c);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .42), inset 0 1px rgba(255, 255, 255, .05);
+}
+.site.dark-theme .prediction-clean-layout .prediction-game-icon { color: var(--gold-ink); background: linear-gradient(145deg, #f8d98a, #d9a441); box-shadow: 0 6px 16px rgba(201, 154, 58, .28); }
+.site.dark-theme .prediction-clean-layout .prediction-detail-tabs { border-color: var(--glass-line); background: rgba(0, 0, 0, .3); }
+.site.dark-theme .prediction-clean-layout .prediction-detail-tabs button.is-active { border-color: var(--gold-line); color: var(--gold-bright); background: var(--gold-soft); }
+.site.dark-theme .prediction-clean-layout .prediction-card-draw { border-color: var(--glass-line); background: rgba(255, 255, 255, .025); }
+.site.dark-theme .prediction-clean-layout .prediction-card-draw > span:last-child { border-color: var(--gold-line); color: var(--gold-bright); background: var(--gold-soft); font-variant-numeric: tabular-nums; }
+
+.site .prediction-clean-layout .live-prediction-value { position: relative; overflow: hidden; min-height: 170px; }
+.site.dark-theme .prediction-clean-layout .live-prediction-value {
+  border-color: rgba(233, 189, 91, .22);
+  background:
+    radial-gradient(ellipse 60% 90% at 50% 0, rgba(246, 213, 131, .16), transparent 70%),
+    radial-gradient(ellipse 50% 30% at 50% 100%, rgba(0, 0, 0, .5), transparent 70%),
+    #070c09;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .05), inset 0 -30px 50px rgba(0, 0, 0, .35);
+}
+.site.dark-theme .prediction-clean-layout .live-prediction-value.is-hidden { border-style: dashed; border-color: var(--glass-line); color: #9fb0a2; }
+.site .prediction-clean-layout .live-prediction-value .pick-balls { gap: 12px; }
+.site .prediction-clean-layout .live-prediction-value .ball-number {
+  width: 62px;
+  height: 62px;
+  border: 0;
+  box-shadow: inset -6px -9px 13px rgba(0, 0, 0, .38), inset 3px 4px 8px rgba(255, 255, 255, .16), 0 14px 24px rgba(0, 0, 0, .4);
+  font-size: 21px;
+  font-weight: 800;
+}
+.site .prediction-clean-layout .live-prediction-value.is-revealed .ball-number { animation: cine-ball-drop .8s var(--ease-cine) both; }
+.site .prediction-clean-layout .live-prediction-value.is-revealed .ball-number:nth-child(2) { animation-delay: .09s; }
+.site .prediction-clean-layout .live-prediction-value.is-revealed .ball-number:nth-child(3) { animation-delay: .18s; }
+.site .prediction-clean-layout .live-prediction-value.is-revealed .ball-number:nth-child(4) { animation-delay: .27s; }
+.site .prediction-clean-layout .live-prediction-value :is(.color-name, .range-tag) {
+  padding: 13px 22px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.site .prediction-clean-layout .live-prediction-value .color-name i { width: 12px; height: 12px; box-shadow: 0 0 0 3px rgba(255, 255, 255, .18); }
+.site.dark-theme .prediction-clean-layout .live-prediction-value .color-red { border-color: #f87171; background: linear-gradient(180deg, #d9463e, #9d2923); box-shadow: 0 10px 26px rgba(217, 70, 62, .3); }
+.site.dark-theme .prediction-clean-layout .live-prediction-value .color-blue { border-color: #6aa8f5; background: linear-gradient(180deg, #2f7de1, #1c4f96); box-shadow: 0 10px 26px rgba(47, 125, 225, .3); }
+.site.dark-theme .prediction-clean-layout .live-prediction-value .color-green { border-color: #5fd69a; background: linear-gradient(180deg, #25a565, #14633c); box-shadow: 0 10px 26px rgba(37, 165, 101, .3); }
+.site.dark-theme .prediction-clean-layout .live-prediction-value .range-high { border: 1px solid #f6d583; color: var(--gold-ink); background: linear-gradient(180deg, #f8d98a, #dba843); box-shadow: 0 10px 26px rgba(201, 154, 58, .3); }
+.site.dark-theme .prediction-clean-layout .live-prediction-value .range-low { border: 1px solid #8cc2ff; color: #fff; background: linear-gradient(180deg, #2f7de1, #1c4f96); box-shadow: 0 10px 26px rgba(47, 125, 225, .3); }
+
+/* Stake plan, last draw, streaks */
+.site.dark-theme .prediction-clean-layout .prediction-stake-plan { border-color: var(--glass-line); background: rgba(255, 255, 255, .025); }
+.site.dark-theme .prediction-clean-layout .stake-plan-recommendation > strong { color: var(--gold-bright); font-family: var(--font-display); }
+.site.dark-theme .prediction-clean-layout .prediction-streaks-disclosure { border-color: var(--glass-line); background: rgba(255, 255, 255, .025); }
+.site.dark-theme .prediction-clean-layout .outcome-badge.win { color: #86efac; background: rgba(74, 222, 128, .14); }
+.site.dark-theme .prediction-clean-layout .outcome-badge.loss { color: #fda4af; background: rgba(251, 113, 133, .14); }
+.site.dark-theme .prediction-clean-layout .prediction-responsibility { border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .025); }
+
+@media (max-width: 640px) {
+  .site .prediction-clean-layout .live-prediction-value { min-height: 140px; }
+  .site .prediction-clean-layout .live-prediction-value .pick-balls { gap: 9px; }
+  .site .prediction-clean-layout .live-prediction-value .ball-number { width: 54px; height: 54px; font-size: 18px; }
+  .site .prediction-clean-layout .live-prediction-value :is(.color-name, .range-tag) { padding: 11px 16px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site .prediction-clean-layout .prediction-countdown.is-final,
+  .site.dark-theme .prediction-clean-layout .countdown-live.is-live i { animation: none !important; }
+}
+
+/* Light theme: readable market title and a green (not gold) active marker. */
+.site:not(.dark-theme) .prediction-clean-layout .clean-prediction-card > h3 { color: #172923; }
+.site:not(.dark-theme) .prediction-clean-layout .prediction-market-tab.is-active .market-tab-index { border-color: #087653; color: #fff; background: #087653; }

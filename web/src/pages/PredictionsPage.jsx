@@ -38,7 +38,7 @@ function formatCountdown(seconds) {
 
 function formatPredictionUpdate(value) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
+  return !value || Number.isNaN(date.getTime())
     ? null
     : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
@@ -315,17 +315,19 @@ export default function PredictionsPage() {
     : 'waiting';
   return (
     <main className="page-wrap prediction-page prediction-clean-layout">
+      <div className="prediction-stage">
       <section className="page-intro prediction-intro">
         <span className="overline">BALLS49 · LIVE PICKS</span>
         <h1>Predictions for the next draw.</h1>
         <p>Current picks for your approved plan appear here. Try one market on the separate Free Trial page, revealed during the final 10 seconds.</p>
       </section>
 
-      <section className="prediction-countdown" aria-label="Time remaining until the next prediction">
+      <section className={`prediction-countdown${secondsLeft !== null && secondsLeft <= 10 ? ' is-final' : ''}`} aria-label="Time remaining until the next prediction">
         <div className="countdown-copy"><span className="overline">LIVE DRAW CLOCK</span><strong>Time left for the next prediction</strong><span>{clock ? `Draw #${clock.drawId}` : 'Waiting for the live clock from the bot…'}</span>{formatPredictionUpdate(predictionLastUpdated) && <time className="prediction-last-updated" dateTime={predictionLastUpdated}>Prediction last updated: {formatPredictionUpdate(predictionLastUpdated)}</time>}</div>
         <div className="countdown-display" aria-live="off">{formatCountdown(secondsLeft)}</div>
         <span className={`countdown-live${clock && now - clock.receivedAt < 15000 ? ' is-live' : ''}`}><i />{clock && now - clock.receivedAt < 15000 ? 'LIVE' : 'CONNECTING'}</span>
       </section>
+      </div>
 
       <section className="prediction-access-state" aria-label="Current access status">
         <span className="access-state-icon" aria-hidden="true">◉</span>
