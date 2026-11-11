@@ -4291,6 +4291,20 @@ async function handleHttpRequest(req, res) {
         catch (error) { return sendJson(res, error.status || 500, { error: error.status ? error.message : 'The MIN/MAX review could not be resolved.' }); }
     }
 
+    if (parsedUrl.pathname === '/admin/betzero-lab/reset-history') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed.' });
+        if (!betzeroLab) return sendJson(res, 503, { error: 'BetZero lab storage is unavailable; check the server log.' });
+        let request;
+        try { request = await readRequestJson(req); }
+        catch { return sendJson(res, 400, { error: 'Invalid reset request.' }); }
+        try {
+            return sendJson(res, 200, betzeroLab.resetStrategyHistory({
+                strategyId: String(request?.strategyId || ''), version: String(request?.strategyVersion || ''), confirmed: request?.confirmed
+            }));
+        } catch (error) { return sendJson(res, error.status || 500, { error: error.status ? error.message : 'The prediction history could not be reset.' }); }
+    }
+
     if (parsedUrl.pathname === '/admin/betzero-lab/strategy-config' && req.method === 'POST') {
         if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
         if (!betzeroLab) return sendJson(res, 503, { error: 'BetZero lab storage is unavailable; check the server log.' });

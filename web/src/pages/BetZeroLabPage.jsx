@@ -104,7 +104,13 @@ function statisticsStatus(statistics) {
   return `Latest statistics input was not usable${when}: ${STATISTICS_REASONS[last.reason] || last.reason || 'unknown reason'}.${shape}`;
 }
 
-function PredictionCard({ strategy, count, title, name, onToggle, saving, controlsBusy, live, statistics, onResolveReview }) {
+function Fact({ label, children }) {
+  return <div><dt>{label}</dt><dd>{children}</dd></div>;
+}
+
+// One prediction at a glance: numbers, target draw, result totals. Everything else sits in
+// the "More information" dropdown, including the history reset.
+function PredictionCard({ strategy, count, title, summary, onToggle, onReset, saving, controlsBusy, live, statistics, onResolveReview }) {
   const records = strategy?.last100 || [];
   // Newest prediction first: an old record that never received a result must not hide newer ones.
   const displayed = records.find(row => ['PENDING', 'WIN', 'LOSS'].includes(row.status));
@@ -112,62 +118,84 @@ function PredictionCard({ strategy, count, title, name, onToggle, saving, contro
   const settled = records.find(row => ['WIN', 'LOSS'].includes(row.status));
   const clockDraw = Number(live?.clock?.drawId);
   const resultMissing = Boolean(pending && Number.isFinite(clockDraw) && clockDraw > Number(pending.targetDrawId) + 1);
-  const isStreakDrop = Boolean(strategy?.id?.startsWith('statistics_streak_drop_'));
+  const isStatistics = Boolean(strategy?.id?.startsWith('statistics_streak_drop_'));
+  const isMinmax = strategy?.id === 'minimum_maximum_three';
   const decision = strategy?.decisionState;
+  const enabled = Boolean(strategy?.enabled);
+  const latestSkip = enabled && records[0]?.status === 'SKIP' ? records[0] : null;
   const selections = displayed?.selections || [];
   const valid = (Array.isArray(count) ? count.includes(selections.length) : selections.length === count) && new Set(selections).size === selections.length && selections.every(n => Number.isInteger(n) && n >= 1 && n <= 49);
-  return <article className="betzero-simple-pick">
-    <div className="betzero-pick-title"><span>{title}</span><StatusBadge value={strategy ? (strategy.enabled ? 'ACTIVE' : 'DISABLED') : 'UNAVAILABLE'} /></div>
-    <h3>{name}</h3>
-    <div className="betzero-enablement">
-      <span className="betzero-enablement-caption">Research Predictions Only — No Automatic Betting</span>
-      <button type="button" role="switch" aria-checked={Boolean(strategy?.enabled)}
+  const forNextDraw = Boolean(pending && live?.reliable && String(pending.targetDrawId) === String(live?.clock?.drawId));
+  const headline = !displayed ? 'No prediction yet'
+    : resultMissing ? 'Latest prediction (result not received)'
+    : forNextDraw ? 'Prediction for the next draw'
+    : pending ? 'Latest prediction'
+    : 'Last completed prediction';
+  const emptyText = !strategy ? 'This prediction is not available on the server yet.'
+    : !enabled ? 'Switched off. Turn it on to start predicting.'
+    : latestSkip ? `No prediction for draw #${latestSkip.targetDrawId}: ${skipText(latestSkip)}.`
+    : 'Waiting for the next draw to make a prediction.';
+  const hasRecords = records.length > 0;
+  return <article className={`betzero-pick${enabled ? '' : ' is-off'}`}>
+    <header className="betzero-pick-head">
+      <div><h3>{title}</h3><p>{summary}</p></div>
+      <button type="button" role="switch" aria-checked={enabled}
         aria-label={`${title} research predictions`} aria-busy={saving}
         disabled={!strategy || !['1.0.0','2.0.0','3.0.0'].includes(strategy.version) || controlsBusy}
-        className="betzero-enable-switch" onClick={() => onToggle(strategy, title)}>
+        className="betzero-toggle" onClick={() => onToggle(strategy, title)}>
         <span className="betzero-switch-track" aria-hidden="true"><span /></span>
-        <span>{saving ? 'Saving…' : strategy?.enabled ? 'Enabled — switch off' : 'Disabled — switch on'}</span>
+        <span>{saving ? 'Saving…' : enabled ? 'On' : 'Off'}</span>
       </button>
+    </header>
+
+    <div className="betzero-pick-main">
+      <span className="betzero-pick-label">{headline}</span>
+      {displayed ? <>
+        {valid ? <div className="betzero-number-balls" aria-label="Predicted numbers">{selections.map(n => <span key={n}>{n}</span>)}</div> : <p className="betzero-pick-empty">No valid saved selection available.</p>}
+        <div className="betzero-pick-target"><strong>Draw #{displayed.targetDrawId}</strong><StatusBadge value={resultMissing ? 'NO_RESULT' : displayed.status} /></div>
+        {latestSkip && <p className="betzero-pick-hint">Draw #{latestSkip.targetDrawId} was skipped: {skipText(latestSkip)}.</p>}
+        {!enabled && <p className="betzero-pick-hint">Switched off, so no new predictions are being made.</p>}
+      </> : <p className="betzero-pick-empty">{emptyText}</p>}
     </div>
-    <p className="betzero-pick-caption">{strategy?.market === 'BET49' ? 'Single-number appearance research: WIN when selected number appears' : count === 1 ? 'Single-number absence research experiment' : `${Array.isArray(count) ? (count.length > 2 ? `${count[0]} to ${count.at(-1)}` : count.join(' or ')) : count}-number research experiment`}</p>
-    {count === 4 && strategy && !strategy.enabled && !records.some(r => r.selections?.length === 4) && <p className="betzero-empty">4-number research predictions are disabled.</p>}
-    {count === 3 && <>
-      <p className="betzero-pick-caption">Method: {displayed?.conditions?.method || strategy?.decisionState?.method || 'Awaiting analysis'}</p>
-      {!strategy?.enabled && <p className="betzero-empty">3-number research predictions are disabled. Switch on to start; the first prediction needs five completed draws in a row.</p>}
-      {strategy?.enabled && records[0]?.status === 'SKIP' && <p className="betzero-warning">Latest draw skipped: {skipText(records[0])}.</p>}
-      {decision?.paused && <div className="betzero-warning"><p>Paused: draw #{decision.conflictDrawId ?? '?'} was reported with two different results, so no new predictions are made until this is reviewed.</p>
-        {onResolveReview && <button type="button" className="btn btn-secondary" disabled={controlsBusy} onClick={onResolveReview}>Resolve review and resume</button>}</div>}
-      {!decision?.paused && decision?.pending && <p className="betzero-pick-caption">Waiting for the result of draw #{decision.pending} before the next prediction.</p>}
-      {!decision?.paused && !decision?.pending && decision?.released && <p className="betzero-pick-caption">The result of draw #{decision.released.targetDrawId} never arrived, so that prediction was set aside ({dateTime(decision.released.at)}) and the method restarts from the latest five draws.</p>}
-    </>}
-    {isStreakDrop && <>
-      <p className="betzero-warning">{strategy.version === '3.0.0'
-        ? `${strategy.enabled ? 'Enabled.' : 'Disabled, so it makes no predictions. Switch on to start.'} Each draw it uses the numbers whose streak is exactly 1 in the latest statistics (the first four when more qualify). A number is removed as soon as its streak becomes 2.`
-        : strategy.enabled
-        ? `Enabled. A prediction appears only when at least ${strategy.version === '2.0.0' ? 'three' : 'four'} numbers drop from streak 2 or 3 to 1 between two consecutive draws; most draws are skipped.`
-        : `Disabled, so it makes no predictions. Switch on to start. It then predicts only when at least ${strategy.version === '2.0.0' ? 'three' : 'four'} numbers drop from streak 2 or 3 to 1 between two consecutive draws, so most draws are skipped.`} Results are provisional because Bet9ja statistics carry no draw ID.</p>
-      <p className="betzero-pick-caption">{statisticsStatus(statistics)}</p>
-      {strategy.enabled && records[0]?.status === 'SKIP' && <p className="betzero-pick-caption">Latest draw #{records[0].targetDrawId} skipped: {skipText(records[0])}.</p>}
-    </>}
-    {displayed ? <>
-      <p className="betzero-pick-caption">{resultMissing ? 'Latest prediction - its result was not received' : pending ? 'Latest pending record - draw timing not verified' : 'Last completed prediction'}</p>
-      {valid ? <div className="betzero-number-balls" aria-label="Recorded selected numbers">{selections.map(n => <span key={n}>{n}</span>)}</div> : <p>No valid saved selection available.</p>}
-      <div className="betzero-pick-target"><strong>Draw #{displayed.targetDrawId}</strong><StatusBadge value={resultMissing ? 'NO_RESULT' : pending ? 'WAITING' : displayed.status} /></div>
-      <p className="betzero-pick-caption">Recorded {dateTime(displayed.predictedAt)}. This is not a confirmed upcoming draw.</p>
-    </> : <p className="betzero-empty">No recorded prediction yet.</p>}
-    {pending && !resultMissing && live?.clock && <p className="betzero-pick-caption">
-      Saved pending target #{pending.targetDrawId}; latest clock draw #{live.clock.drawId}.
-      {String(pending.targetDrawId) !== live.clock.drawId ? ' These are different draws; this record is not the current upcoming prediction.' : !live.reliable ? ' Clock timing is unavailable; this is not a verified upcoming draw.' : ' Draw IDs match; this does not independently verify the saved prediction timestamp.'}
-    </p>}
-    <div className="betzero-last-result"><span>Last completed</span>{settled ? <><strong>#{settled.targetDrawId}</strong><StatusBadge value={settled.status} /></> : <span>No settled result in recent history</span>}</div>
+
+    {isMinmax && decision?.paused && <div className="betzero-warning"><p>Paused: draw #{decision.conflictDrawId ?? '?'} was reported with two different results, so no new predictions are made until this is reviewed.</p>
+      {onResolveReview && <button type="button" className="btn btn-secondary" disabled={controlsBusy} onClick={onResolveReview}>Resolve review and resume</button>}</div>}
+
     <dl className="betzero-pick-stats">
-      <div><dt>Wins / losses</dt><dd>{strategy?.wins ?? '-'} / {strategy?.losses ?? '-'}</dd></div>
+      <div><dt>Wins</dt><dd className="is-win">{strategy?.wins ?? 0}</dd></div>
+      <div><dt>Losses</dt><dd className="is-loss">{strategy?.losses ?? 0}</dd></div>
       <div><dt>Win rate</dt><dd>{percentage(strategy?.winRate)}</dd></div>
-      <div><dt>Current losing streak</dt><dd>{strategy?.currentLosingStreak ?? '-'}</dd></div>
-      <div><dt>Worst losing streak</dt><dd>{strategy?.worstLosingStreak ?? '-'}</dd></div>
+      <div><dt>Losing streak</dt><dd>{strategy?.currentLosingStreak ?? 0}</dd></div>
     </dl>
-    <p className="betzero-section-note">All recorded outcomes; includes timing-unverified history. Win rate is not profit.</p>
-    {strategy?.provisional && <p className="betzero-warning" role="status">Provisional: {strategy.provisionalReason}</p>}
+
+    <details className="betzero-pick-more">
+      <summary>More information</summary>
+      <dl className="betzero-pick-facts">
+        {strategy?.description && <Fact label="How it works">{strategy.description}</Fact>}
+        <Fact label="A win means">{strategy?.market === 'BET49' ? 'The predicted number is drawn.' : 'None of the predicted numbers are drawn.'}</Fact>
+        {isMinmax && <Fact label="Current method">{displayed?.conditions?.method || decision?.method || 'Not chosen yet (needs five completed draws in a row)'}</Fact>}
+        {isMinmax && !decision?.paused && decision?.pending && <Fact label="Waiting on">The result of draw #{decision.pending} before the next prediction.</Fact>}
+        {isMinmax && !decision?.paused && !decision?.pending && decision?.released && <Fact label="Set aside">The result of draw #{decision.released.targetDrawId} never arrived ({dateTime(decision.released.at)}), so the method restarts from the latest five draws.</Fact>}
+        {isStatistics && <Fact label="Statistics input">{statisticsStatus(statistics)} {statistics?.snapshots ?? 0} collected, {statistics?.conflicts ?? 0} conflicts.</Fact>}
+        {latestSkip && <Fact label="Latest skip">Draw #{latestSkip.targetDrawId}: {skipText(latestSkip)}.</Fact>}
+        {displayed && <Fact label="Prediction saved">{dateTime(displayed.predictedAt)}</Fact>}
+        {pending && !resultMissing && live?.clock && <Fact label="Draw clock">
+          Clock is on draw #{live.clock.drawId}.{String(pending.targetDrawId) !== String(live.clock.drawId) ? ' That is a different draw, so this is not the upcoming prediction.' : !live.reliable ? ' Clock timing is unavailable, so the upcoming draw is not confirmed.' : ' It matches this prediction.'}
+        </Fact>}
+        {resultMissing && <Fact label="Missing result">The result of draw #{pending.targetDrawId} has not been received.</Fact>}
+        <Fact label="Last completed">{settled ? <>Draw #{settled.targetDrawId} <StatusBadge value={settled.status} /></> : 'None yet'}</Fact>
+        <Fact label="Worst losing streak">{strategy?.worstLosingStreak ?? 0}</Fact>
+        <Fact label="Waiting / skipped">{strategy?.pending ?? 0} / {strategy?.skipped ?? 0}</Fact>
+        <Fact label="Version">{strategy?.version || '—'}</Fact>
+        {strategy?.historyResetAt && <Fact label="History last reset">{dateTime(strategy.historyResetAt)}</Fact>}
+      </dl>
+      {strategy?.provisional && <p className="betzero-pick-hint" role="status">Provisional: {strategy.provisionalReason}</p>}
+      <p className="betzero-pick-hint">Research only, no automatic betting. Win rate is not profit.</p>
+      <div className="betzero-pick-reset">
+        <div><strong>Reset history</strong><span>Start this prediction's wins, losses, streaks and records again from zero. Other predictions are not affected.</span></div>
+        <button type="button" className="btn btn-secondary betzero-danger" disabled={!strategy || controlsBusy || !onReset || (!hasRecords && !strategy?.wins && !strategy?.losses)} onClick={() => onReset(strategy, title)}>Reset history</button>
+      </div>
+    </details>
   </article>;
 }
 
@@ -416,6 +444,19 @@ export default function BetZeroLabPage({ session }) {
     finally {strategySaveLock.current=false;setBusy(false);}
   }
 
+  async function resetHistory(strategy, title) {
+    if (!session?.admin || busy || strategySaveLock.current || !strategy) return;
+    strategySaveLock.current = true;
+    if (!window.confirm(`Reset the history of ${title}?\n\nIts wins, losses, streaks, alerts and saved prediction records start again from zero, including a prediction that is still waiting for its result. New predictions continue from the next draw.\n\nOther predictions are not affected. The removed records are kept in a server archive, but they no longer appear in the lab.`)) { strategySaveLock.current=false; return; }
+    overviewRevision.current++; setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await apiRequest('/admin/betzero-lab/reset-history',{method:'POST',body:JSON.stringify({strategyId:strategy.id,strategyVersion:strategy.version,confirmed:true})});
+      setOverview(await apiRequest('/admin/betzero-lab')); setHistoryRefreshKey(value => value + 1);
+      setNotice(`${title}: history reset. ${result.archived} record${result.archived === 1 ? '' : 's'} moved to the archive; counting starts again from the next draw.`);
+    } catch(failure) { setError(`History not reset. ${failure.message}`); }
+    finally {strategySaveLock.current=false;setBusy(false);}
+  }
+
   if (session?.checking) return <main className="page-wrap betzero-lab-page"><section className="content-card" role="status">Checking owner session…</section></main>;
   if (!session?.admin || live.expired) return <main className="page-wrap betzero-lab-page">
     <section className="betzero-access-card"><span className="overline">PRIVATE RESEARCH WORKSPACE</span>
@@ -430,59 +471,57 @@ export default function BetZeroLabPage({ session }) {
   const selectedRun = overview?.backtestRuns?.find(run => run.runId === selectedRunId);
   const selectedOverall = backtest?.data?.overallByVersion?.[strategyKey(selectedStrategy)] || (backtest?.data?.overall && selectedStrategy && backtest.data.overall.strategyId === selectedStrategy.id && (backtest.data.overall.strategyVersion || '1.0.0') === selectedStrategy.version ? backtest.data.overall : null);
 
+  const versions = overview?.strategyVersions || {};
+  const minmaxCutOver = Boolean(versions['minimum_maximum_three@2.0.0']?.decisionState?.cutoverAt);
+  const cards = [
+    { key: 'simple_smallest_number_add_10@1.0.0', count: 1, title: '1-Number BetZero', summary: 'Smallest number of the last draw + 10.' },
+    { key: 'smallest_add10_step10_four@1.0.0', count: 4, title: '4-Number BetZero', summary: 'Smallest + 10, then steps of 10.' },
+    { key: 'statistics_streak_drop_betzero@3.0.0', count: [1,2,3,4], title: 'BetZero - Streak 1', summary: 'Up to four numbers whose streak is exactly 1.', statistics: true },
+    { key: 'statistics_streak_drop_bet49@3.0.0', count: 1, title: 'Bet49 - Streak 1', summary: 'One number picked from the streak-1 numbers.', statistics: true },
+    ...(minmaxCutOver ? [] : [{ key: 'minimum_maximum_three@1.0.0', count: 3, title: 'Minimum/Maximum v1', summary: 'Three numbers. After a win: switch method. After a loss: keep.', review: true }]),
+    { key: 'minimum_maximum_three@2.0.0', count: 3, title: 'Minimum/Maximum v2', summary: 'Three numbers. After a win: keep method. After a loss: switch.', review: true },
+  ];
+  const activeCount = cards.filter(card => versions[card.key]?.enabled).length;
+
   return <main className="page-wrap betzero-lab-page">
     <section className="betzero-hero">
-      <div><span className="overline">OWNER-ONLY · ISOLATED RESEARCH</span>
+      <div><span className="overline">OWNER-ONLY · RESEARCH</span>
         <h1>BetZero Strategy Lab</h1>
         <p>Your predictions, results and research tests in one place.</p></div>
-
+      <span className="betzero-hero-pill" role="note">Experimental · no bets are placed · results do not guarantee profit</span>
     </section>
 
-    <div className="betzero-warning" role="note"><strong>EXPERIMENTAL — NOT FOR REAL-MONEY BETTING</strong>
-      <span>No bets are placed here. Research results do not guarantee profit.</span></div>
     {error && <div className="betzero-message is-error" role="alert">{error}</div>}
     {notice && <div className="betzero-message is-success" role="status">{notice}</div>}
 
-    {loading && !overview && <section className="content-card" role="status">Loading isolated lab data…</section>}
+    {loading && !overview && <section className="content-card" role="status">Loading lab data…</section>}
     <section className="betzero-live-monitor" aria-labelledby="live-draw-title" aria-busy={live.refreshing}>
-      <div className="betzero-live-heading"><div><span className="overline">AUTHORITATIVE DRAW CLOCK</span><h2 id="live-draw-title">Live Draw Monitor</h2></div>
-        <span className={`betzero-live-status is-${live.status.toLowerCase()}`} role="status">{live.refreshing && live.status === 'LIVE' ? 'UPDATING' : live.status}</span>
-      </div>
       <div className="betzero-live-body">
-        <div><p>{live.reliable ? `Next draw #${live.clock.drawId}` : live.clock ? `Last reported draw #${live.clock.drawId}` : 'Next draw unavailable'}</p>
+        <div>
+          <div className="betzero-live-heading"><h2 id="live-draw-title">{live.reliable ? `Next draw #${live.clock.drawId}` : live.clock ? `Last reported draw #${live.clock.drawId}` : 'Next draw unavailable'}</h2>
+            <span className={`betzero-live-status is-${live.status.toLowerCase()}`} role="status">{live.refreshing && live.status === 'LIVE' ? 'UPDATING' : live.status}</span></div>
           <div className="betzero-live-countdown" role="timer" aria-label="Time remaining" aria-live="off">{live.seconds === null ? '--:--' : `${String(Math.floor(live.seconds / 60)).padStart(2,'0')}:${String(live.seconds % 60).padStart(2,'0')}`}</div>
         </div>
-        <button className="btn btn-secondary" type="button" disabled={live.refreshing || busy} onClick={live.refresh}>{live.refreshing ? 'Refreshing...' : 'Refresh Now'}</button>
+        <button className="btn btn-secondary" type="button" disabled={live.refreshing || busy} onClick={live.refresh}>{live.refreshing ? 'Refreshing...' : 'Refresh now'}</button>
       </div>
       <div className="betzero-live-freshness"><span>Clock received: {live.clock ? dateTime(live.clock.wall) : 'Not yet received'}</span><span>Lab data updated: {live.updatedAt ? dateTime(live.updatedAt) : 'Waiting for data'}</span></div>
-      {!live.reliable && <p className="betzero-warning" role="status">{live.clockError || (live.status === 'UPDATING' ? 'Waiting for the server to publish the next draw clock. No next draw ID has been inferred.' : 'No recent reliable clock is available. Countdown and upcoming-draw timing cannot be confirmed.')}</p>}
+      {!live.reliable && <p className="betzero-warning" role="status">{live.clockError || (live.status === 'UPDATING' ? 'Waiting for the server to publish the next draw clock.' : 'No recent reliable clock is available, so the countdown and upcoming draw cannot be confirmed.')}</p>}
       {live.refreshError && <p className="betzero-message is-error" role="alert">{live.refreshError}</p>}
-      <p className="betzero-section-note">Clock follows server observations. Research generation and settlement remain on the server. Updates pause when this tab is hidden.</p>
     </section>
     {overview && <>
       <section className="betzero-section betzero-my-predictions" aria-labelledby="my-predictions-title">
-        <div className="betzero-section-heading"><div><span className="overline">YOUR RESEARCH PICKS</span><h2 id="my-predictions-title">My Predictions</h2></div></div>
-        <div className="betzero-simple-picks">
-          <PredictionCard strategy={overview.strategies.simple_smallest_number_add_10} count={1} title="1-Number BetZero" name="Smallest +10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'simple_smallest_number_add_10'} controlsBusy={busy} live={live} />
-          <PredictionCard strategy={overview.strategies.smallest_add10_step10_four} count={4} title="4-Number BetZero" name="Smallest +10 / Step-10" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'smallest_add10_step10_four'} controlsBusy={busy} live={live} />
-          <p className="betzero-section-note">Statistics snapshots collected: {overview.numberStatistics?.snapshots ?? 0}. Conflicts: {overview.numberStatistics?.conflicts ?? 0}. Streak-drop research skips unavailable snapshot pairs.</p>
-          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_betzero@3.0.0']} count={[1,2,3,4]} title="BetZero - Streak 1 v3" name="Numbers whose streak is exactly 1; removed when it reaches 2" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_betzero'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
-          <PredictionCard strategy={overview.strategyVersions?.['statistics_streak_drop_bet49@3.0.0']} count={1} title="Bet49 - Streak 1 v3" name="One seeded random number from the streak-1 numbers" onToggle={toggleResearchStrategy} saving={savingStrategyId === 'statistics_streak_drop_bet49'} controlsBusy={busy} live={live} statistics={overview.numberStatistics} />
-          <p className="betzero-section-note">Streak-drop v1 and v2 have separate history and settings. V2 starts disabled; enabling it does not disable v1 or backfill missed draws.</p>
-          {!overview.strategyVersions?.['minimum_maximum_three@2.0.0']?.decisionState?.cutoverAt && <PredictionCard strategy={overview.strategyVersions?.['minimum_maximum_three@1.0.0']} count={3}
-            title="Minimum/Maximum v1.0.0"
-            name="After WIN: switch / After LOSS: keep"
-            onToggle={toggleResearchStrategy} saving={savingStrategyId === 'minimum_maximum_three'} controlsBusy={busy} live={live} onResolveReview={resolveMinmaxReview} />}
-          <PredictionCard strategy={overview.strategyVersions?.['minimum_maximum_three@2.0.0']} count={3}
-            title="Minimum/Maximum v2.0.0 - New switching strategy"
-            name="After WIN: keep / After LOSS: switch"
-            onToggle={toggleResearchStrategy} saving={savingStrategyId === 'minimum_maximum_three'} controlsBusy={busy} live={live} onResolveReview={resolveMinmaxReview} />
+        <div className="betzero-section-heading"><div><span className="overline">YOUR RESEARCH PICKS</span><h2 id="my-predictions-title">My Predictions</h2></div>
+          <span className="betzero-muted">{activeCount} of {cards.length} switched on</span></div>
+        <p className="betzero-section-note">Each card shows the numbers, the draw they are for, and the results so far. Open “More information” on a card for the details and to reset its history.</p>
+        <div className="betzero-picks">
+          {cards.map(card => <PredictionCard key={card.key} strategy={versions[card.key]} count={card.count} title={card.title} summary={card.summary}
+            onToggle={toggleResearchStrategy} onReset={resetHistory} saving={savingStrategyId === card.key.split('@')[0]} controlsBusy={busy} live={live}
+            statistics={card.statistics ? overview.numberStatistics : undefined} onResolveReview={card.review ? resolveMinmaxReview : undefined} />)}
         </div>
-        <div className="betzero-warning"><strong>Minimum/Maximum version cutover</strong>
-          <p>v2 starts independently from five eligible historical opportunities. Unresolved predictions or conflicts block cutover. Existing history is preserved.</p>
-          <button type="button" className="btn btn-secondary" disabled={busy || Boolean(overview.strategyVersions?.['minimum_maximum_three@2.0.0']?.decisionState?.cutoverAt)} onClick={cutoverMinmax}>Review v1 to v2 cutover</button>
-          <p>Before the first cutover, this action (or the v2 switch, which runs the same confirmed cutover) initializes v2. Returning to v1 after cutover requires a separate reviewed rollback.</p>
-        </div>
+        {!minmaxCutOver && <details className="betzero-inline-details"><summary>Switch Minimum/Maximum from v1 to v2</summary>
+          <p>v2 starts on its own from five eligible past draws. A prediction still waiting for its result, or a result conflict, blocks the switch. Existing history is kept. Going back to v1 afterwards needs a separate review.</p>
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={cutoverMinmax}>Review v1 to v2 switch</button>
+        </details>}
       </section>
       <section className="betzero-section" aria-labelledby="test-strategy-title">
         <div className="betzero-section-heading"><div><span className="overline">EXPLORE PAST DRAWS</span><h2 id="test-strategy-title">Test My Strategy</h2></div></div>
@@ -503,9 +542,14 @@ export default function BetZeroLabPage({ session }) {
       </section>
       <section className="betzero-section betzero-simple-performance" aria-labelledby="performance-title">
         <div className="betzero-section-heading"><div><span className="overline">UNDERSTAND YOUR RESULTS</span><h2 id="performance-title">Results &amp; Performance</h2></div></div>
-        <div className="betzero-view-switch" aria-label="Performance view">
-          <button type="button" className="btn btn-secondary" aria-pressed={performanceView === 'forward'} onClick={() => setPerformanceView('forward')}>Forward predictions</button>
-          <button type="button" className="btn btn-secondary" aria-pressed={performanceView === 'historical'} onClick={() => setPerformanceView('historical')}>Historical backtests</button>
+        <div className="betzero-results-toolbar">
+          <label>Prediction to review<select value={selectedStrategy ? strategyKey(selectedStrategy) : ''} onChange={event => setSelectedStrategyId(event.target.value)}>
+            {strategies.map(strategy => <option value={strategyKey(strategy)} key={strategyKey(strategy)}>{strategy.label} - v{strategy.version}</option>)}
+          </select></label>
+          <div className="betzero-view-switch" aria-label="Performance view">
+            <button type="button" className="btn btn-secondary" aria-pressed={performanceView === 'forward'} onClick={() => setPerformanceView('forward')}>Live predictions</button>
+            <button type="button" className="btn btn-secondary" aria-pressed={performanceView === 'historical'} onClick={() => setPerformanceView('historical')}>Past-draw tests</button>
+          </div>
         </div>
         {performanceView === 'forward' ? <>
           <p className="betzero-section-note">All recorded outcomes for {selectedStrategy?.label}. These totals include legacy timing-unverified records; the verified chart below uses a separate sample.</p>
@@ -519,13 +563,13 @@ export default function BetZeroLabPage({ session }) {
           </div>
       <section className="betzero-section">
         <div className="betzero-section-heading betzero-chart-controls"><div><span className="overline">RECORDED FORWARD RESULTS</span><h2>Forward-testing trend</h2></div>
-          <div className="betzero-control-row"><label>Strategy<select value={selectedStrategy ? strategyKey(selectedStrategy) : ''} onChange={event => setSelectedStrategyId(event.target.value)}>
-            {strategies.map(strategy => <option value={strategyKey(strategy)} key={strategyKey(strategy)}>{strategy.label} - v{strategy.version}</option>)}
-          </select></label><label>Recent completed records<select value={recentRange} onChange={event => setRecentRange(Number(event.target.value))}>
+          <div className="betzero-control-row"><label>Recent completed records<select value={recentRange} onChange={event => setRecentRange(Number(event.target.value))}>
             {RANGE_OPTIONS.map(range => <option key={range} value={range}>{range}</option>)}
           </select></label></div>
         </div>
-        <p className="betzero-section-note">Each strategy version has its own rolling window. Skips and invalid records occupy window slots; pending predictions do not. Collector observation times alone do not prove the actual draw deadline. Older records without timing evidence remain in history but are excluded from these verified rates. Win rates do not measure profit.</p>
+        <details className="betzero-inline-details"><summary>How these numbers are calculated</summary>
+          <p>Each strategy version has its own rolling window. Skips and invalid records occupy window slots; pending predictions do not. Collector observation times alone do not prove the actual draw deadline. Older records without timing evidence remain in history but are excluded from these verified rates. Win rates do not measure profit.</p>
+        </details>
         {forwardWindow && <>
           {forwardWindow.provisional && <p className="betzero-warning" role="status">Provisional results: {forwardWindow.provisionalReason}</p>}
           <div className="betzero-stage4-metrics">
@@ -582,10 +626,6 @@ export default function BetZeroLabPage({ session }) {
               {row.result.reason && <p>{row.result.reason}</p>}
             </article>)}
           </> : <p className="betzero-empty">No saved historical result available. Queued jobs are not completed tests.</p>}
-        </div>}
-      </section>
-      <div className="betzero-technical-heading"><h2>Research tools</h2><p>Existing technical features remain available here. Their collapsible layout is reserved for Phase 4.</p></div>
-      <section className="betzero-section">
         {performanceView === 'historical' && backtest && <section className="betzero-section">
           <h2>Recorded historical selections</h2>
           {selectedOverall && <div className="betzero-simple-pick">
@@ -604,8 +644,12 @@ export default function BetZeroLabPage({ session }) {
             {row.conditions?.reason && <p>{row.conditions.reason}</p>}
           </article>)}</div>
         </section>}
-        <div className="betzero-section-heading"><div><span className="overline">STRATEGY OVERVIEW</span><h2>Research status</h2></div>
-          <span className="betzero-muted">{strategies.length} registered strategies</span></div>
+        </div>}
+      </section>
+      <div className="betzero-technical-heading"><h2>Advanced research tools</h2><p>Technical details for deeper research. Open a section only when you need it.</p></div>
+      <details className="betzero-section betzero-collapsible">
+        <summary><span className="overline">STRATEGY OVERVIEW</span><h2>All strategies</h2></summary>
+        <p className="betzero-section-note">{strategies.length} registered strategies</p>
         <div className="betzero-strategy-grid">
           {strategies.map(strategy => <article className="betzero-strategy-card" key={strategyKey(strategy)}>
             <div className="betzero-card-top"><StatusBadge value={strategy.status} /><span>{strategy.enabled ? 'Enabled' : 'Disabled'}</span></div>
@@ -621,11 +665,11 @@ export default function BetZeroLabPage({ session }) {
               {strategy.status === 'UNVERIFIED' && <span className="betzero-unverified-label">Rule not verified</span>}</div>
           </article>)}
         </div>
-      </section>
+      </details>
 
-      <section className="betzero-section">
-        <div className="betzero-section-heading"><div><span className="overline">STRATEGY COMPARISON</span><h2>Forward vs. matched backtest</h2></div>
-          {selectedRun && <span className="betzero-muted">Run {selectedRun.runId.slice(0, 8)} · {selectedRun.requestedWindow} draws</span>}</div>
+      <details className="betzero-section betzero-collapsible">
+        <summary><span className="overline">STRATEGY COMPARISON</span><h2>Forward vs. matched backtest</h2></summary>
+        {selectedRun && <p className="betzero-section-note">Run {selectedRun.runId.slice(0, 8)} · {selectedRun.requestedWindow} draws</p>}
         <p className="betzero-section-note">Forward records and historical backtest segments are different samples. Each strategy version is tracked separately. Win rate alone is not a ranking; sample size, skip frequency, pick count, and uncertainty matter.</p>
         <div className="betzero-table-scroll"><table className="betzero-table">
           <thead><tr><th>Strategy</th><th>Forward opportunities</th><th>Forward W/L</th><th>Forward win rate</th><th>Current / worst losses</th><th>{backtest?.data?.evaluationMode === 'SEALED_FINAL' ? 'Sealed final W/L' : 'Exploratory holdout W/L'}</th><th>Random baseline</th><th>95% CI</th></tr></thead>
@@ -651,10 +695,10 @@ export default function BetZeroLabPage({ session }) {
             return <div key={segment}><span>{segment === 'final_test' ? (backtest.data.evaluationMode === 'SEALED_FINAL' ? 'sealed final test' : 'exploratory holdout') : segment} · {selectedStrategy?.label} v{selectedStrategy?.version}</span><strong>{totalPicks ? `${totalWins} / ${totalPicks} wins` : 'No eligible picks'}</strong></div>;
           })}
         </div>}
-      </section>
+      </details>
 
-      <section className="betzero-section">
-        <div className="betzero-section-heading"><div><span className="overline">HISTORICAL SIMULATION</span><h2>Research job management</h2></div></div>
+      <details className="betzero-section betzero-collapsible">
+        <summary><span className="overline">HISTORICAL SIMULATION</span><h2>Research job management</h2></summary>
         <p className="betzero-section-note">Exploratory simulations use development, validation, and reused holdout segments. They are not untouched final tests or genuine forward predictions. Sealed evaluations use future draw ranges frozen below.</p>
           <label>Reproducibility seed<input value={seed} maxLength={64} required onChange={event => setSeed(event.target.value)} /></label>
         {busy && <p className="betzero-progress" role="status">{busyAction || 'Lab operation in progress'}…</p>}
@@ -691,9 +735,11 @@ export default function BetZeroLabPage({ session }) {
         </select></label>
           {backtest && <div className="betzero-run-meta"><StatusBadge value={backtest.status} /><span>Dataset {backtest.datasetHash?.slice(0, 12)}</span><span>{backtest.data.validDraws.toLocaleString()} valid draws</span><span>{backtest.predictionTotal.toLocaleString()} saved simulations</span></div>}
         </div>
-      </section>
+      </details>
 
-      <section className="betzero-section betzero-two-column">
+      <details className="betzero-section betzero-collapsible">
+        <summary><span className="overline">SETTINGS</span><h2>Alert settings &amp; loss-streak alerts</h2></summary>
+        <div className="betzero-two-column">
         <div className="betzero-panel">
           <div className="betzero-section-heading"><div><span className="overline">STRATEGY CONFIGURATION</span><h2>Research controls</h2></div></div>
           {selectedStrategy && <form className="betzero-config-form" onSubmit={saveStrategyConfig}>
@@ -719,7 +765,8 @@ export default function BetZeroLabPage({ session }) {
             </article>) : <p className="betzero-empty">No lab loss-streak alerts have been recorded.</p>}
           </div>
         </div>
-      </section>
+        </div>
+      </details>
 
     </>}
   </main>;

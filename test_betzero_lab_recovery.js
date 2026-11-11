@@ -123,6 +123,30 @@ test('streak-1 v3 predicts from the latest statistics alone and drops a number o
     assert.equal(rows(11).status,'WIN');assert.deepEqual(rows(12).selections,[5]);
 });
 
+test('resetting one strategy history archives its rows, clears its totals and lets predictions continue',t=>{
+    const s=setup(t);openPrediction(s);
+    ingest(s,8,[record(7,c)]);
+    assert.equal(s.row(7).status,'WIN');assert.equal(s.row(8).status,'PENDING');
+    assert.equal(s.lab.statsForVersion(mm.ID,'1.0.0').wins,1);
+    const single=JSON.stringify(s.rows(SINGLE));
+    assert.throws(()=>s.lab.resetStrategyHistory({strategyId:mm.ID,version:'1.0.0'}),/confirmation/);
+    assert.throws(()=>s.lab.resetStrategyHistory({strategyId:'nope',version:'1.0.0',confirmed:true}),/Unknown lab strategy/);
+    s.setTime(8500);
+    const result=s.lab.resetStrategyHistory({strategyId:mm.ID,version:'1.0.0',confirmed:true});
+    assert.equal(result.archived,2);assert.equal(result.resetAt,8500);
+    assert.deepEqual(s.rows(),[]);
+    const stats=s.lab.overview().strategyVersions[`${mm.ID}@1.0.0`];
+    assert.equal(stats.wins,0);assert.equal(stats.losses,0);assert.equal(stats.last100.length,0);assert.equal(stats.historyResetAt,8500);
+    assert.equal(stats.decisionState.pending,null);
+    assert.equal(s.db.prepare('SELECT COUNT(*) n FROM betzero_lab_streak_events WHERE strategy_id=?').get(mm.ID).n,0);
+    assert.equal(s.db.prepare('SELECT COUNT(*) n FROM betzero_lab_forward_predictions_archive WHERE strategy_id=? AND reset_at=8500').get(mm.ID).n,2);
+    // Other strategies keep their history, and the reset strategy predicts again on the next draw.
+    assert.equal(JSON.stringify(s.rows(SINGLE)),single);
+    ingest(s,9,[record(8,a)]);
+    assert.equal(s.row(9).status,'PENDING');assert.equal(s.rows().length,1);
+    assert.equal(s.row(8,SINGLE).status,'LOSS');
+});
+
 test('statistics samples without a provider status are accepted and rejections are explained',t=>{
     const s=setup(t);
     const sample=(source,values={},rows=49)=>({btc:11090,period:'100',sourceDrawId:source,targetDrawId:source+1,

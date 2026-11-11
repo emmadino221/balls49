@@ -447,6 +447,23 @@ function createBetZeroLab(db, options = {}) {
             state_key TEXT PRIMARY KEY,
             state_value TEXT NOT NULL
         );
+        -- Rows removed by an administrator's "reset history"; kept so a reset can be recovered.
+        CREATE TABLE IF NOT EXISTS betzero_lab_forward_predictions_archive (
+            prediction_id TEXT PRIMARY KEY,
+            strategy_id TEXT NOT NULL,
+            strategy_version TEXT NOT NULL,
+            source_draw_id TEXT NOT NULL,
+            target_draw_id TEXT NOT NULL,
+            predicted_at TEXT NOT NULL,
+            strategy_config_json TEXT NOT NULL,
+            selections_json TEXT NOT NULL,
+            conditions_json TEXT NOT NULL,
+            source_input_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            actual_balls_json TEXT,
+            validated_at TEXT,
+            reset_at INTEGER NOT NULL
+        );
     `);
 
     require('./betzero-version-migration').migrateVersionKeys(db);
@@ -678,6 +695,34 @@ function createBetZeroLab(db, options = {}) {
             return { resolved };
         } catch(error) {db.exec('ROLLBACK');throw error;}
     }
+    // Starts one strategy version's forward history again from zero. The removed rows move to
+    // the archive table (recoverable); other strategies and versions are untouched.
+    function resetStrategyHistory({ strategyId, version, confirmed } = {}) {
+        if (confirmed !== true) throw Object.assign(new Error('Explicit confirmation is required to reset prediction history.'),{status:400});
+        const strategy = strategies().find(item => item.id === strategyId && item.version === version && strategyDefinition(item.id, item.version));
+        if (!strategy) throw Object.assign(new Error('Unknown lab strategy.'),{status:404});
+        db.exec('BEGIN IMMEDIATE');
+        try {
+            const time = now();
+            const archived = db.prepare(`INSERT OR REPLACE INTO betzero_lab_forward_predictions_archive
+                SELECT prediction_id, strategy_id, strategy_version, source_draw_id, target_draw_id, predicted_at,
+                    strategy_config_json, selections_json, conditions_json, source_input_json, status,
+                    actual_balls_json, validated_at, ?
+                FROM betzero_lab_forward_predictions WHERE strategy_id=? AND strategy_version=?`).run(time, strategy.id, strategy.version).changes;
+            for (const table of ['betzero_lab_forward_predictions','betzero_lab_streak_events','betzero_lab_alerts'])
+                db.prepare(`DELETE FROM ${table} WHERE strategy_id=? AND strategy_version=?`).run(strategy.id, strategy.version);
+            if (strategy.id === minmax.ID) {
+                // Nothing is left to wait for, so the method restarts from the latest five draws.
+                // A pause for a conflicting result and the v2 cutover markers are kept.
+                const { released, ...rest } = minmaxState(strategy.version);
+                saveMinmaxState({ ...rest, pending: null, method: null }, strategy.version);
+            }
+            setState.run(`history_reset_at:${strategy.id}@${strategy.version}`, String(time));
+            db.exec('COMMIT');
+            return { strategyId: strategy.id, version: strategy.version, archived, resetAt: time };
+        } catch(error) {db.exec('ROLLBACK');throw error;}
+    }
+    const historyResetAt = (strategyId, version) => Number(getState.get(`history_reset_at:${strategyId}@${version}`)?.state_value) || null;
     // Repairs a MIN/MAX version that is stuck waiting on a prediction. Runs only while a
     // snapshot is being ingested, inside its transaction.
     function healMinmax(snapshotAt, validatedAt) {
@@ -984,6 +1029,7 @@ function createBetZeroLab(db, options = {}) {
                 ...require('./betzero-reconciliation').pendingQuality(db, strategy.id, strategy.version, now()),
                 ...summarizePredictionRows(predictionRows(strategy.id)
                     .filter(row => row.strategy_version === strategy.version)),
+                historyResetAt: historyResetAt(strategy.id, strategy.version),
                 ...inputQuality(strategy.id)
             }
         ]));
@@ -1275,6 +1321,7 @@ function createBetZeroLab(db, options = {}) {
         setStrategyEnabled,
         cutoverMinmax,
         resolveMinmaxReview,
+        resetStrategyHistory,
         ingestSnapshot,
         reconcileArchive,
         listForwardPredictions,
