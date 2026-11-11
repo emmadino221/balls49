@@ -1,4 +1,5 @@
 'use strict';
+const minmax = require('./betzero-minmax');
 
 // This is a deterministic historical signal, not a calibrated win probability.
 function predictHighLow(draws, targetDrawId) {
@@ -66,5 +67,43 @@ function gradeHighLow(pick, balls) {
     return range === pick ? 'WIN' : 'LOSS';
 }
 
-// Retain the earlier function for historical/offline callers only.
-module.exports = { predictHighLow, predictHighLowFromBet49, highLowRange, gradeHighLow };
+// The Lab's HIGH/LOW rule: follow Minimum/Maximum v2. MAX gives LOW, MIN gives HIGH.
+const highLowForMethod = method => method === 'MAX' ? 'LOW' : method === 'MIN' ? 'HIGH' : null;
+
+const MINMAX_SKIP_TEXT = {
+    INSUFFICIENT_HISTORY: 'Minimum/Maximum v2 needs five completed draw pairs first',
+    BOTH_METHODS_WIN: 'Minimum/Maximum v2 has no starting method (both methods won)',
+    NO_STARTING_METHOD: 'Minimum/Maximum v2 has no starting method',
+    BOUNDARY: 'Minimum/Maximum v2 skipped: the number is 1 or 49',
+    INVALID_SOURCE: 'The previous draw result is not available yet'
+};
+
+// Main High/Low prediction. Replays Minimum/Maximum v2 over the completed draws (same rules
+// as the Lab) and follows the method it would use for the target draw.
+function predictHighLowFromMinmax(draws, targetDrawId) {
+    const skip = (reason, analysis = null) => ({ status: 'SKIP', range: null, reason, analysis });
+    const target = Number(targetDrawId);
+    if (!Array.isArray(draws) || !Number.isSafeInteger(target) || target <= 0) return skip('No valid completed draw history');
+    const byId = new Map();
+    for (const draw of draws) {
+        const id = Number(draw?.id);
+        const balls = typeof draw?.dr === 'string' ? draw.dr.split(',').map(Number) : draw?.balls;
+        if (!Number.isSafeInteger(id) || id <= 0 || id >= target || byId.has(id) || !highLowRange(balls)) continue;
+        byId.set(id, { id, balls: [...balls] });
+    }
+    const history = [...byId.values()].sort((a, b) => a.id - b.id).slice(-300);
+    const last = history[history.length - 1];
+    if (!last || last.id !== target - 1) return skip(MINMAX_SKIP_TEXT.INVALID_SOURCE);
+    const pairs = [];
+    for (let i = 1; i < history.length; i++) {
+        if (history[i - 1].id + 1 === history[i].id) pairs.push({ source: history[i - 1], target: history[i] });
+    }
+    const pick = minmax.simulate([...pairs, { source: last, target: { id: target, balls: null } }], pairs, () => {}, '2.0.0').get(target);
+    const analysis = { method: 'MINMAX_V2_HIGH_LOW_V1', sourceDrawId: String(last.id), samples: history.length,
+        minmaxMethod: pick.conditions.method || null, minmaxSelections: pick.selections, minmaxReason: pick.conditions.reason || null };
+    if (pick.status !== 'PENDING') return skip(MINMAX_SKIP_TEXT[pick.conditions.reason] || 'Minimum/Maximum v2 has no prediction', analysis);
+    return { status: 'ACTIVE', range: highLowForMethod(pick.conditions.method), reason: '', analysis };
+}
+
+// Retain the earlier functions for historical/offline callers only.
+module.exports = { predictHighLow, predictHighLowFromBet49, predictHighLowFromMinmax, highLowForMethod, highLowRange, gradeHighLow };

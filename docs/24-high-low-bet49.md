@@ -1,5 +1,7 @@
 # High/Low from six Bet49 picks
 
+> Superseded: the live High/Low prediction now follows Minimum/Maximum v2. See 42-high-low-follows-minmax.md.
+
 The live High/Low prediction now uses the issued Bet49 selection for the same
 draw. Bet49 must be ACTIVE with exactly six distinct valid numbers. Add all six:
 

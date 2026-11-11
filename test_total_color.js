@@ -8,7 +8,7 @@ const vm = require('node:vm');
 const { getTotalColorOutcome, totalColor3WayPrediction, getTotalColorTargets, totalColorWins } = require('./total-color');
 const { singleColorPrediction } = require('./total-color');
 const { predictBet49 } = require('./bet49');
-const { predictHighLowFromBet49 } = require('./high-low');
+const { predictHighLowFromMinmax } = require('./high-low');
 
 const tie = [1, 4, 2, 5, 3, 6];
 const red = [1, 4, 7, 2, 3, 6];
@@ -107,7 +107,7 @@ test('actual generator builds three-way from the active two-way prediction', () 
         getDailyHistoryResetAt: () => 0,
         getBallColor: number => number === 49 ? 'yellow' : number % 3 === 1 ? 'red' : number % 3 === 2 ? 'blue' : 'green',
         predictBet49,
-        predictHighLowFromBet49,
+        predictHighLowFromMinmax,
         singleColorPrediction
     });
     vm.runInContext(source.slice(start, end), context);

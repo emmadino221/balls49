@@ -35,7 +35,7 @@ const {
     getSummaryGateTarget, summaryGateAllows, getIssuedSummaryLabels, applySummaryGateConfig
 } = require('./summary-gate');
 const { getTotalColorOutcome, totalColor3WayPrediction, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
-const { predictHighLowFromBet49 } = require('./high-low');
+const { predictHighLowFromMinmax } = require('./high-low');
 const { nigeriaMidnightBoundary } = require('./daily-reset');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
 const { getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
@@ -479,7 +479,8 @@ let lastGlobalDrawId = null;
 let publicClock = { drawId: null, timeLeftSeconds: null, drawDate: null, observedAt: null };
 let labNumberStatistics = null;
 // Research-only: recent completed results straight from the draw archive, so the Lab can
-// settle and continue across the daily reset. Never used for production predictions.
+// settle and continue across the daily reset. The main High/Low prediction also replays them
+// (it follows the Lab's Minimum/Maximum v2 rule); no other production prediction uses them.
 let labRecentResults = [];
 function rememberLabRecentResults(draws) {
     const byId = new Map(labRecentResults.map(item => [item.drawId, item]));
@@ -2440,7 +2441,7 @@ function apiGet(path) {
     });
 }
 
-function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId) {
+function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId, highLowDraws) {
 
     if (getDailyHistoryResetAt()) {
         stats100TC = null;
@@ -2572,7 +2573,8 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     // Total Color 3-way adds No Winning Color to the active 2-way selection.
     var totalColorPred = totalColor3WayPrediction(totalColor2Pred);
 
-    const highLow = predictHighLowFromBet49(bet49Prediction);
+    // High/Low follows the Lab's HIGH/LOW rule: Minimum/Maximum v2 on MAX gives LOW, on MIN gives HIGH.
+    const highLow = predictHighLowFromMinmax(highLowDraws || histRaw?.data?.draws, targetDrawId);
     var hiloStatus = highLow.status;
     var sumRange = highLow.range || 'SKIP';
     var hlSkipReason = highLow.reason;
@@ -3504,7 +3506,8 @@ async function tick() {
             if (getDailyHistoryResetAt() && Number(drawsForPred.resetAt) !== getDailyHistoryResetAt()) return;
             if (!(drawsForPred.draws || []).length) return;
 
-            var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId);
+            var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId,
+                [...(drawsForPred.draws || []), ...labRecentResults.map(item => ({ id: item.drawId, balls: item.balls }))]);
             for (const market of ['betzero', 'rainbow']) {
                 const strategy = pred.adaptiveStrategies?.[market];
                 if (strategy?.switched) console.log(`[Strategy] ${market}: ${strategy.selected} selected for draw ${nextId}; paired samples ${strategy.comparison.pairedDraws}.`);

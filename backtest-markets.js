@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
 const { totalColor3WayPrediction, singleColorPrediction } = require('./total-color');
-const { predictHighLow, predictHighLowFromBet49 } = require('./high-low');
+const { predictHighLow, predictHighLowFromBet49, predictHighLowFromMinmax } = require('./high-low');
 const { predictBetZero, predictBetZeroStep10 } = require('./betzero');
 const { predictBet49, predictBet49SmallestAdd10, bet49Numbers } = require('./bet49');
 
@@ -51,7 +51,7 @@ if (start < 0 || end <= start) throw new Error('Cannot locate the current predic
 const generator = source.slice(start, end);
 const replayPredictions = [];
 const context = vm.createContext({ getBallColor: color, totalColor3WayPrediction, singleColorPrediction,
-    predictHighLow, predictHighLowFromBet49, predictBet49, predictBet49SmallestAdd10, bet49Numbers,
+    predictHighLow, predictHighLowFromBet49, predictHighLowFromMinmax, predictBet49, predictBet49SmallestAdd10, bet49Numbers,
     predictBetZero, predictBetZeroStep10, predictionLog: replayPredictions, getDailyHistoryResetAt: () => 0,
     getBet49Prediction: () => null }); // Bet49 is outside this comparison; no persistent target state.
 vm.runInContext(generator, context, { timeout: 1000 });

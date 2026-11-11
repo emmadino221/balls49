@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const minmax = require('./betzero-minmax');
 const transitions = require('./betzero-statistics-transition');
-const { gradeHighLow } = require('./high-low');
+const { gradeHighLow, highLowForMethod } = require('./high-low');
 
 // HIGH/LOW follows Minimum/Maximum v2: its MAX method predicts LOW, its MIN method predicts HIGH.
 const HIGH_LOW_ID = 'minmax_high_low';
@@ -137,7 +137,7 @@ function highLowFromMinmax(decision) {
     const method = ['PENDING', 'WIN', 'LOSS'].includes(decision?.status) ? decision.conditions?.method : null;
     if (method !== 'MAX' && method !== 'MIN') return { status: 'SKIP', selections: [], conditions: {
         reason: 'MINMAX_V2_HAS_NO_PREDICTION', minmaxStatus: decision?.status || 'NONE', minmaxReason: decision?.conditions?.reason || null } };
-    return { status: 'PENDING', selections: [method === 'MAX' ? 'LOW' : 'HIGH'],
+    return { status: 'PENDING', selections: [highLowForMethod(method)],
         conditions: { model: 'MINMAX_V2_HIGH_LOW', followsMethod: method, minmaxSelections: decision.selections } };
 }
 
