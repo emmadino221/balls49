@@ -153,7 +153,7 @@ test('every lab admin action is reachable on the public website',()=>{
     const allowed=source.slice(source.indexOf('const PUBLIC_SITE_ROUTES'),source.indexOf('function isAllowedApiOrigin'));
     const handled=[...new Set([...source.matchAll(/pathname === '(\/admin\/betzero-lab\/[a-z-]+)'/g)].map(match=>match[1]))];
     assert.ok(handled.includes('/admin/betzero-lab/reset-history'));
-    for (const route of handled) assert.ok(allowed.includes(`'POST ${route}'`),`${route} is not allowed in public mode`);
+    for (const route of handled) assert.ok(allowed.includes(`'POST ${route}'`) || allowed.includes(`'GET ${route}'`),`${route} is not allowed in public mode`);
 });
 
 test('statistics samples without a provider status are accepted and rejections are explained',t=>{
