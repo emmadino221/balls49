@@ -14,6 +14,8 @@ let betBalanceUnconfirmed = false;
 // True after a bet whose live balance change did not show in time; cleared when one does.
 let liveBalanceLagging = false;
 let placementFailureReason = '';
+// True when a selection of the current draw was skipped only because betting closed.
+let placementWindowClosed = false;
 let pendingExecutionReceipt = null;
 let receiptRetryAt = 0;
 let executionNotice = '';
@@ -36,7 +38,9 @@ async function deliverExecutionReceipt(receipt) {
         if (!result.ok) throw new Error('Receipt was not acknowledged');
         pendingExecutionReceipt = null;
         receiptRetryAt = 0;
-        executionNotice = receipt.status === 'FAILED'
+        executionNotice = receipt.executionReport?.windowClosed
+            ? `Draw #${receipt.drawId}: betting closed before every selection was placed. Only the placed selections are counted. Continuing with the next draw.`
+            : receipt.status === 'FAILED'
             ? `${placementFailureReason || 'Placement could not be confirmed'}. Check the bet slip before restarting.`
             : '';
         return true;
@@ -322,8 +326,10 @@ async function placeBet(expectedBetZero = null) {
         const instruction = await check.json();
         if (instruction.action !== 'EXECUTE_BET' || String(instruction.drawId) !== String(lastExecutedDrawId))
             throw new Error('Draw changed or execution permission expired before submission');
-        if (Number.isFinite(instruction.timeLeftMs) && instruction.timeLeftMs - (Date.now() - checkStarted) < 5000)
+        if (Number.isFinite(instruction.timeLeftMs) && instruction.timeLeftMs - (Date.now() - checkStarted) < 5000) {
+            placementWindowClosed = true;
             throw new Error('Betting window closed before submission');
+        }
         const local = await getStorage(['running']);
         if (!instruction.websiteControl && local.running !== true) throw new Error('Automation was stopped before submission');
         const beforeBal = getLiveAccountBalance();
@@ -335,9 +341,12 @@ async function placeBet(expectedBetZero = null) {
             await sleep(250);
             btn = findPlaceBetButton();
         }
+        if (timeLeftNow() < (isControlDisabled(btn) ? 6000 : 5000)) {
+            placementWindowClosed = true;
+            throw new Error('Betting window closed before submission');
+        }
         if (isControlDisabled(btn))
             throw new Error(`Place Bet control is missing or disabled${describeControl(btn)}`);
-        if (timeLeftNow() < 5000) throw new Error('Betting window closed before submission');
 
         const beforeReceipts = { ids: new Set(), items: new Set(), unreadable: new Set() };
         if (expectedBetZero) {
@@ -1432,6 +1441,12 @@ async function listen() {
                 const executionReport = { version: 2, games: [], bet49Numbers: [], unconfirmedBet49: [], colorSelections: { totalColor: [], totalColor2: [] } };
                 currentPlacementReport = executionReport;
                 const batchBet49 = Array.isArray(m.bet49) ? m.bet49 : m.bet49 == null ? [] : [Number(m.bet49)];
+                // A failure before betting closed is a real fault; one after it only cut the draw short.
+                let hardFailure = false;
+                const markWindowClosed = () => {
+                    executionReport.windowClosed = placementWindowClosed && !hardFailure && !betBalanceUnconfirmed && !executionReport.unconfirmedBet49.length;
+                };
+                placementWindowClosed = false;
                 try {
                     lastExecutedDrawId = String(m.drawId);
                     lastExecutionReceipt = null;
@@ -1440,12 +1455,13 @@ async function listen() {
                     executionNotice = '';
                     let playedAny = false;
                     let betSuccess = true;
+                    const failed = () => { betSuccess = false; if (!placementWindowClosed) hardFailure = true; };
 
                     if (m.numbers && m.stake > 0) {
                         SELECTED_GAME = 'betzero';
                         let res = await runBetZero(m.numbers, bzStake);
                         if (res) executionReport.games.push('u4');
-                        if (!res) betSuccess = false;
+                        if (!res) failed();
                         playedAny = true;
                     }
                     if (batchBet49.length && bet49Stake > 0) {
@@ -1459,10 +1475,13 @@ async function listen() {
                             const check = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
                             const current = await check.json();
                             if (current.action !== 'EXECUTE_BET' || String(current.drawId) !== String(m.drawId)
-                                || current.timeLeftMs - (Date.now() - checkStarted) < 5000) throw new Error('Bet49 placement window closed');
+                                || current.timeLeftMs - (Date.now() - checkStarted) < 5000) {
+                                if (current.action === 'EXECUTE_BET' && String(current.drawId) === String(m.drawId)) placementWindowClosed = true;
+                                throw new Error('Bet49 placement window closed');
+                            }
                             const res = await runBet49(number, bet49Stake);
                             playedAny = true;
-                            if (!res) { betSuccess = false; break; }
+                            if (!res) { failed(); break; }
                             executionReport.bet49Numbers.push(number);
                             // An unconfirmed submission must never be retried or followed by more bets.
                             if (betBalanceUnconfirmed) { executionReport.unconfirmedBet49.push(number); betSuccess = false; break; }
@@ -1473,42 +1492,45 @@ async function listen() {
                         SELECTED_GAME = 'rainbow';
                         let res = await runRainbow(m.color, rbStake);
                         if (res) executionReport.games.push('color');
-                        if (!res) betSuccess = false;
+                        if (!res) failed();
                         playedAny = true;
                     }
                     if (m.sumRange && hlStake > 0) {
                         SELECTED_GAME = 'hilo';
                         let res = await runHiLo(m.sumRange, hlStake);
                         if (res) executionReport.games.push('sum');
-                        if (!res) betSuccess = false;
+                        if (!res) failed();
                         playedAny = true;
                     }
                     if (m.totalColor1 && m.tc1Stake > 0) {
                         SELECTED_GAME = 'totalcolor1';
                         let res = await runTotalColor1(m.totalColor1, tc1Stake);
                         if (res) executionReport.games.push('totalColor1');
-                        if (!res) betSuccess = false;
+                        if (!res) failed();
                         playedAny = true;
                     } 
                     if (m.totalColor2 && m.tc2Stake > 0) {
                         SELECTED_GAME = 'totalcolor2';
                         let res = await runTotalColor2(m.totalColor2, tc2Stake);
                         if (res) executionReport.games.push('totalColor2');
-                        if (!res) betSuccess = false;
+                        if (!res) failed();
                         playedAny = true;
                     } 
                     if (m.totalColor && m.tcStake > 0) {
                         SELECTED_GAME = 'totalcolor';
                         let res = await runTotalColor(m.totalColor, tcStake);
                         if (res) executionReport.games.push('totalColor');
-                        if (!res) betSuccess = false;
+                        if (!res) failed();
                         playedAny = true;
                     }
                     
                     if (playedAny && m.drawId) {
                         startRuntimeOnFirstBet();
 
-                        setOverlayDecisionReason(betSuccess
+                        markWindowClosed();
+                        setOverlayDecisionReason(executionReport.windowClosed
+                            ? `Draw #${m.drawId}: betting closed before every selection was placed. Continuing with the next draw.`
+                            : betSuccess
                             ? betBalanceUnconfirmed
                                 ? `Bet submitted for draw #${m.drawId}; balance change not confirmed. Verify the account manually. No retry was sent to avoid a duplicate.`
                                 : `Bet placed for draw #${m.drawId}.`
@@ -1528,6 +1550,8 @@ async function listen() {
                 } catch(e) {
                     console.error('[Balls49] Execution interrupted; reporting submitted placements:', e);
                     placementFailureReason ||= e.message || 'Execution error';
+                    if (!placementWindowClosed) hardFailure = true;
+                    markWindowClosed();
                     await deliverExecutionReceipt(lastExecutionReceipt = { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport });
                 }
 

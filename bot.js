@@ -5236,7 +5236,10 @@ async function handleHttpRequest(req, res) {
                             || report.colorSelections.totalColor.length !== (payload.totalColor || []).length
                             || report.colorSelections.totalColor2.length !== (payload.totalColor2 || []).length
                             || Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake' }).some(([game, field]) => payload[field] > 0 && !report.games.includes(game));
-                        if (data.status !== 'SUCCESS' || incomplete || report.unconfirmedBet49?.length) automationControl.stop(session, 'Execution interrupted. Check the bet slip before starting again.');
+                        // The betting window closed before every selection could be placed. Nothing
+                        // is uncertain, so only the placed selections are counted and the run goes on.
+                        const cutShort = report.windowClosed === true && !report.unconfirmedBet49?.length;
+                        if (!cutShort && (data.status !== 'SUCCESS' || incomplete || report.unconfirmedBet49?.length)) automationControl.stop(session, 'Execution interrupted. Check the bet slip before starting again.');
                         payload.bet49 = report.bet49Numbers;
                         payload.unconfirmedBet49 = bet49Numbers(report.unconfirmedBet49).filter(n => payload.bet49.includes(n));
                         for (const [game, field] of Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake' })) if (!report.games.includes(game)) payload[field] = 0;
