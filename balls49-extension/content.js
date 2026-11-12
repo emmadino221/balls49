@@ -38,6 +38,21 @@ async function deliverExecutionReceipt(receipt) {
             : '';
         return true;
     } catch (error) {
+        // The server cancels a draw when its betting window is about to close.
+        // If nothing was submitted for that draw there is nothing to account
+        // for, so skip the draw and keep listening instead of halting.
+        const report = receipt.executionReport;
+        const nothingSubmitted = receipt.status === 'FAILED' && !betBalanceUnconfirmed && report
+            && !report.games.length && !report.bet49Numbers.length && !report.unconfirmedBet49.length
+            && !report.colorSelections.totalColor.length && !report.colorSelections.totalColor2.length;
+        if (error.permanent && nothingSubmitted) {
+            pendingExecutionReceipt = null;
+            receiptRetryAt = 0;
+            executionNotice = `Draw #${receipt.drawId} skipped: ${placementFailureReason || 'the betting window closed'}. No bet was submitted. Waiting for the next draw.`;
+            setOverlayDecisionReason(executionNotice);
+            console.warn('[Balls49] Draw skipped, nothing submitted:', error.message);
+            return true;
+        }
         receiptRetryAt = error.permanent ? Infinity : Date.now() + 5000;
         executionNotice = error.permanent
             ? `Execution report rejected for draw #${receipt.drawId}. Check the bet slip and connection settings before restarting. ${error.message}`
