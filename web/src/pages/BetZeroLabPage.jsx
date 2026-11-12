@@ -169,7 +169,7 @@ function PredictionCard({ strategy, count, title, summary, onToggle, onReset, sa
       <div><dt>Losses</dt><dd className="is-loss">{strategy?.losses ?? 0}</dd></div>
       <div><dt>Win rate</dt><dd>{percentage(strategy?.winRate)}</dd></div>
       <div><dt>Losing streak</dt><dd>{strategy?.currentLosingStreak ?? 0}</dd></div>
-      <div><dt>Worst streak</dt><dd className="is-loss">{strategy?.worstLosingStreak ?? 0}</dd></div>
+      <div><dt>Max losing streak</dt><dd className="is-loss">{strategy?.worstLosingStreak ?? 0}</dd></div>
     </dl>
 
     <details className="betzero-pick-more">
