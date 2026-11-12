@@ -235,6 +235,22 @@ function findPlaceBetButton() {
     return textMatch || null;
 }
 
+function isControlDisabled(el) {
+    if (!el) return true;
+    if (el.disabled || el.getAttribute('aria-disabled') === 'true') return true;
+    if (/(^|[\s_-])disabled([\s_-]|$)/i.test(String(el.getAttribute('class') || ''))) return true;
+    const style = getComputedStyle(el);
+    return style.pointerEvents === 'none' || style.visibility === 'hidden' || style.display === 'none';
+}
+
+// Short description of a control for the overlay, to diagnose failed clicks.
+function describeControl(el) {
+    if (!el) return ' [button: not found]';
+    const style = getComputedStyle(el);
+    return ` [button: ${el.tagName.toLowerCase()}.${String(el.getAttribute('class') || '').trim().replace(/\s+/g, '.').slice(0, 60)}`
+        + `${el.disabled ? ' disabled' : ''} opacity ${style.opacity} pointer ${style.pointerEvents}]`;
+}
+
 // Read the site's receipt; never infer acceptance from selections in the editor.
 function readBetZeroReceipt(item) {
     const detail = item.querySelector('.bets__detail');
@@ -298,9 +314,17 @@ async function placeBet(expectedBetZero = null) {
         const local = await getStorage(['running']);
         if (!instruction.websiteControl && local.running !== true) throw new Error('Automation was stopped before submission');
         const beforeBal = getLiveAccountBalance();
-        const btn = findPlaceBetButton();
-        if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true')
-            throw new Error('Place Bet control is missing or disabled');
+        // Bet9ja greys out Place Bet while betting is closed. Clicking it then
+        // submits nothing, so wait briefly for it to open and otherwise skip.
+        let btn = findPlaceBetButton();
+        const timeLeftNow = () => Number.isFinite(instruction.timeLeftMs) ? instruction.timeLeftMs - (Date.now() - checkStarted) : Infinity;
+        for (let waited = 0; isControlDisabled(btn) && waited < 4000 && timeLeftNow() >= 6000; waited += 250) {
+            await sleep(250);
+            btn = findPlaceBetButton();
+        }
+        if (isControlDisabled(btn))
+            throw new Error(`Place Bet control is missing or disabled${describeControl(btn)}`);
+        if (timeLeftNow() < 5000) throw new Error('Betting window closed before submission');
 
         const beforeReceipts = { ids: new Set(), items: new Set(), unreadable: new Set() };
         if (expectedBetZero) {
@@ -352,7 +376,7 @@ async function placeBet(expectedBetZero = null) {
         placementFailureReason = expectedBetZero
             ? 'Submission could not be confirmed by a new matching BetZero receipt or balance change within 25 seconds'
             : 'Bet was submitted, but the balance change was not confirmed within 25 seconds';
-        executionNotice = `${placementFailureReason}. Check the bet slip; no repeat bet was sent.`;
+        executionNotice = `${placementFailureReason}. Check the bet slip; no repeat bet was sent.${describeControl(btn)}`;
         setOverlayDecisionReason(executionNotice);
         // Include the possibly submitted selection in the receipt, preserving existing accounting.
         return true;
