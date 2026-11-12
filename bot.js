@@ -33,7 +33,7 @@ const {
     getSummaryGateTarget, summaryGateAllows, getIssuedSummaryLabels, applySummaryGateConfig
 } = require('./summary-gate');
 const { getTotalColorOutcome, totalColor3WayPrediction, getTotalColorTargets, totalColorWins, totalColorName } = require('./total-color');
-const { predictHighLowFromBet49 } = require('./high-low');
+const { predictHighLowFromMinmax } = require('./high-low');
 const { nigeriaMidnightBoundary } = require('./daily-reset');
 const { predictionBlock, resultBlock, resultLegend } = require('./telegram-layout');
 const { getStrategyResults, getSelectedStrategy, calculateStrategyStats } = require('./adaptive-strategies');
@@ -469,6 +469,9 @@ let lastDrawId = null, predSentForId = null, lastPrediction = null;
 let lastGlobalDrawId = null; 
 let publicClock = { drawId: null, timeLeftSeconds: null, drawDate: null, observedAt: null };
 let labNumberStatistics = null;
+// The Lab's Minimum/Maximum v2 state, returned by the website after each snapshot. The main
+// High/Low prediction continues from it so both give the same pick.
+let labMinmaxState = null;
 let globalDefaultStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, totalColor1: 0 };
 
 const processedDrawIds = new Set();
@@ -1177,6 +1180,12 @@ async function publishPredictionSnapshot() {
                 response.on('end', () => {
                     if (response.statusCode >= 200 && response.statusCode < 300) {
                         try { syncMarketStatsReset(JSON.parse(responseBody).marketStatsResetAt); } catch { /* Retry synchronization on the next snapshot. */ }
+                        // The Lab's running Minimum/Maximum v2 state as of this snapshot's draw.
+                        try {
+                            const labMinmax = JSON.parse(responseBody).labMinmax;
+                            labMinmaxState = labMinmax && typeof labMinmax === 'object' && Number(snapshot.clock?.drawId) > 0
+                                ? { ...labMinmax, asOfDrawId: Number(snapshot.clock.drawId) } : null;
+                        } catch { labMinmaxState = null; }
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
                         resolve(true);
                     } else {
@@ -2548,7 +2557,8 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     // Total Color 3-way adds No Winning Color to the active 2-way selection.
     var totalColorPred = totalColor3WayPrediction(totalColor2Pred);
 
-    const highLow = predictHighLowFromBet49(bet49Prediction);
+    // High/Low follows the Lab's HIGH/LOW rule: Minimum/Maximum v2 on MAX gives LOW, on MIN gives HIGH.
+    const highLow = predictHighLowFromMinmax(histRaw?.data?.draws, targetDrawId, labMinmaxState);
     var hiloStatus = highLow.status;
     var sumRange = highLow.range || 'SKIP';
     var hlSkipReason = highLow.reason;
@@ -3317,7 +3327,10 @@ async function tick() {
             }
 
             if (session.pendingBetPayload && String(session.pendingBetPayload.drawId) === nextId && session.pendingBetPayload.action === "EXECUTE_BET") {
-                if (timeLeft <= 15) {
+                // Once the extension has claimed this draw it may already have clicked Place Bet
+                // and be waiting for Bet9ja to confirm. Keep the instruction so its report is
+                // still accepted and the bet is accounted for; it is never sent out again.
+                if (timeLeft <= 15 && String(session.betExecutionClaim?.drawId || '') !== nextId) {
                     session.pendingBetPayload = null;
                     session.betExecutionClaim = null;
                     session.failedBetRecovery = null;
@@ -3327,6 +3340,16 @@ async function tick() {
                 }
             }
             
+            // A claimed instruction whose report never arrived (browser closed mid-placement):
+            // give the report most of the following draw to arrive, then let betting resume.
+            if (session.pendingBetPayload?.action === "EXECUTE_BET" && nextId && timeLeft <= 15
+                && Number(session.pendingBetPayload.drawId) < Number(nextId)
+                && !dailyPendingSettlements.some(record => String(record.drawId) === String(session.pendingBetPayload.drawId))) {
+                session.pendingBetPayload = null;
+                session.betExecutionClaim = null;
+                session.failedBetRecovery = null;
+            }
+
             if (session.balanceVerification.pendingWinSync) {
                 if (session.stats.liveAccountBalance > session.balanceVerification.balanceBeforeWin) {
                     session.balanceVerification.pendingWinSync = false;
