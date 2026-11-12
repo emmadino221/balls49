@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
+import HeroDraw from './HeroDraw.jsx';
 import './welcome-panel.css';
 
 export default function WelcomePanel() {
@@ -21,6 +22,7 @@ export default function WelcomePanel() {
   const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(now);
   return <section className="welcome-dashboard page-container" aria-label="Welcome">
     <div className="welcome-banner">
+      <HeroDraw />
       <div className="welcome-copy">
         <p className="welcome-time"><span aria-hidden="true" />{greeting} &middot; {date} Lagos</p>
         <h1 aria-busy={accountLoading}>{accountLoading

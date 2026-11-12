@@ -266,7 +266,7 @@
   box-shadow: 0 40px 100px rgba(0, 0, 0, .55), inset 0 1px rgba(255, 255, 255, .06);
 }
 /* A slow light sweep across the hero. */
-.site.home-site.dark-theme .welcome-banner::after {
+.site.home-site .welcome-banner::after {
   position: absolute;
   z-index: -1;
   top: -40%;
@@ -283,26 +283,25 @@
   0%, 12% { left: -30%; }
   60%, 100% { left: 125%; }
 }
-.site.home-site.dark-theme .welcome-time { color: #d9c08a; }
-.site.home-site.dark-theme .welcome-time > span {
+.site.home-site .welcome-time { color: #d9c08a; }
+.site.home-site .welcome-time > span {
   background: #4ade80;
   box-shadow: 0 0 0 5px rgba(74, 222, 128, .12), 0 0 14px rgba(74, 222, 128, .55);
   animation: cine-pulse 2.4s ease-in-out infinite;
 }
 @keyframes cine-pulse { 50% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0), 0 0 14px rgba(74, 222, 128, .2); } }
-.site.home-site.dark-theme .welcome-name {
+.site.home-site .welcome-name {
   background: linear-gradient(100deg, #fbe7ad, #e9bd5b 55%, #b98a2e);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-.site.home-site:not(.dark-theme) .welcome-name { color: #087653; }
 .site.home-site .welcome-copy > * { animation: cine-rise .7s var(--ease-cine) both; }
 .site.home-site .welcome-copy > :nth-child(2) { animation-delay: .08s; }
 .site.home-site .welcome-copy > :nth-child(3) { animation-delay: .16s; }
 .site.home-site .welcome-copy > :nth-child(4) { animation-delay: .24s; }
 
-.site.home-site.dark-theme .welcome-feature {
+.site.home-site .welcome-feature {
   border-color: rgba(233, 189, 91, .2);
   background:
     radial-gradient(ellipse at 50% 30%, rgba(233, 189, 91, .1), transparent 55%),
@@ -310,7 +309,7 @@
   box-shadow: inset 0 1px rgba(255, 255, 255, .06), 0 24px 60px rgba(0, 0, 0, .35);
   backdrop-filter: blur(8px);
 }
-.site.home-site.dark-theme .welcome-feature .overline { color: #d9c08a; }
+.site.home-site .welcome-feature .overline { color: #d9c08a; }
 
 /* The draw balls: the site's visual signature. */
 .site.home-site .welcome-ball-art {
@@ -424,16 +423,13 @@
   .app-main-content > *,
   .site.home-site .welcome-copy > *,
   .site.home-site .welcome-ball-art span,
-  .site.home-site.dark-theme .welcome-banner::after,
-  .site.home-site.dark-theme .welcome-time > span,
+  .site.home-site .welcome-banner::after,
+  .site.home-site .welcome-time > span,
   .site.home-site.dark-theme .final-cta-orb { animation: none !important; }
   .reveal-ready [data-reveal] { opacity: 1; transform: none; transition: none; }
   .site.dark-theme .app-shell .btn.btn-primary::after { display: none; }
 }
 
-/* Light theme keeps the green brand accent on the hero action. */
-.site.home-site:not(.dark-theme) .welcome-actions .btn-primary { color: #fff; border-color: #087653; background: #087653; box-shadow: 0 10px 25px rgba(8, 118, 83, .16); }
-.site.home-site:not(.dark-theme) .welcome-actions .btn-primary:hover { color: #fff; border-color: #065c40; background: #065c40; }
 
 /* =====================================================================
    Draw balls (site-wide): glossy, coloured by the 49ja colour rule.
