@@ -482,6 +482,9 @@ let labNumberStatistics = null;
 // settle and continue across the daily reset. The main High/Low prediction also replays them
 // (it follows the Lab's Minimum/Maximum v2 rule); no other production prediction uses them.
 let labRecentResults = [];
+// The Lab's Minimum/Maximum v2 state, returned by the website after each snapshot. The main
+// High/Low prediction continues from it so both give the same pick.
+let labMinmaxState = null;
 function rememberLabRecentResults(draws) {
     const byId = new Map(labRecentResults.map(item => [item.drawId, item]));
     for (const draw of Array.isArray(draws) ? draws : []) {
@@ -1202,6 +1205,12 @@ async function publishPredictionSnapshot() {
                 response.on('end', () => {
                     if (response.statusCode >= 200 && response.statusCode < 300) {
                         try { syncMarketStatsReset(JSON.parse(responseBody).marketStatsResetAt); } catch { /* Retry synchronization on the next snapshot. */ }
+                        // The Lab's running Minimum/Maximum v2 state as of this snapshot's draw.
+                        try {
+                            const labMinmax = JSON.parse(responseBody).labMinmax;
+                            labMinmaxState = labMinmax && typeof labMinmax === 'object' && Number(snapshot.clock?.drawId) > 0
+                                ? { ...labMinmax, asOfDrawId: Number(snapshot.clock.drawId) } : null;
+                        } catch { labMinmaxState = null; }
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
                         resolve(true);
                     } else {
@@ -2574,7 +2583,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var totalColorPred = totalColor3WayPrediction(totalColor2Pred);
 
     // High/Low follows the Lab's HIGH/LOW rule: Minimum/Maximum v2 on MAX gives LOW, on MIN gives HIGH.
-    const highLow = predictHighLowFromMinmax(highLowDraws || histRaw?.data?.draws, targetDrawId);
+    const highLow = predictHighLowFromMinmax(highLowDraws || histRaw?.data?.draws, targetDrawId, labMinmaxState);
     var hiloStatus = highLow.status;
     var sumRange = highLow.range || 'SKIP';
     var hlSkipReason = highLow.reason;
@@ -3993,7 +4002,9 @@ async function handleHttpRequest(req, res) {
                     console.error('[BetZeroLab] Could not process a prediction snapshot; the production feed was stored.', error);
                 }
             }
-            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt() });
+            let labMinmax = null;
+            try { labMinmax = betzeroLab ? betzeroLab.minmaxFollowState() : null; } catch { labMinmax = null; }
+            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt(), labMinmax });
         } catch (error) {
             console.error('[PredictionFeed] Could not store an incoming snapshot.');
             return sendJson(res, 500, { error: 'Prediction snapshot could not be stored.' });

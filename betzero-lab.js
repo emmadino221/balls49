@@ -819,6 +819,16 @@ function createBetZeroLab(db, options = {}) {
         db.prepare(`INSERT INTO betzero_lab_minmax_state VALUES (?,?,?) ON CONFLICT(strategy_id,version)
             DO UPDATE SET state_json=excluded.state_json`).run(minmax.ID, version, JSON.stringify(state));
     }
+    // The running Minimum/Maximum v2 state, sent back to the prediction worker so the main
+    // High/Low prediction continues from exactly where the Lab is.
+    function minmaxFollowState() {
+        const state = minmaxState('2.0.0');
+        const enabled = strategies().some(s => s.id === minmax.ID && s.version === '2.0.0' && s.enabled);
+        return { active: Boolean(enabled && state.cutoverAt && !state.paused),
+            method: state.method === 'MIN' || state.method === 'MAX' ? state.method : null,
+            pending: Number.isSafeInteger(state.pending) ? state.pending : null,
+            afterTargetId: Number(state.afterTargetId) || 0 };
+    }
     function rememberMinmaxResult(record, observedAt) {
         const id = drawIdFromRecord(record), balls = ballsFromRecord(record);
         if (!id || !validBalls(balls)) return;
@@ -1376,6 +1386,7 @@ function createBetZeroLab(db, options = {}) {
         resolveMinmaxReview,
         resetStrategyHistory,
         ingestSnapshot,
+        minmaxFollowState,
         reconcileArchive,
         listForwardPredictions,
         stats,

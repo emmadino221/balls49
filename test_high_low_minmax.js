@@ -71,3 +71,45 @@ test('main High/Low skips without the previous draw or enough history', () => {
     const asBalls = draws.map(d => ({ id: d.id, balls: d.dr.split(',').map(Number) }));
     assert.deepEqual(predictHighLowFromMinmax(asBalls, 61), predictHighLowFromMinmax(draws, 61));
 });
+
+test('main High/Low continues from the Lab state and matches the Lab even when the Lab missed draws', () => {
+    const draws = randomDraws('main-high-low-lab-state', 9000, 400);
+    const parsed = draws.map(d => ({ id: d.id, balls: d.dr.split(',').map(Number) }));
+    const random = seededRandom('lab-misses');
+    let state = {}, compared = 0, replayDiffers = 0;
+    for (let i = 10; i < parsed.length; i++) {
+        const target = parsed[i].id, source = parsed[i - 1];
+        // What the worker holds when the draw opens: the Lab state from the previous draw.
+        const labState = { active: true, method: state.method || null, pending: state.pending ?? null, afterTargetId: 0, asOfDrawId: target - 1 };
+        const main = predictHighLowFromMinmax(draws, target, labState);
+        assert.equal(main.analysis.stateSource, 'LAB');
+        // The Lab: settle the finished draw, then (unless it misses this draw) predict.
+        if (state.pending === target - 1) {
+            state = minmax.settle(state, target - 1, minmax.outcome(minmax.candidate(parsed[i - 2].balls, state.method), source.balls), '2.0.0');
+        }
+        if (random() < 0.15) continue;
+        const history = parsed.slice(i - 6, i).slice(1).map((t, k) => ({ source: parsed[i - 6 + k], target: t }));
+        const pick = minmax.decide(source, target, history, state, '2.0.0');
+        state = minmax.afterDecision(state, pick, target);
+        compared++;
+        assert.equal(main.range, pick.status === 'PENDING' ? highLowForMethod(pick.conditions.method) : null);
+        if (predictHighLowFromMinmax(draws, target).range !== main.range) replayDiffers++;
+        // Once the Lab has predicted the draw, the worker still gives the same pick.
+        const after = { active: true, method: state.method || null, pending: state.pending ?? null, afterTargetId: 0, asOfDrawId: target };
+        if (pick.status === 'PENDING') assert.equal(predictHighLowFromMinmax(draws, target, after).range, main.range);
+    }
+    assert.ok(compared > 300 && replayDiffers > 0, `${compared} ${replayDiffers}`);
+});
+
+test('main High/Low falls back to the replay when the Lab state cannot be used', () => {
+    const draws = randomDraws('main-high-low-fallback', 100, 80);
+    const replay = predictHighLowFromMinmax(draws, 180);
+    for (const labState of [null, { active: false, method: 'MIN', pending: null, asOfDrawId: 179 },
+        { active: true, method: 'MIN', pending: null, asOfDrawId: 170 },
+        { active: true, method: 'MIN', pending: 175, asOfDrawId: 179 },
+        { active: true, method: 'MIN', pending: null, afterTargetId: 180, asOfDrawId: 179 }]) {
+        const result = predictHighLowFromMinmax(draws, 180, labState);
+        assert.equal(result.analysis.stateSource, 'REPLAY');
+        assert.equal(result.range, replay.range);
+    }
+});

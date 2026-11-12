@@ -78,9 +78,31 @@ const MINMAX_SKIP_TEXT = {
     INVALID_SOURCE: 'The previous draw result is not available yet'
 };
 
-// Main High/Low prediction. Replays Minimum/Maximum v2 over the completed draws (same rules
-// as the Lab) and follows the method it would use for the target draw.
-function predictHighLowFromMinmax(draws, targetDrawId) {
+// Continues from the Lab's own running Minimum/Maximum v2 state, so the pick is the one the
+// Lab makes for the same draw, without waiting for the Lab. Returns null when that state
+// cannot be used (missing, out of date, or an older prediction is still unsettled).
+function pickFromLabState(labState, byId, last, pairs, target) {
+    const asOf = Number(labState?.asOfDrawId);
+    if (!labState?.active || (asOf !== target && asOf !== target - 1) || target <= Number(labState.afterTargetId)) return null;
+    let state = { method: labState.method || null, pending: labState.pending ?? null };
+    if (state.pending === target) {
+        // The Lab has already predicted this draw.
+        const selections = minmax.candidate(last.balls, state.method);
+        return selections && { status: 'PENDING', selections, conditions: { method: state.method } };
+    }
+    if (state.pending === target - 1) {
+        // The Lab's prediction for the draw that just finished: settle it the way the Lab will.
+        const result = minmax.outcome(minmax.candidate(byId.get(target - 2)?.balls, state.method), last.balls);
+        if (!result) return null;
+        state = minmax.settle(state, target - 1, result, '2.0.0');
+    } else if (state.pending !== null) return null;
+    return minmax.decide(last, target, pairs.slice(-5), state, '2.0.0');
+}
+
+// Main High/Low prediction. Follows the Lab's running Minimum/Maximum v2 state when the
+// website has sent it; otherwise replays Minimum/Maximum v2 over the completed draws (same
+// rules as the Lab). Either way it follows the method used for the target draw.
+function predictHighLowFromMinmax(draws, targetDrawId, labState = null) {
     const skip = (reason, analysis = null) => ({ status: 'SKIP', range: null, reason, analysis });
     const target = Number(targetDrawId);
     if (!Array.isArray(draws) || !Number.isSafeInteger(target) || target <= 0) return skip('No valid completed draw history');
@@ -98,8 +120,10 @@ function predictHighLowFromMinmax(draws, targetDrawId) {
     for (let i = 1; i < history.length; i++) {
         if (history[i - 1].id + 1 === history[i].id) pairs.push({ source: history[i - 1], target: history[i] });
     }
-    const pick = minmax.simulate([...pairs, { source: last, target: { id: target, balls: null } }], pairs, () => {}, '2.0.0').get(target);
+    const labPick = pickFromLabState(labState, byId, last, pairs, target);
+    const pick = labPick || minmax.simulate([...pairs, { source: last, target: { id: target, balls: null } }], pairs, () => {}, '2.0.0').get(target);
     const analysis = { method: 'MINMAX_V2_HIGH_LOW_V1', sourceDrawId: String(last.id), samples: history.length,
+        stateSource: labPick ? 'LAB' : 'REPLAY',
         minmaxMethod: pick.conditions.method || null, minmaxSelections: pick.selections, minmaxReason: pick.conditions.reason || null };
     if (pick.status !== 'PENDING') return skip(MINMAX_SKIP_TEXT[pick.conditions.reason] || 'Minimum/Maximum v2 has no prediction', analysis);
     return { status: 'ACTIVE', range: highLowForMethod(pick.conditions.method), reason: '', analysis };
