@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Balls49 Auto-Clicker",
-  "version": "1.0",
+  "version": "1.1",
   "permissions": ["storage", "notifications", "tabs", "activeTab"],
  "host_permissions": [
     "http://localhost:3001/*",
@@ -27,7 +27,7 @@
         "https://logigames.bet9ja.com/Games/Launcher*",
         "https://logigames.bet9ja.com/*"
       ],
-      "js": ["api.js", "content.js"]
+      "js": ["timers.js", "api.js", "content.js"]
     }
   ]
 }

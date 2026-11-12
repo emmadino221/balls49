@@ -35,6 +35,27 @@ async function requestBot(msg, sender) {
     return { status: response.status, body: await response.text() };
 }
 
+// Timers for the game tab. Chrome slows timers inside hidden tabs but not in
+// this worker, so the tab asks the worker to time its waits (see timers.js).
+chrome.runtime.onConnect.addListener(port => {
+    if (port.name !== 'balls49-timers') return;
+    const sender = port.sender || {};
+    let origin = '';
+    try { origin = new URL(sender.url || '').origin; } catch (e) {}
+    if (sender.id !== chrome.runtime.id || !sender.tab || origin !== 'https://logigames.bet9ja.com') {
+        return port.disconnect();
+    }
+    let open = true;
+    port.onDisconnect.addListener(() => { open = false; });
+    port.onMessage.addListener(msg => {
+        const ms = Math.min(Math.max(Number(msg?.ms) || 0, 0), 20000);
+        setTimeout(() => {
+            if (!open) return;
+            try { port.postMessage({ id: msg.id }); } catch (e) { open = false; }
+        }, ms);
+    });
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'BALLS49_API') {
         requestBot(msg, sender).then(sendResponse).catch(() => {
