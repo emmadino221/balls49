@@ -11,6 +11,42 @@ let currentPlacementReport = null;
 let lastExecutionReceipt = null;
 let lastExecutedDrawId = null;          
 let betBalanceUnconfirmed = false;
+let placementFailureReason = '';
+let pendingExecutionReceipt = null;
+let receiptRetryAt = 0;
+let executionNotice = '';
+
+// Retry only delivery of an immutable execution receipt, never the bet itself.
+async function deliverExecutionReceipt(receipt) {
+    pendingExecutionReceipt = receipt;
+    try {
+        const response = await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(receipt)
+        });
+        if (!response.ok) {
+            const error = new Error(`Receipt rejected (HTTP ${response.status})`);
+            error.permanent = response.status >= 400 && response.status < 500 && response.status !== 429;
+            throw error;
+        }
+        const result = await response.json();
+        if (!result.ok) throw new Error('Receipt was not acknowledged');
+        pendingExecutionReceipt = null;
+        receiptRetryAt = 0;
+        executionNotice = receipt.status === 'FAILED'
+            ? `${placementFailureReason || 'Placement could not be confirmed'}. Check the bet slip before restarting.`
+            : '';
+        return true;
+    } catch (error) {
+        receiptRetryAt = error.permanent ? Infinity : Date.now() + 5000;
+        executionNotice = error.permanent
+            ? `Execution report rejected for draw #${receipt.drawId}. Check the bet slip and connection settings before restarting. ${error.message}`
+            : `Waiting to confirm the execution report for draw #${receipt.drawId}. No new bets will be placed. ${error.message}`;
+        setOverlayDecisionReason(executionNotice);
+        console.warn('[Balls49] Execution receipt pending:', error.message);
+        return false;
+    }
+}
 let SOUND_ENABLED = true;
 let CLIENT_ID = ""; 
 let LICENSE_KEY = ""; 
@@ -184,32 +220,135 @@ function findPlaceBetButton() {
     return textMatch || null;
 }
 
-async function placeBet() {
-    // Recheck the worker immediately before each submission. Never submit offline.
-    const check = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
-    if (!check.ok) return false;
-    const instruction = await check.json();
-    if (instruction.action !== 'EXECUTE_BET' || String(instruction.drawId) !== String(lastExecutedDrawId)) return false;
-    const local = await getStorage(['running']);
-    if (!instruction.websiteControl && local.running !== true) return false;
+// Read the site's receipt; never infer acceptance from selections in the editor.
+function readBetZeroReceipt(item) {
+    const detail = item.querySelector('.bets__detail');
+    if (!detail?.querySelector('.bets__detail-heading--img.bet-zero-b')) return null;
+    const fields = {};
+    for (const row of detail.querySelectorAll('tr')) {
+        const cells = row.querySelectorAll('td');
+        if (cells.length === 2) fields[cells[0].textContent.trim().replace(/:$/, '')] = cells[1];
+    }
+    const value = label => fields[label]?.textContent.trim() || '';
+    const numbers = Array.from(fields.Details?.querySelectorAll('.balls span') || [], el => Number(el.textContent.trim()));
+    const stakeText = value('Stake').replace(/,/g, '');
+    return { id: value('Bet ID'), drawId: value('Draw ID'), status: value('Status'),
+        stake: /^\d+(?:\.\d+)?$/.test(stakeText) ? Number(stakeText) : NaN, numbers };
+}
 
-    const beforeBal = getLiveAccountBalance();
-    const btn = findPlaceBetButton();
-    if (!btn) return false;
-
-    try {
-        safeClick(btn);
-        await sleep(1200);
-
-        const afterBal = getLiveAccountBalance();
-        if (beforeBal === null || afterBal === null || (beforeBal - afterBal) < 1) {
-            betBalanceUnconfirmed = true;
-            console.warn('[Balls49] Bet submit was clicked but the balance change was not confirmed; not retrying to avoid a duplicate.');
+function matchingNewBetZeroReceipt(expected, before) {
+    // React may replace old DOM nodes. Without all previous BetZero IDs, a
+    // newly rendered old receipt cannot safely be distinguished from a new bet.
+    if (before.unreadable.size) return null;
+    for (const item of document.querySelectorAll('.bets__item')) {
+        // An existing item without a readable ID cannot prove a new submission.
+        if (before.unreadable.has(item)) continue;
+        if (!item.querySelector('.bets__detail') && !before.items.has(item)) {
+            item.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
         }
+        const receipt = readBetZeroReceipt(item);
+        if (!receipt || !receipt.id || before.ids.has(receipt.id) || receipt.status !== 'Pending') continue;
+        if (receipt.drawId !== expected.drawId || receipt.stake !== expected.stake) continue;
+        if (receipt.numbers.length !== 4 || new Set(receipt.numbers).size !== 4 || receipt.numbers.some(n => !Number.isInteger(n) || n < 1 || n > 49)) continue;
+        if (receipt.numbers.slice().sort((a, b) => a - b).join(',') === expected.numbers.slice().sort((a, b) => a - b).join(',')) return receipt;
+    }
+    return null;
+}
+
+async function placeBet(expectedBetZero = null) {
+    if (betBalanceUnconfirmed) return false;
+    // Never retry a click. Fresh authorization is required before each submission.
+    try {
+        let check;
+        let checkStarted;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            checkStarted = Date.now();
+            try {
+                check = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
+                if (check.status >= 500 || check.status === 429) throw new Error(`Connection check failed (HTTP ${check.status})`);
+                break;
+            } catch (error) {
+                if (attempt === 2) throw error;
+                executionNotice = 'Reconnecting before submission. No bet has been submitted by this attempt.';
+                setOverlayDecisionReason(executionNotice);
+                await sleep(1000);
+            }
+        }
+        if (!check.ok) throw new Error(`Connection check failed (HTTP ${check.status})`);
+        const instruction = await check.json();
+        if (instruction.action !== 'EXECUTE_BET' || String(instruction.drawId) !== String(lastExecutedDrawId))
+            throw new Error('Draw changed or execution permission expired before submission');
+        if (Number.isFinite(instruction.timeLeftMs) && instruction.timeLeftMs - (Date.now() - checkStarted) < 5000)
+            throw new Error('Betting window closed before submission');
+        const local = await getStorage(['running']);
+        if (!instruction.websiteControl && local.running !== true) throw new Error('Automation was stopped before submission');
+        const beforeBal = getLiveAccountBalance();
+        const btn = findPlaceBetButton();
+        if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true')
+            throw new Error('Place Bet control is missing or disabled');
+
+        const beforeReceipts = { ids: new Set(), items: new Set(), unreadable: new Set() };
+        if (expectedBetZero) {
+            if (expectedBetZero.numbers.length !== 4 || new Set(expectedBetZero.numbers).size !== 4 || expectedBetZero.numbers.some(n => !Number.isInteger(n) || n < 1 || n > 49) || !Number.isFinite(expectedBetZero.stake) || expectedBetZero.stake <= 0)
+                throw new Error('Invalid BetZero receipt expectations');
+            expectedBetZero = { ...expectedBetZero, drawId: String(instruction.drawId) };
+            for (const item of document.querySelectorAll('.bets__item')) {
+                if (!item.querySelector('.bet-zero-b')) continue;
+                beforeReceipts.items.add(item);
+                if (!item.querySelector('.bets__detail')) item.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                const receipt = readBetZeroReceipt(item);
+                if (receipt?.id) beforeReceipts.ids.add(receipt.id);
+                else beforeReceipts.unreadable.add(item);
+            }
+        }
+
+        // Mark uncertainty BEFORE the click: exceptions must never cause a repeat bet.
+        betBalanceUnconfirmed = true;
+        placementFailureReason = 'Bet was submitted, but its balance confirmation is still pending';
+        safeClick(btn);
+        // Bet9ja is sometimes slow to show the new balance. Wait longer and ask
+        // the site to refresh the balance; this only reads, it never re-submits.
+        const clickedAt = Date.now();
+        const deadline = clickedAt + 25000;
+        const refreshAt = [4000, 10000, 17000];
+        executionNotice = `Confirming submission for draw #${lastExecutedDrawId}. No repeat bet will be sent.`;
+        setOverlayDecisionReason(executionNotice);
+        while (Date.now() < deadline) {
+            await sleep(500);
+            if (refreshAt.length && Date.now() - clickedAt >= refreshAt[0]) {
+                refreshAt.shift();
+                const refreshBtn = document.querySelector('.rs-menu__balance--refresh');
+                if (refreshBtn) safeClick(refreshBtn);
+            }
+            if (expectedBetZero && matchingNewBetZeroReceipt(expectedBetZero, beforeReceipts)) {
+                betBalanceUnconfirmed = false;
+                placementFailureReason = '';
+                executionNotice = '';
+                return true;
+            }
+            const afterBal = getLiveAccountBalance();
+            if (beforeBal !== null && afterBal !== null && beforeBal - afterBal >= 1) {
+                betBalanceUnconfirmed = false;
+                placementFailureReason = '';
+                executionNotice = '';
+                return true;
+            }
+        }
+        placementFailureReason = expectedBetZero
+            ? 'Submission could not be confirmed by a new matching BetZero receipt or balance change within 25 seconds'
+            : 'Bet was submitted, but the balance change was not confirmed within 25 seconds';
+        executionNotice = `${placementFailureReason}. Check the bet slip; no repeat bet was sent.`;
+        setOverlayDecisionReason(executionNotice);
+        // Include the possibly submitted selection in the receipt, preserving existing accounting.
         return true;
-    } catch (e) {
-        console.error('[Balls49] placeBet error:', e);
-        return false;
+    } catch (error) {
+        placementFailureReason = betBalanceUnconfirmed
+            ? 'Submission outcome is uncertain; check the bet slip'
+            : error.message || 'Betting controls failed before submission';
+        executionNotice = placementFailureReason;
+        setOverlayDecisionReason(executionNotice);
+        console.error('[Balls49] Placement interrupted:', error);
+        return betBalanceUnconfirmed;
     }
 }
 
@@ -219,8 +358,8 @@ async function runBetZero(numbers, stake) {
         const clear = getEl(XPATHS.CLEAR_BTN); if (clear) safeClick(clear); await sleep(150); 
         for (let num of numbers) { const ballEl = getEl(getBallXPath(num)); if (ballEl) safeClick(ballEl); await sleep(100); } 
         const input = document.querySelector('input[type="number"]') || getEl(XPATHS.STAKE_INPUT); if (input) { input.value = stake; input.dispatchEvent(new Event('input', { bubbles: true })); } 
-        await sleep(200); return await placeBet(); 
-    } catch (e) { return false; } 
+        await sleep(200); return await placeBet({ numbers: numbers.map(Number), stake: Number(stake) });
+    } catch (e) { placementFailureReason = e.message || 'BetZero controls failed'; console.error('[Balls49] BetZero execution error:', e); return false; } 
 }
 
 async function runBet49(number, stake) {
@@ -888,8 +1027,7 @@ function updateLiveOverlay(data) {
     if (!data) return;
 
     const reasonEl = document.getElementById('overlayDecisionReason');
-    if (reasonEl) reasonEl.innerText = data.decisionReason || 'Waiting for the next draw decision.';
-
+    if (reasonEl) reasonEl.innerText = executionNotice || data.decisionReason || 'Waiting for the next draw decision.';
     const riskEl = document.getElementById('overlaySuggestionRisk');
     const suggestion = data.automationControl?.suggestionStrategy;
     const risk = suggestion?.request?.riskWarningOnly && suggestion?.risk;
@@ -903,7 +1041,10 @@ function updateLiveOverlay(data) {
 
     const balEl = document.getElementById('overlayLiveBalance');
     if (balEl) {
-        const balVal = data.liveAccountBalance !== undefined ? data.liveAccountBalance : (getLiveAccountBalance() || 0);
+        const localBalance = getLiveAccountBalance();
+        const balVal = localBalance !== null ? localBalance : data.liveAccountBalance;
+        if (!Number.isFinite(balVal)) { balEl.innerText = 'Unavailable'; }
+        else
         balEl.innerText = `₦${Math.round(balVal).toLocaleString()}`;
     }
     const virtEl = document.getElementById('overlayVirtualBalance');
@@ -1021,22 +1162,13 @@ function updateLiveOverlay(data) {
     const retryEl = document.getElementById('overlayRetryState');
     if (retryEl) {
         if (isCbActive) {
-            retryEl.innerText = `CB Cooling (${data.cbStatus.remainingMin}m left)`;
+            retryEl.innerText = data.cbStatus.mode === 'SHADOW' ? 'Shadow mode' : `CB pause (${data.cbStatus.drawsLeft} draws)`;
             retryEl.className = 'b49-metric-val text-red';
         } else if (data.retryStatus && data.retryStatus.active) {
-            const remaining = Math.max(0, Math.ceil((data.retryStatus.nextRetryAt - Date.now()) / 1000));
-            const attempts = Math.min(data.retryStatus.retries, 3);
-
-            if (data.retryStatus.finalAlertSent || attempts >= 3) {
-                retryEl.innerText = 'Retry limit reached';
-                retryEl.className = 'b49-metric-val text-red';
-            } else if (attempts === 0) {
-                retryEl.innerText = `Retry queued (${remaining}s)`;
-                retryEl.className = 'b49-metric-val text-red';
-            } else {
-                retryEl.innerText = `Retry ${attempts}/3 in ${remaining}s`;
-                retryEl.className = 'b49-metric-val text-red';
-            }
+            // The API reports a queued payload, not a scheduled retry deadline.
+            const attempts = Math.max(0, Number(data.retryStatus.retries) || 0);
+            retryEl.innerText = attempts > 0 ? 'Placement needs review' : 'Awaiting execution';
+            retryEl.className = 'b49-metric-val text-red';
         } else {
             retryEl.innerText = 'Idle';
             retryEl.className = 'b49-metric-val text-green';
@@ -1164,6 +1296,10 @@ function calcLocalStake(key, currentStep, userStakes, gameStepsLimits, hiloMulti
 
 async function listen() {
     if (!LICENSE_KEY) return setTimeout(listen, 2000);
+    if (pendingExecutionReceipt) {
+        if (Date.now() >= receiptRetryAt) await deliverExecutionReceipt(pendingExecutionReceipt);
+        return setTimeout(listen, 1200);
+    }
 
     try {
         const r = await extensionFetch(`${SERVER_URL}/stream?clientId=${CLIENT_ID}&executionToken=${EXECUTION_CLIENT_TOKEN}&bet49Batch=1`);
@@ -1211,11 +1347,8 @@ async function listen() {
                 }
 
                 if (m.drawId && String(m.drawId) === String(lastExecutedDrawId)) {
-                    extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(lastExecutionReceipt || { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport: { games: [], bet49Numbers: [] } })
-                    }).catch(() => {});
+                    if (lastExecutionReceipt) await deliverExecutionReceipt(lastExecutionReceipt);
+                    else executionNotice = 'Execution already attempted for this draw. Check the bet slip before restarting.';
                     return setTimeout(listen, 1200);
                 }
 
@@ -1246,6 +1379,8 @@ async function listen() {
                     lastExecutedDrawId = String(m.drawId);
                     lastExecutionReceipt = null;
                     betBalanceUnconfirmed = false;
+                    placementFailureReason = '';
+                    executionNotice = '';
                     let playedAny = false;
                     let betSuccess = true;
 
@@ -1326,26 +1461,17 @@ async function listen() {
                         if (drawEl) drawEl.innerText = `Draw: #${m.drawId}`;
 
                         lastExecutionReceipt = { drawId: m.drawId, status: betSuccess && !betBalanceUnconfirmed ? 'SUCCESS' : 'FAILED', executionToken: m.executionToken, executionReport };
-                        await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lastExecutionReceipt)
-                        });
+                        await deliverExecutionReceipt(lastExecutionReceipt);
                     }
                     if (!playedAny) {
                         setOverlayDecisionReason('Bet was not placed: no eligible market was included in the instruction.');
-                        await extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(lastExecutionReceipt = { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport })
-                        });
+                        placementFailureReason = 'No eligible market was included in the instruction';
+                        await deliverExecutionReceipt(lastExecutionReceipt = { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport });
                     }
                 } catch(e) {
-                    console.error("Execution interrupted; reporting submitted placements.");
-                    setOverlayDecisionReason(`Execution stopped: ${e.message || 'execution error'}. Bet49 submissions: ${executionReport.bet49Numbers.length}/${batchBet49.length}. Check the bet slip.`);
-                    extensionFetch(`${SERVER_URL}/ack?clientId=${CLIENT_ID}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(lastExecutionReceipt = { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport })
-                    }).catch(() => {});
+                    console.error('[Balls49] Execution interrupted; reporting submitted placements:', e);
+                    placementFailureReason ||= e.message || 'Execution error';
+                    await deliverExecutionReceipt(lastExecutionReceipt = { drawId: m.drawId, status: 'FAILED', executionToken: m.executionToken, executionReport });
                 }
 
                 isBettingActive = false;
