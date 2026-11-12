@@ -4,15 +4,15 @@
  * animated draw has a stage to play on.
  */
 .site.home-site:not(.dark-theme) {
-  --page: #f7f4ec;
-  --surface: #ffffff;
-  --surface-soft: #f1ecdf;
-  --surface-elevated: #fffdf8;
-  --sidebar-surface: #fffdf8;
+  --page: #ece6d6;
+  --surface: #f8f3e7;
+  --surface-soft: #e6dfcc;
+  --surface-elevated: #f8f3e7;
+  --sidebar-surface: #f3eee0;
   --ink: #10231b;
   --text-secondary: #33473c;
   --muted: #4c6156;
-  --line: #e6dfcd;
+  --line: #d9d0b9;
   --green: #0f5f43;
   --green-hover: #0a4a34;
   --green-bright: #14805a;
@@ -57,7 +57,7 @@
 .site.home-site:not(.dark-theme) .home-page .welcome-shortcuts > a {
   background:
     radial-gradient(ellipse at 100% 0, rgba(233, 189, 91, .13), transparent 46%),
-    #fff;
+    #f8f3e7;
   box-shadow: 0 10px 26px rgba(46, 38, 16, .06);
 }
 .site.home-site:not(.dark-theme) .home-page .welcome-shortcuts > a:hover {
@@ -72,11 +72,11 @@
 .site.home-site:not(.dark-theme) .home-page .home-destination-arrow { background: var(--page); }
 
 /* Highlights strip. */
-.site.home-site:not(.dark-theme) .home-page .home-proof-strip { border-color: var(--line); color: var(--ink); background: #f0ead9; }
+.site.home-site:not(.dark-theme) .home-page .home-proof-strip { border-color: var(--line); color: var(--ink); background: #e4dcc7; }
 .site.home-site:not(.dark-theme) .home-page .proof-brand { color: #6a6650; }
 .site.home-site:not(.dark-theme) .home-page .proof-item strong { color: var(--green); font-family: var(--font-display); font-size: 19px; }
 .site.home-site:not(.dark-theme) .home-page .proof-item span { color: var(--muted); }
-.site.home-site:not(.dark-theme) .home-page .proof-separator { background: #d9d0b8; }
+.site.home-site:not(.dark-theme) .home-page .proof-separator { background: #cdc3a8; }
 
 /* Value section. */
 .site.home-site:not(.dark-theme) .home-page .cinematic-value-section { color: var(--ink); background: transparent; }
@@ -92,7 +92,7 @@
 .site.home-site:not(.dark-theme) .home-page .cinematic-feature-card {
   border-color: var(--line);
   border-radius: var(--radius-md);
-  background: linear-gradient(160deg, #fff, #fdfaf2);
+  background: linear-gradient(160deg, #f9f5ea, #f4eee0);
   box-shadow: 0 10px 26px rgba(46, 38, 16, .06);
   transition: transform .3s var(--ease-cine), border-color .3s ease, box-shadow .3s ease;
 }
