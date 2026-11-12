@@ -1068,3 +1068,109 @@
 .site.cinematic-site:not(.dark-theme) .auth-brand,
 .site.cinematic-site:not(.dark-theme) .auth-brand > span:not(.brand-mark) { color: #f5fff7; }
 .site.cinematic-site:not(.dark-theme) .auth-form-heading .overline { color: #087653; }
+
+/* ==========================================================================
+   Remaining pages: shared heading rhythm (fixes the squashed legacy tracking)
+   ========================================================================== */
+.site .app-current-page-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+.site.cinematic-site main.page-wrap:not(.betzero-lab-page, .prediction-clean-layout, .history-dashboard, .analysis-page, .pricing-page) :is(h1, h2, h3):not(#_) {
+  font-family: var(--font-display);
+  letter-spacing: -.025em;
+}
+.site.cinematic-site main.page-wrap:not(.betzero-lab-page, .prediction-clean-layout, .history-dashboard, .analysis-page, .pricing-page) h1:not(#_) {
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+.site.cinematic-site :is(.calculator-total, .countdown-display) {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* About */
+.site.cinematic-site .about-manifesto { padding: clamp(26px, 3.4vw, 44px); border-radius: var(--radius-lg); }
+.site.cinematic-site .about-manifesto h2 { font-size: clamp(27px, 3.4vw, 40px); line-height: 1.14; }
+.site.cinematic-site .about-manifesto > p { font-size: 14.5px; line-height: 1.8; }
+.site.cinematic-site .about-principles { gap: 16px; margin-top: 16px; }
+.site.cinematic-site .about-principle-card {
+  padding: 28px;
+  border-radius: var(--radius-md);
+  transition: transform .35s var(--ease-cine), border-color .3s ease, box-shadow .35s ease;
+}
+.site.cinematic-site .about-principle-card:hover { transform: translateY(-4px); }
+.site.cinematic-site .about-principle-card > span { font-size: 10.5px; }
+.site.cinematic-site .about-principle-card h2 { font-size: 19px; }
+.site.cinematic-site .about-principle-card p { font-size: 13.5px; line-height: 1.7; }
+.site.cinematic-site .about-next-step { padding: 28px 30px; border-radius: var(--radius-md); }
+.site.cinematic-site .about-next-step .overline { font-size: 10.5px; }
+.site.cinematic-site .about-next-step h2 { font-size: 24px; }
+.site.cinematic-site.dark-theme :is(.about-manifesto, .about-principle-card, .about-next-step) {
+  border-color: var(--glass-line);
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(233, 189, 91, .09), transparent 50%),
+    linear-gradient(160deg, rgba(20, 30, 25, .86), rgba(10, 16, 13, .9));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 18px 46px rgba(0, 0, 0, .26);
+}
+.site.cinematic-site.dark-theme .about-principle-card:hover { border-color: var(--gold-line); box-shadow: 0 26px 60px rgba(0, 0, 0, .42); }
+.site.cinematic-site.dark-theme .about-next-step { border-color: var(--gold-line); }
+
+/* Contact */
+.site.cinematic-site .contact-aside h2 { line-height: 1.16; }
+.site.cinematic-site .contact-aside p { font-size: 14px; }
+.site.cinematic-site .contact-form-heading h2 { font-size: 27px; }
+.site.cinematic-site .contact-form-heading p { font-size: 12.5px; }
+.site.cinematic-site.dark-theme .contact-page :is(input, textarea):focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(233, 189, 91, .14); outline: 0; }
+
+/* Football heroes */
+.site.cinematic-site :is(.rf-hero, .vf-hero) h1:not(#_) { font-weight: 600; line-height: 1.06; }
+.site.cinematic-site :is(.rf-hero-copy, .vf-hero-copy) > p { font-size: 15px; }
+.site.cinematic-site :is(.rf-hero-link, .vf-hero-link) { font-size: 13px; }
+.site.cinematic-site.dark-theme :is(.rf-hero, .vf-hero) {
+  border-color: var(--glass-line);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .05), 0 26px 70px rgba(0, 0, 0, .32);
+}
+
+/* Account */
+.site .account-page .content-card { border-radius: var(--radius-lg); }
+.site .account-page .account-plan h2:not(#_) { letter-spacing: -.035em; font-weight: 600; }
+.site .account-page .account-details dt { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+.site .account-page .account-market-list li { border-radius: var(--radius-sm); transition: border-color .25s ease, transform .3s var(--ease-cine); }
+.site .account-page .account-market-list li:hover { transform: translateY(-2px); }
+.site .account-page .account-status.is-approved { color: var(--win); border-color: color-mix(in srgb, var(--win) 35%, transparent); background: color-mix(in srgb, var(--win) 10%, transparent); }
+.site.dark-theme .account-page .content-card {
+  border-color: var(--glass-line);
+  background: linear-gradient(160deg, rgba(20, 30, 25, .86), rgba(10, 16, 13, .9));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 18px 46px rgba(0, 0, 0, .26);
+}
+.site.dark-theme .account-page .account-plan {
+  border-color: var(--gold);
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(233, 189, 91, .18), transparent 55%),
+    linear-gradient(160deg, rgba(38, 31, 14, .9), rgba(12, 15, 11, .94));
+  box-shadow: 0 0 0 1px var(--gold-line), 0 26px 70px rgba(233, 189, 91, .1);
+}
+.site.dark-theme .account-page .account-plan h2 {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.site.dark-theme .account-page .account-market-list li { border-color: rgba(255, 255, 255, .07); background: rgba(255, 255, 255, .025); }
+.site.dark-theme .account-page .account-market-list li:hover { border-color: var(--gold-line); }
+
+@media (prefers-reduced-motion: reduce) {
+  .site.cinematic-site .about-principle-card:hover,
+  .site .account-page .account-market-list li:hover { transform: none; }
+}
+.site.cinematic-site:not(.dark-theme) .about-next-actions .cinematic-text-link { color: #14301f; }
+.site.cinematic-site:not(.dark-theme) .about-next-actions .cinematic-text-link span { color: #087653; }
+.site .account-page .account-markets + .account-markets { margin-top: 24px; }
+/* Light theme: the footer stays dark, so its brand and column titles must stay light */
+.site:not(.dark-theme) .app-site-footer .footer-brand,
+.site:not(.dark-theme) .app-site-footer .footer-brand > span:not(.brand-mark),
+.site:not(.dark-theme) .app-site-footer .footer-col h2:not(#_) { color: #f1f8f2; }

@@ -45,7 +45,7 @@ export default function AutomationPage() {
  const sections=[['overview','Overview'],['strategies','Strategies'],['activity','Activity'],['reports','Email reports'],['settings','Settings']];
 
  return <main className="page-wrap automation-page">
-  <section className="automation-hero"><div><span className="overline">YOUR AUTOMATION WORKSPACE</span><h1>Stay in control.</h1><p>Your session, strategies and results in one place.</p></div><div className="automation-hero-meta"><span className="automation-live-label">{updated&&!stale?'Status updated':'Waiting for status'}</span><strong>{updated?new Date(updated).toLocaleTimeString():'--'}</strong><a href="guide.html">Automation guide &nearr;</a></div></section>
+  <section className="automation-hero"><div><span className="overline">YOUR AUTOMATION WORKSPACE</span><h1>Stay in control.</h1><p>Your session, strategies and results in one place.</p></div><div className="automation-hero-meta"><span className="automation-live-label">{updated&&!stale?'Status updated':'Waiting for status'}</span><strong>{updated?new Date(updated).toLocaleTimeString():'--'}</strong><a href="guide.html">Automation guide ↗</a></div></section>
   {error && <div className="automation-warning" role="alert">{error} <a href="login.html">Sign in</a></div>}
   {notice && <p className="automation-notice" role="status">{notice}</p>}
 
