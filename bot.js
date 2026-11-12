@@ -4867,8 +4867,10 @@ async function handleHttpRequest(req, res) {
             'Content-Type': 'application/json; charset=utf-8',
             'Cache-Control': 'no-store'
         });
+        // ageMs = how old the Bet9ja reading already is. The page subtracts it, so its
+        // countdown matches Bet9ja's without depending on the visitor's device clock.
         return res.end(JSON.stringify(clockIsFresh
-            ? publicClock
+            ? { ...publicClock, ageMs: Math.max(0, Date.now() - publicClock.observedAt) }
             : { error: 'Live draw clock is not available yet.' }));
     }
 

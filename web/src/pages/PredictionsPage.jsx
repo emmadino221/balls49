@@ -180,7 +180,7 @@ export default function PredictionsPage() {
   const [savingStakePlan, setSavingStakePlan] = useState(false);
   const [now, setNow] = useState(Date.now());
   const secondsLeft = clock
-    ? Math.max(0, Number(clock.timeLeftSeconds) - Math.floor((now - clock.receivedAt) / 1000))
+    ? Math.max(0, Math.ceil((clock.deadline - now) / 1000))
     : null;
 
   useEffect(() => {
@@ -191,7 +191,10 @@ export default function PredictionsPage() {
         if (!response.ok) throw new Error('Clock unavailable');
         const payload = await response.json();
         if (active && Number.isFinite(Number(payload.timeLeftSeconds)) && payload.drawId) {
-          setClock({ ...payload, receivedAt: Date.now() });
+          // The reading was taken from Bet9ja ageMs ago, so the draw closes that much sooner.
+          const receivedAt = Date.now();
+          const ageMs = Math.max(0, Number(payload.ageMs) || 0);
+          setClock({ ...payload, receivedAt, deadline: receivedAt - ageMs + Number(payload.timeLeftSeconds) * 1000 });
         }
       } catch {
         if (active) setClock((current) => current && Date.now() - current.receivedAt < 15000 ? current : null);
@@ -199,7 +202,7 @@ export default function PredictionsPage() {
     }
     refreshClock();
     const clockPoll = window.setInterval(refreshClock, 2500);
-    const displayTick = window.setInterval(() => setNow(Date.now()), 1000);
+    const displayTick = window.setInterval(() => setNow(Date.now()), 500);
     return () => {
       active = false;
       window.clearInterval(clockPoll);

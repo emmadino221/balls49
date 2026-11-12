@@ -63,7 +63,7 @@ export default function FreeTrialPage() {
   const [prediction, setPrediction] = useState(null);
   const [previous, setPrevious] = useState(null);
   const [now, setNow] = useState(Date.now());
-  const secondsLeft = clock ? Math.max(0, Number(clock.timeLeftSeconds) - Math.floor((now - clock.receivedAt) / 1000)) : null;
+  const secondsLeft = clock ? Math.max(0, Math.ceil((clock.deadline - now) / 1000)) : null;
   const revealOpen = secondsLeft !== null && secondsLeft > 0 && secondsLeft <= 10;
   const activePrediction = prediction && String(prediction.drawId) === String(clock?.drawId) ? prediction : null;
   const activePredictionKey = activePrediction
@@ -77,12 +77,17 @@ export default function FreeTrialPage() {
         const response = await fetch(CLOCK_API, { cache: 'no-store' });
         if (!response.ok) throw new Error('clock unavailable');
         const value = await response.json();
-        if (active && Number.isFinite(Number(value.timeLeftSeconds)) && value.drawId) setClock({ ...value, receivedAt: Date.now() });
+        if (active && Number.isFinite(Number(value.timeLeftSeconds)) && value.drawId) {
+          // The reading was taken from Bet9ja ageMs ago, so the draw closes that much sooner.
+          const receivedAt = Date.now();
+          const ageMs = Math.max(0, Number(value.ageMs) || 0);
+          setClock({ ...value, receivedAt, deadline: receivedAt - ageMs + Number(value.timeLeftSeconds) * 1000 });
+        }
       } catch { if (active) setClock(current => current && Date.now() - current.receivedAt < 15000 ? current : null); }
     }
     refreshClock();
     const poll = window.setInterval(refreshClock, 2500);
-    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    const tick = window.setInterval(() => setNow(Date.now()), 500);
     return () => { active = false; window.clearInterval(poll); window.clearInterval(tick); };
   }, []);
 
