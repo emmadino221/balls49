@@ -3352,7 +3352,10 @@ async function tick() {
             }
 
             if (session.pendingBetPayload && String(session.pendingBetPayload.drawId) === nextId && session.pendingBetPayload.action === "EXECUTE_BET") {
-                if (timeLeft <= 15) {
+                // Once the extension has claimed this draw it may already have clicked Place Bet
+                // and be waiting for Bet9ja to confirm. Keep the instruction so its report is
+                // still accepted and the bet is accounted for; it is never sent out again.
+                if (timeLeft <= 15 && String(session.betExecutionClaim?.drawId || '') !== nextId) {
                     session.pendingBetPayload = null;
                     session.betExecutionClaim = null;
                     session.failedBetRecovery = null;
@@ -3362,6 +3365,16 @@ async function tick() {
                 }
             }
             
+            // A claimed instruction whose report never arrived (browser closed mid-placement):
+            // give the report most of the following draw to arrive, then let betting resume.
+            if (session.pendingBetPayload?.action === "EXECUTE_BET" && nextId && timeLeft <= 15
+                && Number(session.pendingBetPayload.drawId) < Number(nextId)
+                && !dailyPendingSettlements.some(record => String(record.drawId) === String(session.pendingBetPayload.drawId))) {
+                session.pendingBetPayload = null;
+                session.betExecutionClaim = null;
+                session.failedBetRecovery = null;
+            }
+
             if (session.balanceVerification.pendingWinSync) {
                 if (session.stats.liveAccountBalance > session.balanceVerification.balanceBeforeWin) {
                     session.balanceVerification.pendingWinSync = false;

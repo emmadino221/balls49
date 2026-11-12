@@ -28,6 +28,7 @@ async function deliverExecutionReceipt(receipt) {
         });
         if (!response.ok) {
             const error = new Error(`Receipt rejected (HTTP ${response.status})`);
+            error.status = response.status;
             error.permanent = response.status >= 400 && response.status < 500 && response.status !== 429;
             throw error;
         }
@@ -53,6 +54,16 @@ async function deliverExecutionReceipt(receipt) {
             executionNotice = `Draw #${receipt.drawId} skipped: ${placementFailureReason || 'the betting window closed'}. No bet was submitted. Waiting for the next draw.`;
             setOverlayDecisionReason(executionNotice);
             console.warn('[Balls49] Draw skipped, nothing submitted:', error.message);
+            return true;
+        }
+        // The server no longer holds this draw (HTTP 409), so resending the report
+        // can never succeed. Carry on with the next draw instead of freezing here.
+        if (error.permanent && error.status === 409) {
+            pendingExecutionReceipt = null;
+            receiptRetryAt = 0;
+            executionNotice = `Draw #${receipt.drawId}: the bet report arrived after the server closed the draw, so this draw is not counted in the virtual balance. Continuing with the next draw.`;
+            setOverlayDecisionReason(executionNotice);
+            console.warn('[Balls49] Late execution report dropped:', error.message);
             return true;
         }
         receiptRetryAt = error.permanent ? Infinity : Date.now() + 5000;
