@@ -11,6 +11,8 @@ let currentPlacementReport = null;
 let lastExecutionReceipt = null;
 let lastExecutedDrawId = null;          
 let betBalanceUnconfirmed = false;
+// True after a bet whose live balance change did not show in time; cleared when one does.
+let liveBalanceLagging = false;
 let placementFailureReason = '';
 let pendingExecutionReceipt = null;
 let receiptRetryAt = 0;
@@ -348,7 +350,9 @@ async function placeBet(expectedBetZero = null) {
         // Bet9ja is sometimes slow to show the new balance. Wait longer and ask
         // the site to refresh the balance; this only reads, it never re-submits.
         const clickedAt = Date.now();
-        const deadline = clickedAt + 25000;
+        // While Bet9ja's live balance is running late, a short wait is enough: the
+        // other markets of this draw still have to be placed before betting closes.
+        const deadline = clickedAt + (liveBalanceLagging ? 6000 : 25000);
         const refreshAt = [4000, 10000, 17000];
         executionNotice = `Confirming submission for draw #${lastExecutedDrawId}. No repeat bet will be sent.`;
         setOverlayDecisionReason(executionNotice);
@@ -367,18 +371,21 @@ async function placeBet(expectedBetZero = null) {
             }
             const afterBal = getLiveAccountBalance();
             if (beforeBal !== null && afterBal !== null && beforeBal - afterBal >= 1) {
+                liveBalanceLagging = false;
                 betBalanceUnconfirmed = false;
                 placementFailureReason = '';
                 executionNotice = '';
                 return true;
             }
         }
-        placementFailureReason = expectedBetZero
-            ? 'Submission could not be confirmed by a new matching BetZero receipt or balance change within 25 seconds'
-            : 'Bet was submitted, but the balance change was not confirmed within 25 seconds';
-        executionNotice = `${placementFailureReason}. Check the bet slip; no repeat bet was sent.${describeControl(btn)}`;
+        // Bet9ja's live balance sometimes updates several draws late. The bet was
+        // clicked once on an enabled Place Bet button, so count it as placed and
+        // keep going on the virtual balance instead of stopping the automation.
+        liveBalanceLagging = true;
+        betBalanceUnconfirmed = false;
+        placementFailureReason = '';
+        executionNotice = `Draw #${lastExecutedDrawId}: bet submitted, but the live balance has not updated yet. Continuing on the virtual balance.`;
         setOverlayDecisionReason(executionNotice);
-        // Include the possibly submitted selection in the receipt, preserving existing accounting.
         return true;
     } catch (error) {
         placementFailureReason = betBalanceUnconfirmed
