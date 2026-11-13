@@ -257,7 +257,7 @@ const PUBLIC_SITE_ROUTES = new Set([
     'GET /auth/verification-status', 'POST /auth/verify-email', 'POST /auth/resend-verification',
     'GET /account/stake-plans', 'POST /account/stake-plan', 'GET /account/analysis',
     'GET /admin/security', 'POST /admin/security', 'POST /admin/session', 'GET /admin/users', 'POST /admin/approve', 'POST /admin/delete-user', 'POST /admin/reset-market-stats',
-    'GET /public-football-combinations', 'POST /admin/football-combinations', 'GET /public-football', 'GET /public-virtual-football', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
+    'GET /public-football-combinations', 'POST /admin/football-combinations', 'GET /public-football', 'GET /public-virtual-football', 'GET /public-virtual-football-history', 'GET /admin/football', 'GET /admin/preview', 'POST /admin/preview', 'POST /admin/logout', 'POST /admin/reset-history-streaks'
 ]);
 
 function isAllowedApiOrigin(origin) {
@@ -4542,6 +4542,10 @@ async function handleHttpRequest(req, res) {
 
     if (parsedUrl.pathname === '/public-virtual-football' && req.method === 'GET') {
         return sendJson(res, 200, virtualFootball.view());
+    }
+
+    if (parsedUrl.pathname === '/public-virtual-football-history' && req.method === 'GET') {
+        return sendJson(res, 200, virtualFootball.history(Object.fromEntries(parsedUrl.searchParams)));
     }
 
     if (parsedUrl.pathname === '/admin/football' && req.method === 'GET') {

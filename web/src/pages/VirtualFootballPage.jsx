@@ -26,16 +26,9 @@ const predictionMarkets = [
 
 const resultMarkets = ['over', 'gg', 'ng', 'win'].map(id => predictionMarkets.find(market => market.id === id));
 
-function hasMarketResult(match, market) {
-  return match.status === 'REPORTED'
-    && !!match.roundId
-    && Array.isArray(match.selectedMarkets)
-    && match.selectedMarkets.includes(market)
-    && !(market === 'over' && match.goals15 === 'UNDER')
-    && !!getMarketPrediction(match, market);
-}
-
 const FEED_REFRESH_INTERVAL_MS = 10000;
+const HISTORY_REFRESH_INTERVAL_MS = 30000;
+const EMPTY_MARKET = { wins: 0, losses: 0, current: 0, worst: 0, rounds: 0, picks: 0, groups: [] };
 
 function getMarketPrediction(match, market) {
   if (Array.isArray(match.selectedMarkets) && !match.selectedMarkets.includes(market)) return null;
@@ -55,41 +48,6 @@ function getMarketPrediction(match, market) {
     return { label: 'Both teams to score', value: 'Yes · GG' };
   }
   return null;
-}
-
-function getMarketSettlement(match, market) {
-  const score = typeof match.score === 'string' ? match.score.match(/^(\d{1,2})-(\d{1,2})$/) : null;
-  if (!score) return 'NO SCORE';
-  const homeGoals = Number(score[1]);
-  const awayGoals = Number(score[2]);
-  let won;
-
-  if (market === 'win') {
-    const outcome = homeGoals > awayGoals ? 'HOME' : homeGoals < awayGoals ? 'AWAY' : 'DRAW';
-    won = match.pick === outcome;
-  } else if (market === 'over') {
-    const pick = match.goals15 || (match.btts === 'GG' ? 'OVER' : null);
-    if (!pick) return 'NO PICK';
-    won = pick === (homeGoals + awayGoals >= 2 ? 'OVER' : 'UNDER');
-  } else {
-    const outcome = homeGoals > 0 && awayGoals > 0 ? 'GG' : 'NG';
-    won = match.btts === outcome;
-  }
-
-  return won ? 'WIN' : 'LOSS';
-}
-
-function getMarketRoundGroups(matches, market) {
-  const rounds = new Map();
-  for (const match of [...matches].sort((a, b) => b.createdAt - a.createdAt)) {
-    const prediction = getMarketPrediction(match, market);
-    if (!prediction) continue;
-    const week = String(match.week || 'Week unavailable');
-    const key = `${String(match.id).split(':')[0]}:${match.roundId}`;
-    if (!rounds.has(key)) rounds.set(key, { key, week, createdAt: match.createdAt, rows: [] });
-    rounds.get(key).rows.push({ match, prediction });
-  }
-  return [...rounds.values()];
 }
 
 function Crest({ name, variant }) {
@@ -198,6 +156,8 @@ export default function VirtualFootballPage({ showResults = false }) {
   const [toDate, setToDate] = useState('');
   const [weekFilter, setWeekFilter] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState('');
+  const [history, setHistory] = useState(null);
+  const [historyError, setHistoryError] = useState('');
   const resultTabRefs = useRef([]);
   function handleResultTabKey(event, index) {
     let next;
@@ -235,27 +195,34 @@ export default function VirtualFootballPage({ showResults = false }) {
   }, []);
 
   const matches = Array.isArray(data?.matches) ? data.matches : [];
-  const invalidDates = fromDate && toDate && fromDate > toDate;
-  const historyMatches = matches.filter(match => {
-    const date = new Date(match.createdAt);
-    const localDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    return !invalidDates && (!fromDate || localDate >= fromDate) && (!toDate || localDate <= toDate)
-      && (!weekFilter || match.week === weekFilter);
-  });
-  const historyFor = market => {
-    const groups = getMarketRoundGroups(historyMatches.filter(match => hasMarketResult(match, market)), market);
-    for (const group of groups) {
-      const outcomes = group.rows.map(({ match }) => getMarketSettlement(match, market));
-      group.outcome = outcomes.length !== (market === 'over' ? 2 : 1) || outcomes.includes('NO SCORE')
-        ? 'INCOMPLETE' : outcomes.every(outcome => outcome === 'WIN') ? 'WIN' : 'LOSS';
+  const invalidDates = !!(fromDate && toDate && fromDate > toDate);
+
+  // The results archive comes from its own endpoint: the live feed above only carries the
+  // newest rounds, which is far too little to count wins, losses and streaks from.
+  useEffect(() => {
+    if (!showResults || invalidDates) return undefined;
+    let active = true;
+    let timer;
+    const query = new URLSearchParams();
+    if (fromDate) query.set('from', String(new Date(`${fromDate}T00:00:00`).getTime()));
+    if (toDate) query.set('to', String(new Date(`${toDate}T23:59:59.999`).getTime()));
+    if (weekFilter) query.set('week', weekFilter);
+    if (outcomeFilter) query.set('outcome', outcomeFilter);
+    async function load() {
+      try {
+        const response = await apiRequest(`/public-virtual-football-history?${query}`);
+        if (active) { setHistory(response); setHistoryError(''); }
+      } catch (requestError) {
+        if (active) setHistoryError(requestError.message);
+      } finally {
+        if (active) timer = setTimeout(load, HISTORY_REFRESH_INTERVAL_MS);
+      }
     }
-    let current = 0, worst = 0, wins = 0, losses = 0;
-    for (const group of [...groups].reverse()) {
-      if (group.outcome === 'LOSS') { current += 1; losses += 1; worst = Math.max(worst, current); }
-      else { current = 0; if (group.outcome === 'WIN') wins += 1; }
-    }
-    return { groups: groups.filter(group => !outcomeFilter || group.outcome === outcomeFilter), current, worst, wins, losses };
-  };
+    load();
+    return () => { active = false; clearTimeout(timer); };
+  }, [showResults, invalidDates, fromDate, toDate, weekFilter, outcomeFilter]);
+
+  const historyFor = market => (!invalidDates && history?.markets?.[market]) || EMPTY_MARKET;
   const reportedCount = matches.filter(match => match.status === 'REPORTED').length;
   const upcomingCount = matches.filter(match => match.status === 'UPCOMING').length;
   const freshMatches = matches.filter(match => match.status === 'UPCOMING' && Array.isArray(match.selectedMarkets) && match.roundId);
@@ -264,9 +231,8 @@ export default function VirtualFootballPage({ showResults = false }) {
   const overPairReady = roundMatches.filter(match => getMarketPrediction(match, 'over')).length === 2;
   const currentMarketMatches = market => market === 'over' && !overPairReady
     ? [] : roundMatches.filter(match => getMarketPrediction(match, market));
-  const visibleMatches = showResults
-    ? historyFor(activeMarket).groups.flatMap(group => group.rows.map(row => row.match))
-    : currentMarketMatches(activeMarket).slice(0, activeMarket === 'over' ? 2 : 1);
+  const visibleMatches = showResults ? [] : currentMarketMatches(activeMarket).slice(0, activeMarket === 'over' ? 2 : 1);
+  const visibleCount = showResults ? historyFor(activeMarket).picks : visibleMatches.length;
 
   const boardRows = (showResults ? resultMarkets : predictionMarkets).map(item => {
     if (showResults) {
@@ -346,13 +312,14 @@ export default function VirtualFootballPage({ showResults = false }) {
                 ? 'Exactly two picks from the dedicated Over 1.5 model, each with model confidence of at least 60%. If fewer than two qualify, we skip the round. Confidence is an estimate, not a guarantee.'
                 : activeMarket === 'win' ? 'The highest-confidence qualifying winner with selection odds strictly above 1.70.' : 'One match with the highest available model confidence for this market. No qualifying match means no pick.'}</p>
           </div>
-          <span className="vf-fixture-count">{visibleMatches.length} {visibleMatches.length === 1 ? 'match' : 'matches'}</span>
+          <span className="vf-fixture-count">{visibleCount} {visibleCount === 1 ? 'match' : 'matches'}</span>
         </div>
-        {showResults && data.historyStart && <p className="vf-history-note">Fresh prediction history started {formatTime(data.historyStart)}. Earlier results have been cleared.</p>}
+        {showResults && history?.oldest && <p className="vf-history-note">Saved results in this view go back to {formatTime(history.oldest)}. Results are kept for 14 days.</p>}
+        {showResults && historyError && <p className="vf-history-note" role="alert">The results archive could not be loaded: {historyError}</p>}
         {showResults && <div className="vf-history-filters">
           <label>From date<input type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></label>
           <label>To date<input type="date" value={toDate} onChange={event => setToDate(event.target.value)} /></label>
-          <label>Week<select value={weekFilter} onChange={event => setWeekFilter(event.target.value)}><option value="">All weeks</option>{[...new Set(matches.map(match => match.week))].sort().map(week => <option key={week} value={week}>{week}</option>)}</select></label>
+          <label>Week<select value={weekFilter} onChange={event => setWeekFilter(event.target.value)}><option value="">All weeks</option>{(history?.weeks || []).map(week => <option key={week} value={week}>{week}</option>)}</select></label>
           <label>Round result<select value={outcomeFilter} onChange={event => setOutcomeFilter(event.target.value)}><option value="">All results</option><option value="WIN">Won</option><option value="LOSS">Lost</option><option value="INCOMPLETE">Incomplete</option></select></label>
           <button type="button" onClick={() => { setFromDate(''); setToDate(''); setWeekFilter(''); setOutcomeFilter(''); }}>Reset filters</button>
           {invalidDates && <p role="alert">The end date must be on or after the start date.</p>}
@@ -365,7 +332,7 @@ export default function VirtualFootballPage({ showResults = false }) {
             className={`vf-market-tab${activeMarket === item.id ? ' is-active' : ''}`}
             onKeyDown={event => handleResultTabKey(event, index)} onClick={() => setActiveMarket(item.id)}>
             <span><strong>{item.label}</strong><small>{item.description}</small></span>
-            <b>{historyFor(item.id).groups.reduce((total, group) => total + group.rows.length, 0)}</b>
+            <b>{historyFor(item.id).picks}</b>
           </button>)}
         </div>}
         {!showResults && <div className="vf-market-tabs" role="group" aria-label="Filter virtual predictions by market">
@@ -382,7 +349,7 @@ export default function VirtualFootballPage({ showResults = false }) {
               {resultMarkets.map(market => {
                 const stats = historyFor(market.id);
                 const weekGroups = stats.groups;
-                const count = weekGroups.reduce((total, group) => total + group.rows.length, 0);
+                const count = stats.picks;
                 return <section className="vf-results-market" key={market.id} role="tabpanel" id={`vf-result-panel-${market.id}`} aria-labelledby={`vf-result-tab-${market.id}`} hidden={activeMarket !== market.id} tabIndex="0">
                   <div className="vf-results-market-heading">
                     <h3 id={`vf-results-${market.id}`}>{market.label}</h3>
@@ -394,23 +361,20 @@ export default function VirtualFootballPage({ showResults = false }) {
                     <article><span>Won rounds</span><strong>{stats.wins}</strong></article>
                     <article><span>Lost rounds</span><strong>{stats.losses}</strong></article>
                   </div>
-                  <p className="vf-history-note">Statistics cover the loaded history within your date and week filters, not all-time results. Result filtering only changes the table. Dates use your local time. {market.id === 'over' ? 'Both picks must win for a round to win; either pick losing makes it a losing round. ' : ''}Incomplete rounds break the streak; skipped rounds are not counted.</p>
+                  <p className="vf-history-note">Statistics cover every saved round within your date and week filters. Result filtering only changes the table. Dates use your local time. {stats.rounds > weekGroups.length ? `The table shows the latest ${weekGroups.length} of ${stats.rounds} rounds; narrow the dates to see older ones. ` : ''}{market.id === 'over' ? 'Both picks must win for a round to win; either pick losing makes it a losing round. ' : ''}Incomplete rounds break the streak; skipped rounds are not counted.</p>
                   <div className="vf-results-table-scroll">
                     <table className="vf-results-table">
                       <thead><tr><th scope="col">Fixture</th><th scope="col">Prediction</th><th scope="col">Score</th><th scope="col">Result</th></tr></thead>
                       {weekGroups.map(group => <tbody key={group.key}>
                         <tr className="vf-results-week"><th scope="rowgroup" colSpan="4">{group.week} · {formatTime(group.createdAt)} · {group.rows.length} selected {group.rows.length === 1 ? 'pick' : 'picks'} · Round: {group.outcome}</th></tr>
-                        {group.rows.map(({ match, prediction }) => {
-                          const settlement = getMarketSettlement(match, market.id);
-                          return <tr key={match.id}>
-                            <td><strong>{match.home} vs {match.away}</strong><small>{formatTime(match.createdAt)}</small></td>
-                            <td>{prediction.value}</td>
-                            <td className="vf-results-score">{match.score || '—'}</td>
-                            <td><span className={`vf-results-outcome vf-results-outcome-${settlement.toLowerCase().replace(' ', '-')}`}>{settlement}</span></td>
-                          </tr>;
-                        })}
+                        {group.rows.map(row => <tr key={row.id}>
+                          <td><strong>{row.home} vs {row.away}</strong><small>{formatTime(row.createdAt)}</small></td>
+                          <td>{row.prediction}</td>
+                          <td className="vf-results-score">{row.score || '—'}</td>
+                          <td><span className={`vf-results-outcome vf-results-outcome-${row.result.toLowerCase().replace(' ', '-')}`}>{row.result}</span></td>
+                        </tr>)}
                       </tbody>)}
-                      {!weekGroups.length && <tbody><tr><td colSpan="4" className="vf-results-no-picks">No selected picks have reported results for this market yet.</td></tr></tbody>}
+                      {!weekGroups.length && <tbody><tr><td colSpan="4" className="vf-results-no-picks">{history ? 'No selected picks have reported results for these filters.' : 'Loading saved results…'}</td></tr></tbody>}
                     </table>
                   </div>
                 </section>;

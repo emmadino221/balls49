@@ -81,3 +81,63 @@ test('virtual feed authenticates snapshots and keeps published picks immutable',
     assert.equal(view.matches[0].goals15, 'OVER');
     assert.equal(view.matches[0].btts, 'GG');
 });
+
+test('results archive keeps published picks beyond the live feed window', t => {
+    const previousSecret = process.env.VIRTUAL_FEED_SECRET;
+    const secret = 'test-secret-with-more-than-thirty-two-characters';
+    process.env.VIRTUAL_FEED_SECRET = secret;
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'balls49-virtual-'));
+    const db = new DatabaseSync(path.join(directory, 'site.sqlite'));
+    const virtualFootball = createVirtualFootball(db);
+    t.after(() => {
+        db.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+        if (previousSecret === undefined) delete process.env.VIRTUAL_FEED_SECRET;
+        else process.env.VIRTUAL_FEED_SECRET = previousSecret;
+    });
+
+    // 30 rounds of 10 matches, two minutes apart, oldest first. Each round publishes two
+    // Over 1.5 picks and one winner; the winner loses in rounds 10, 11 and 12 and in round 29.
+    const now = Date.now();
+    const lostRounds = new Set([10, 11, 12, 29]);
+    const matches = [];
+    for (let round = 0; round < 30; round++) {
+        const createdAt = now - (30 - round) * 120000;
+        const roundId = round.toString(16).padStart(32, '0');
+        for (let slot = 0; slot < 10; slot++) {
+            const match = {
+                id: round * 10 + slot + 1, home: `H${slot}`, away: `A${slot}`, week: `Wk ${round % 3 + 1}`, createdAt,
+                pick: 'HOME', goals15: 'OVER', btts: 'GG', confidence: 70, bttsConfidence: 65, over15Confidence: 75,
+                winOdds: 2, selectedMarkets: [], roundId, status: 'REPORTED', score: '2-1'
+            };
+            if (slot < 2) match.selectedMarkets = ['over'];
+            if (slot === 2) { match.selectedMarkets = ['win']; if (lostRounds.has(round)) match.score = '0-2'; }
+            matches.push(match);
+        }
+    }
+    const body = JSON.stringify({ version: 1, sourceId: 'virtual-tests', sourceAt: now, matches });
+    const timestamp = String(Date.now());
+    const signature = crypto.createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
+    virtualFootball.ingest(body, { 'x-virtual-timestamp': timestamp, 'x-virtual-signature': signature });
+
+    assert.equal(virtualFootball.view().matches.length, 200);
+    const history = virtualFootball.history();
+    assert.deepEqual(history.weeks, ['Wk 1', 'Wk 2', 'Wk 3']);
+    assert.equal(history.markets.over.picks, 60);
+    assert.equal(history.markets.over.wins, 30);
+    assert.equal(history.markets.win.wins, 26);
+    assert.equal(history.markets.win.losses, 4);
+    assert.equal(history.markets.win.worst, 3);
+    assert.equal(history.markets.win.current, 1);
+    assert.equal(history.markets.gg.picks, 0);
+    assert.equal(history.markets.win.groups[0].rows[0].result, 'LOSS');
+    assert.equal(history.markets.win.groups[0].rows[0].prediction, 'Home · H2');
+
+    const lostOnly = virtualFootball.history({ outcome: 'LOSS' });
+    assert.equal(lostOnly.markets.win.rounds, 4);
+    assert.equal(lostOnly.markets.win.wins, 26);
+    const recent = virtualFootball.history({ from: String(now - 5 * 120000 - 1000) });
+    assert.equal(recent.markets.win.rounds, 5);
+    assert.equal(recent.markets.win.worst, 1);
+    assert.equal(virtualFootball.history({ week: 'Wk 1' }).markets.win.rounds, 10);
+});
