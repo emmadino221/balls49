@@ -170,7 +170,7 @@
   border: 5px solid rgba(255,255,255,.8);
   border-radius: 50%;
   color: #0e3126;
-  background: radial-gradient(circle at 30% 26%, #fff 0%, #dff4e7 56%, #97cba9 100%);
+  background: radial-gradient(circle at 30% 26%, #f8f3e7 0%, #dff4e7 56%, #97cba9 100%);
   box-shadow: 0 10px 24px rgba(2, 30, 20, .28);
   font-family: var(--font-heading);
   font-size: 19px;

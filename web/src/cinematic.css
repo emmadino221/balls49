@@ -634,8 +634,8 @@
 }
 
 /* Light theme: readable market title and a green (not gold) active marker. */
-.site:not(.dark-theme) .prediction-clean-layout .clean-prediction-card > h3 { color: #172923; }
-.site:not(.dark-theme) .prediction-clean-layout .prediction-market-tab.is-active .market-tab-index { border-color: #087653; color: #fff; background: #087653; }
+.site:not(.dark-theme) .prediction-clean-layout .clean-prediction-card > h3 { color: #10231b; }
+.site:not(.dark-theme) .prediction-clean-layout .prediction-market-tab.is-active .market-tab-index { border-color: #0f5f43; color: #fff; background: #0f5f43; }
 
 /* ==========================================================================
    Page intros (site-wide): the old green orb is replaced by a soft glow
@@ -901,7 +901,7 @@
 .site.cinematic-site:not(.dark-theme) .page-intro::before,
 .site.cinematic-site:not(.dark-theme) .history-hero::before {
   border: 0;
-  background: radial-gradient(circle, rgba(8, 118, 83, .16), transparent 66%);
+  background: radial-gradient(circle, rgba(233, 189, 91, .3), transparent 66%);
   box-shadow: none;
   opacity: 1;
 }
@@ -1063,7 +1063,7 @@
 .site .pricing-page .price-card .price small { display: block; margin: 8px 0 0; }
 .site.cinematic-site:not(.dark-theme) .auth-brand,
 .site.cinematic-site:not(.dark-theme) .auth-brand > span:not(.brand-mark) { color: #f5fff7; }
-.site.cinematic-site:not(.dark-theme) .auth-form-heading .overline { color: #087653; }
+.site.cinematic-site:not(.dark-theme) .auth-form-heading .overline { color: #0f5f43; }
 
 /* ==========================================================================
    Remaining pages: shared heading rhythm (fixes the squashed legacy tracking)
@@ -1163,8 +1163,8 @@
   .site.cinematic-site .about-principle-card:hover,
   .site .account-page .account-market-list li:hover { transform: none; }
 }
-.site.cinematic-site:not(.dark-theme) .about-next-actions .cinematic-text-link { color: #14301f; }
-.site.cinematic-site:not(.dark-theme) .about-next-actions .cinematic-text-link span { color: #087653; }
+.site.cinematic-site:not(.dark-theme) .about-next-actions .cinematic-text-link { color: #10231b; }
+.site.cinematic-site:not(.dark-theme) .about-next-actions .cinematic-text-link span { color: #0f5f43; }
 .site .account-page .account-markets + .account-markets { margin-top: 24px; }
 /* Light theme: the footer stays dark, so its brand and column titles must stay light */
 .site:not(.dark-theme) .app-site-footer .footer-brand,
