@@ -59,8 +59,8 @@ New rounds freeze their website selections before results are available:
   model confidence of at least 60%, or no Over picks if fewer than two qualify.
   This model learns OVER (two or more goals) versus UNDER from reported settled
   scores and pre-match 1X2 odds. It does not use GG confidence.
-- Under 1.5: at most one match, the lowest Over 1.5 model confidence of the round,
-  and only when that confidence is 65% or lower. It never reuses an Over pick.
+- Under 1.5: one match every round, the lowest Over 1.5 model confidence of the
+  round, whatever that confidence is. It never reuses an Over pick.
   There is no separate Under model; the published match carries `goals15: UNDER`
   and the market key `under`. Most matches finish with two or more goals, so
   this market is expected to lose more rounds than it wins; judge it from the

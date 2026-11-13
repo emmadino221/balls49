@@ -136,13 +136,12 @@ test('results archive keeps published picks beyond the live feed window', t => {
     assert.equal(history.markets.under.losses, 28);
     assert.equal(history.markets.under.groups[0].rows[0].prediction, 'Under 1.5 goals');
 
-    // An Under pick must come from a low Over 1.5 confidence and an explicit UNDER call.
+    // An Under pick needs an explicit UNDER call and a model confidence; any confidence is accepted.
     const reject = (id, change) => {
         const bad = JSON.stringify({ version: 1, sourceId: 'virtual-tests', sourceAt: Date.now(), matches: [{ ...matches[3], id, roundId: 'f'.repeat(32), status: 'UPCOMING', score: null, ...change }] });
         const at = String(Date.now() + id);
         assert.throws(() => virtualFootball.ingest(bad, { 'x-virtual-timestamp': at, 'x-virtual-signature': crypto.createHmac('sha256', secret).update(`${at}.${bad}`).digest('hex') }), { status: 400 });
     };
-    reject(9001, { over15Confidence: 66 });
     reject(9002, { goals15: 'OVER' });
     reject(9003, { over15Confidence: null });
     assert.equal(history.markets.win.groups[0].rows[0].result, 'LOSS');

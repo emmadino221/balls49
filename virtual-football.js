@@ -15,7 +15,6 @@ function createVirtualFootball(db) {
     const HISTORY_MARKETS = ['over', 'under', 'gg', 'ng', 'win'];
     // Under 1.5 has no model of its own: it is the round's lowest Over 1.5 confidence, and
     // only when that confidence is at most this.
-    const UNDER_MAX_OVER_CONFIDENCE = 65;
     const SELECTED = "COALESCE(json_array_length(payload, '$.selectedMarkets'), 0) > 0";
     const historyCache = new Map();
     function ingest(raw, headers) {
@@ -59,7 +58,7 @@ function createVirtualFootball(db) {
                     const legacy = over15Confidence === null && m.goals15 == null && m.btts === 'GG' && bttsConfidence !== null && bttsConfidence >= 60;
                     if (!dedicated && !legacy) throw error('Over shortlist requires qualifying market confidence.');
                 }
-                if (selectedMarkets.includes('under') && (m.goals15 !== 'UNDER' || over15Confidence === null || over15Confidence > UNDER_MAX_OVER_CONFIDENCE)) throw error('Under shortlist requires qualifying market confidence.');
+                if (selectedMarkets.includes('under') && (m.goals15 !== 'UNDER' || over15Confidence === null)) throw error('Under shortlist requires an UNDER call with a market confidence.');
             }
             return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, bttsConfidence, over15Confidence, winOdds, selectedMarkets, roundId, status: m.status, score: m.status === 'REPORTED' ? score : null };
         });

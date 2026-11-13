@@ -257,7 +257,7 @@ export default function VirtualFootballPage({ showResults = false }) {
         <h1>{showResults ? <>Virtual results.<br /><span>Reported scores.</span></> : <>Every match.<br /><span>One clear view.</span></>}</h1>
         <p>{showResults
           ? 'Review completed virtual fixtures and the scores reported by the match feed.'
-          : 'Each round: two qualifying Over 1.5 picks or skip, one Under 1.5 when a match qualifies, one GG, one NG and one winner with selection odds above 1.70.'}</p>
+          : 'Each round: two qualifying Over 1.5 picks or skip, one Under 1.5, one GG, one NG and one winner with selection odds above 1.70.'}</p>
         <a className="vf-hero-link" href={showResults ? 'virtual-football.html' : 'virtual-results.html'}>
           {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">→</span>
         </a>
@@ -318,7 +318,7 @@ export default function VirtualFootballPage({ showResults = false }) {
               : activeMarket === 'over'
                 ? 'Exactly two picks from the dedicated Over 1.5 model, each with model confidence of at least 60%. If fewer than two qualify, we skip the round. Confidence is an estimate, not a guarantee.'
                 : activeMarket === 'under'
-                  ? 'One match: the lowest Over 1.5 model confidence of the round, and only when it is 65% or lower. Most matches finish with two or more goals, so this market loses more often than it wins; the track record is on the results page. Confidence is an estimate, not a guarantee.'
+                  ? 'One match: the lowest Over 1.5 model confidence of the round, every round. Most matches finish with two or more goals, so this market loses more often than it wins; the track record is on the results page. Confidence is an estimate, not a guarantee.'
                 : activeMarket === 'win' ? 'The highest-confidence qualifying winner with selection odds strictly above 1.70.' : 'One match with the highest available model confidence for this market. No qualifying match means no pick.'}</p>
           </div>
           <span className="vf-fixture-count">{visibleCount} {visibleCount === 1 ? 'match' : 'matches'}</span>
