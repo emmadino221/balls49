@@ -67,6 +67,10 @@ New rounds freeze their website selections before results are available:
   results page before betting on it.
 - GG: the highest-confidence GG prediction, at most one match.
 - NG: the highest-confidence NG prediction, at most one match.
+  Since 14 November 2026 GG/NG come from a model on the 1X2 odds alone
+  (`gg_odds_model.py` in the virtual repository) when its trained file exists;
+  on 90,620 settled matches it chose NG winners about 54% of the time against
+  47.3% for the older team-and-form model. The feed format is unchanged.
 - Win: the highest-confidence HOME or AWAY prediction whose selected team's
   odds are strictly greater than 1.70, at most one match. Draws do not qualify.
 
