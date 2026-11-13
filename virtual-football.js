@@ -12,7 +12,10 @@ function createVirtualFootball(db) {
     const RECENT_MATCHES = 5000;
     const HISTORY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
     const HISTORY_ROUNDS_SHOWN = 200;
-    const HISTORY_MARKETS = ['over', 'gg', 'ng', 'win'];
+    const HISTORY_MARKETS = ['over', 'under', 'gg', 'ng', 'win'];
+    // Under 1.5 has no model of its own: it is the round's lowest Over 1.5 confidence, and
+    // only when that confidence is at most this.
+    const UNDER_MAX_OVER_CONFIDENCE = 65;
     const SELECTED = "COALESCE(json_array_length(payload, '$.selectedMarkets'), 0) > 0";
     const historyCache = new Map();
     function ingest(raw, headers) {
@@ -47,7 +50,7 @@ function createVirtualFootball(db) {
             if (bttsConfidence !== null && (typeof bttsConfidence !== 'number' || !Number.isFinite(bttsConfidence) || bttsConfidence < 0 || bttsConfidence > 100)) throw error('Invalid BTTS confidence.');
             if (winOdds !== null && (typeof winOdds !== 'number' || !Number.isFinite(winOdds) || winOdds <= 1 || winOdds > 10000)) throw error('Invalid winner odds.');
             if (selectedMarkets !== null) {
-                if (!Array.isArray(selectedMarkets) || selectedMarkets.length > 4 || new Set(selectedMarkets).size !== selectedMarkets.length || selectedMarkets.some(k => !['over','gg','ng','win'].includes(k)) || !/^[a-f0-9]{32}$/.test(roundId || '')) throw error('Invalid market shortlist.');
+                if (!Array.isArray(selectedMarkets) || selectedMarkets.length > HISTORY_MARKETS.length || new Set(selectedMarkets).size !== selectedMarkets.length || selectedMarkets.some(k => !HISTORY_MARKETS.includes(k)) || !/^[a-f0-9]{32}$/.test(roundId || '')) throw error('Invalid market shortlist.');
                 if (selectedMarkets.includes('win') && (!(winOdds > 1.70) || confidence === null || !['HOME', 'AWAY'].includes(m.pick))) throw error('Winner shortlist requires a team winner, odds above 1.70 and model confidence.');
                 if (selectedMarkets.includes('gg') && (m.btts !== 'GG' || bttsConfidence === null)) throw error('Invalid GG selection.');
                 if (selectedMarkets.includes('ng') && (m.btts !== 'NG' || bttsConfidence === null)) throw error('Invalid NG selection.');
@@ -56,6 +59,7 @@ function createVirtualFootball(db) {
                     const legacy = over15Confidence === null && m.goals15 == null && m.btts === 'GG' && bttsConfidence !== null && bttsConfidence >= 60;
                     if (!dedicated && !legacy) throw error('Over shortlist requires qualifying market confidence.');
                 }
+                if (selectedMarkets.includes('under') && (m.goals15 !== 'UNDER' || over15Confidence === null || over15Confidence > UNDER_MAX_OVER_CONFIDENCE)) throw error('Under shortlist requires qualifying market confidence.');
             }
             return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, bttsConfidence, over15Confidence, winOdds, selectedMarkets, roundId, status: m.status, score: m.status === 'REPORTED' ? score : null };
         });
@@ -114,11 +118,13 @@ function createVirtualFootball(db) {
         const home = Number(score[1]), away = Number(score[2]);
         if (market === 'win') return match.pick === (home > away ? 'HOME' : home < away ? 'AWAY' : 'DRAW') ? 'WIN' : 'LOSS';
         if (market === 'over') return home + away >= 2 ? 'WIN' : 'LOSS';
+        if (market === 'under') return home + away <= 1 ? 'WIN' : 'LOSS';
         return match.btts === (home > 0 && away > 0 ? 'GG' : 'NG') ? 'WIN' : 'LOSS';
     }
     function pickText(match, market) {
         if (market === 'win') return match.pick === 'HOME' ? `Home · ${match.home}` : match.pick === 'AWAY' ? `Away · ${match.away}` : null;
         if (market === 'over') return match.goals15 === 'OVER' ? 'Over 1.5 goals' : match.goals15 == null && match.btts === 'GG' ? 'Over 1.5 goals · GG signal' : null;
+        if (market === 'under') return match.goals15 === 'UNDER' ? 'Under 1.5 goals' : null;
         if (market === 'gg') return match.btts === 'GG' ? 'Yes · GG' : null;
         return match.btts === 'NG' ? 'No · NG' : null;
     }

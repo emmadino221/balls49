@@ -59,6 +59,12 @@ New rounds freeze their website selections before results are available:
   model confidence of at least 60%, or no Over picks if fewer than two qualify.
   This model learns OVER (two or more goals) versus UNDER from reported settled
   scores and pre-match 1X2 odds. It does not use GG confidence.
+- Under 1.5: at most one match, the lowest Over 1.5 model confidence of the round,
+  and only when that confidence is 65% or lower. It never reuses an Over pick.
+  There is no separate Under model; the published match carries `goals15: UNDER`
+  and the market key `under`. Most matches finish with two or more goals, so
+  this market is expected to lose more rounds than it wins; judge it from the
+  results page before betting on it.
 - GG: the highest-confidence GG prediction, at most one match.
 - NG: the highest-confidence NG prediction, at most one match.
 - Win: the highest-confidence HOME or AWAY prediction whose selected team's
@@ -84,6 +90,13 @@ Deploy the website receiver and frontend first, then update both collector and
 publisher in the virtual repository and restart their services. The collector
 adds its new SQLite columns on startup. A fresh collected round is required for
 the new prediction view; old feeds lack the required shortlist metadata.
+
+## Under 1.5 rollout
+
+Deploy the website first. A receiver without the `under` market rejects every
+snapshot that contains it, which stops the whole feed until the site is updated.
+Then update the collector in the virtual repository; it adds `result_un` to
+`weekly_accumulators` on startup. Extension 3.0 adds the "Under 1.5 Single" mode.
 
 ## Dedicated Over 1.5 rollout
 

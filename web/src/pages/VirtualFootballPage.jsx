@@ -20,11 +20,12 @@ function getPickLabel(pick, match) {
 const predictionMarkets = [
   { id: 'win', label: 'Win', description: 'One team to win' },
   { id: 'over', label: 'Over 1.5', description: 'Total goals' },
+  { id: 'under', label: 'Under 1.5', description: '0 or 1 goal' },
   { id: 'ng', label: 'NG', description: 'BTTS: No' },
   { id: 'gg', label: 'GG', description: 'BTTS: Yes' },
 ];
 
-const resultMarkets = ['over', 'gg', 'ng', 'win'].map(id => predictionMarkets.find(market => market.id === id));
+const resultMarkets = ['over', 'under', 'gg', 'ng', 'win'].map(id => predictionMarkets.find(market => market.id === id));
 
 const FEED_REFRESH_INTERVAL_MS = 10000;
 const HISTORY_REFRESH_INTERVAL_MS = 30000;
@@ -35,8 +36,11 @@ function getMarketPrediction(match, market) {
   if (market === 'win' && match.pick) {
     return { label: 'Match winner', value: getPickLabel(match.pick, match) };
   }
-  if (market === 'over' && (match.goals15 === 'OVER' || match.goals15 === 'UNDER')) {
-    return { label: 'Total goals · 1.5 line', value: match.goals15 === 'OVER' ? 'Over 1.5 goals' : 'Under 1.5 goals' };
+  if (market === 'over' && match.goals15 === 'OVER') {
+    return { label: 'Total goals · 1.5 line', value: 'Over 1.5 goals' };
+  }
+  if (market === 'under' && match.goals15 === 'UNDER' && Array.isArray(match.selectedMarkets)) {
+    return { label: 'Total goals · 1.5 line', value: 'Under 1.5 goals' };
   }
   if (market === 'over' && match.goals15 == null && match.btts === 'GG') {
     return { label: 'Derived from both teams to score', value: 'Over 1.5 goals · GG signal' };
@@ -58,7 +62,10 @@ function Crest({ name, variant }) {
 }
 
 function MatchCard({ match, market }) {
-  const marketConfidence = market === 'win' ? match.confidence : market === 'over' && match.goals15 != null ? match.over15Confidence : match.bttsConfidence;
+  // The Under 1.5 pick reuses the Over 1.5 model, so its confidence is the remainder.
+  const marketConfidence = market === 'win' ? match.confidence
+    : market === 'under' ? (Number.isFinite(match.over15Confidence) ? 100 - match.over15Confidence : null)
+      : market === 'over' && match.goals15 != null ? match.over15Confidence : match.bttsConfidence;
   const confidence = Number.isFinite(marketConfidence) ? marketConfidence : null;
   const statusLabel = match.status === 'REPORTED'
     ? 'Result reported'
@@ -69,7 +76,7 @@ function MatchCard({ match, market }) {
   const reported = !!match.score && match.status === 'REPORTED';
   const confidenceLabel = market === 'over'
     ? (match.goals15 != null ? 'Over 1.5 model confidence' : 'Historical BTTS confidence')
-    : 'Model confidence';
+    : market === 'under' ? 'Under 1.5 estimate from the Over 1.5 model' : 'Model confidence';
 
   return <article className="vf-match-card">
     <div className="vf-card-main">
@@ -250,7 +257,7 @@ export default function VirtualFootballPage({ showResults = false }) {
         <h1>{showResults ? <>Virtual results.<br /><span>Reported scores.</span></> : <>Every match.<br /><span>One clear view.</span></>}</h1>
         <p>{showResults
           ? 'Review completed virtual fixtures and the scores reported by the match feed.'
-          : 'Each round: two qualifying Over 1.5 picks or skip, one GG, one NG and one winner with selection odds above 1.70.'}</p>
+          : 'Each round: two qualifying Over 1.5 picks or skip, one Under 1.5 when a match qualifies, one GG, one NG and one winner with selection odds above 1.70.'}</p>
         <a className="vf-hero-link" href={showResults ? 'virtual-football.html' : 'virtual-results.html'}>
           {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">→</span>
         </a>
@@ -307,9 +314,11 @@ export default function VirtualFootballPage({ showResults = false }) {
             <span className="vf-section-eyebrow">{showResults ? 'COMPLETED FIXTURES' : 'LATEST FROM THE FEED'}</span>
             <h2>{showResults ? 'Reported results' : 'Match predictions'}</h2>
             <p>{showResults
-              ? 'Only the picks selected before each round: up to two for Over 1.5 and one each for GG, NG and Win. Older results without saved selections are excluded.'
+              ? 'Only the picks selected before each round: up to two for Over 1.5 and one each for Under 1.5, GG, NG and Win. Older results without saved selections are excluded.'
               : activeMarket === 'over'
                 ? 'Exactly two picks from the dedicated Over 1.5 model, each with model confidence of at least 60%. If fewer than two qualify, we skip the round. Confidence is an estimate, not a guarantee.'
+                : activeMarket === 'under'
+                  ? 'One match: the lowest Over 1.5 model confidence of the round, and only when it is 65% or lower. Most matches finish with two or more goals, so this market loses more often than it wins; the track record is on the results page. Confidence is an estimate, not a guarantee.'
                 : activeMarket === 'win' ? 'The highest-confidence qualifying winner with selection odds strictly above 1.70.' : 'One match with the highest available model confidence for this market. No qualifying match means no pick.'}</p>
           </div>
           <span className="vf-fixture-count">{visibleCount} {visibleCount === 1 ? 'match' : 'matches'}</span>

@@ -112,6 +112,8 @@ test('results archive keeps published picks beyond the live feed window', t => {
             };
             if (slot < 2) match.selectedMarkets = ['over'];
             if (slot === 2) { match.selectedMarkets = ['win']; if (lostRounds.has(round)) match.score = '0-2'; }
+            // One Under 1.5 pick per round; it wins only in rounds 0 and 1.
+            if (slot === 3) { Object.assign(match, { selectedMarkets: ['under'], goals15: 'UNDER', over15Confidence: 55 }); if (round < 2) match.score = '1-0'; }
             matches.push(match);
         }
     }
@@ -130,6 +132,19 @@ test('results archive keeps published picks beyond the live feed window', t => {
     assert.equal(history.markets.win.worst, 3);
     assert.equal(history.markets.win.current, 1);
     assert.equal(history.markets.gg.picks, 0);
+    assert.equal(history.markets.under.wins, 2);
+    assert.equal(history.markets.under.losses, 28);
+    assert.equal(history.markets.under.groups[0].rows[0].prediction, 'Under 1.5 goals');
+
+    // An Under pick must come from a low Over 1.5 confidence and an explicit UNDER call.
+    const reject = (id, change) => {
+        const bad = JSON.stringify({ version: 1, sourceId: 'virtual-tests', sourceAt: Date.now(), matches: [{ ...matches[3], id, roundId: 'f'.repeat(32), status: 'UPCOMING', score: null, ...change }] });
+        const at = String(Date.now() + id);
+        assert.throws(() => virtualFootball.ingest(bad, { 'x-virtual-timestamp': at, 'x-virtual-signature': crypto.createHmac('sha256', secret).update(`${at}.${bad}`).digest('hex') }), { status: 400 });
+    };
+    reject(9001, { over15Confidence: 66 });
+    reject(9002, { goals15: 'OVER' });
+    reject(9003, { over15Confidence: null });
     assert.equal(history.markets.win.groups[0].rows[0].result, 'LOSS');
     assert.equal(history.markets.win.groups[0].rows[0].prediction, 'Home · H2');
 
