@@ -117,6 +117,10 @@ console. Do not disable SSH host-key checking to bypass the mismatch.
 
 ## Virtual Football website feed
 
+Project overview and open work: `README.md` in the `virtualFootball`
+repository. Market rules: `docs/29-virtual-football-markets.md`. When the feed
+gains a market or field, deploy this website before the virtual worker.
+
 The separate `virtualFootball` worker publishes sanitized match snapshots to
 `POST /internal/virtual-football-snapshot`. The website validates a timestamped
 HMAC signature using `VIRTUAL_FEED_SECRET`; the public page reads

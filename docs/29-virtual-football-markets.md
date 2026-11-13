@@ -37,13 +37,13 @@ The web receiver validates and stores the optional market but does not calculate
 predictions.
 
 `/virtual-football.html` shows available upcoming predictions grouped by Win,
-Over 1.5, NG, and GG. `/virtual-results.html` shows separate tables for those
+Over 1.5, Under 1.5, NG, and GG. `/virtual-results.html` shows separate tables for those
 markets, grouped by source and unique round ID, with the week label and publication time displayed. Each table grades the
 saved pick against the reported score; matches without a usable score are
 marked `NO SCORE`. Over 1.5 is graded from the explicit goals pick, or from the
 existing GG-derived Over pick when the goals pick is absent.
 
-The results page has separate Over 1.5, GG, NG, and Win tabs. Only reported fixtures
+The results page has separate Over 1.5, Under 1.5, GG, NG, and Win tabs. Only reported fixtures
 with a saved round ID and explicit selection for the chosen market appear.
 Over 1.5 is selected initially and excludes explicit Under 1.5 picks; the
 GG-derived Over fallback is retained for selected picks. Each tab shows its own
@@ -83,8 +83,8 @@ The receiver validates requirements and per-round limits against saved picks.
 The website displays only the newest upcoming round and uses the appropriate
 market confidence. Results use the frozen selections; legacy records remain stored
 but are excluded from the shortlist history because their original market
-selections cannot be reconstructed reliably. Existing Telegram and extension selection rules
-are unchanged.
+selections cannot be reconstructed reliably. Telegram messages and the auto-bet
+extension use these same frozen selections; neither chooses picks of its own.
 
 Deploy the website receiver and frontend first, then update both collector and
 publisher in the virtual repository and restart their services. The collector
@@ -97,6 +97,15 @@ Deploy the website first. A receiver without the `under` market rejects every
 snapshot that contains it, which stops the whole feed until the site is updated.
 Then update the collector in the virtual repository; it adds `result_un` to
 `weekly_accumulators` on startup. Extension 3.0 adds the "Under 1.5 Single" mode.
+
+Status on 13 November 2026: live. The website, collector and extension 3.1 are
+deployed and Under 1.5 picks are published every round. The first version
+only picked at 65% confidence or lower; the live model rarely goes below about
+69%, so that limit was removed. The market's win rate is not yet established.
+The collector must be restarted after an update for new code to take effect.
+
+The overall project layout and the list of open work are in `README.md` of the
+virtual repository.
 
 ## Dedicated Over 1.5 rollout
 
