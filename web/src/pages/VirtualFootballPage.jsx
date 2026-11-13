@@ -92,12 +92,11 @@ function getMarketRoundGroups(matches, market) {
   return [...rounds.values()];
 }
 
-function Jersey({ variant }) {
-  return <svg className={`vf-jersey vf-jersey-${variant}`} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-    <path d="m21 8-13 7 6 13 7-3v29h22V25l7 3 6-13-13-7-5 7h-12l-5-7Z" />
-    <path className="vf-jersey-stripe" d="M25 15h14v39H25z" />
-    <path className="vf-jersey-neck" d="M25 15c1 5 13 5 14 0" />
-  </svg>;
+function Crest({ name, variant }) {
+  return <span className={`vf-crest vf-crest-${variant}`} aria-hidden="true">
+    <svg viewBox="0 0 48 54" focusable="false"><path d="M24 2 44 9v19c0 12-8 20-20 24C12 48 4 40 4 28V9Z" /></svg>
+    <b>{String(name || '?').trim().slice(0, 1)}</b>
+  </span>;
 }
 
 function MatchCard({ match, market }) {
@@ -109,39 +108,54 @@ function MatchCard({ match, market }) {
   const pickLabel = getPickLabel(match.pick, match);
   const marketPrediction = market ? getMarketPrediction(match, market) : null;
 
+  const reported = !!match.score && match.status === 'REPORTED';
+  const confidenceLabel = market === 'over'
+    ? (match.goals15 != null ? 'Over 1.5 model confidence' : 'Historical BTTS confidence')
+    : 'Model confidence';
+
   return <article className="vf-match-card">
-    <div className="vf-match-card-topline">
-      <span className="vf-week">{match.week}</span>
-      <span className={`vf-status vf-status-${String(match.status).toLowerCase()}`}>
-        <i aria-hidden="true" />{statusLabel}
-      </span>
+    <div className="vf-card-main">
+      <div className="vf-match-card-topline">
+        <span className="vf-week">{match.week} <i aria-hidden="true">·</i> Virtual league</span>
+        <span className={`vf-status vf-status-${String(match.status).toLowerCase()}`}>
+          <i aria-hidden="true" />{statusLabel}
+        </span>
+      </div>
+
+      <div className="vf-matchup">
+        <div className="vf-team">
+          <Crest name={match.home} variant="home" />
+          <strong className="vf-team-name">{match.home}</strong>
+          <span className="vf-team-role">Home</span>
+        </div>
+        <div className="vf-match-center">
+          {reported
+            ? <><strong className="vf-score" aria-label={`Final score ${match.score}`}>{match.score.replace('-', ' – ')}</strong><span className="vf-vs">Full time</span></>
+            : <span className="vf-score-placeholder">VS</span>}
+        </div>
+        <div className="vf-team">
+          <Crest name={match.away} variant="away" />
+          <strong className="vf-team-name">{match.away}</strong>
+          <span className="vf-team-role">Away</span>
+        </div>
+      </div>
     </div>
 
-    <div className="vf-matchup">
-      <div className="vf-team">
-        <Jersey variant="home" />
-        <span className="vf-team-role">Home</span>
-        <strong className="vf-team-name">{match.home}</strong>
-      </div>
-      <div className="vf-match-center">
-        <span className="vf-vs">VS</span>
-        {match.score && match.status === 'REPORTED'
-          ? <strong className="vf-score" aria-label={`Final score ${match.score}`}>{match.score}</strong>
-          : <span className="vf-score-placeholder">— : —</span>}
-      </div>
-      <div className="vf-team">
-        <Jersey variant="away" />
-        <span className="vf-team-role">Away</span>
-        <strong className="vf-team-name">{match.away}</strong>
-      </div>
-    </div>
-
+    <div className="vf-card-side">
     <div className="vf-pick-highlight">
-      <span className="vf-pick-icon" aria-hidden="true">{market === 'over' ? '1.5' : market === 'gg' || market === 'ng' ? 'BT' : '↗'}</span>
-      <span><small>{marketPrediction?.label || '1X2 prediction'}</small><strong>{marketPrediction?.value || pickLabel}</strong></span>
+      <span className="vf-pick-copy">
+        <small>{marketPrediction?.label || '1X2 prediction'}</small>
+        <strong>{marketPrediction?.value || pickLabel}</strong>
+        {market === 'win' && Number.isFinite(match.winOdds) && <em className="vf-odds">Selection odds <b>{match.winOdds.toFixed(2)}</b></em>}
+      </span>
+      {confidence !== null && <span className="vf-ring-wrap">
+        <span className="vf-ring" style={{ '--value': Math.min(100, Math.max(0, confidence)) }} role="img" aria-label={`${confidenceLabel} ${confidence.toFixed(1)} percent`}>
+          <strong>{Math.round(confidence)}<i>%</i></strong>
+        </span>
+        <small>Confidence</small>
+      </span>}
     </div>
 
-    {market === 'win' && Number.isFinite(match.winOdds) && <p className="vf-published-time">Selection odds: <strong>{match.winOdds.toFixed(2)}</strong></p>}
     <details className="vf-match-details">
       <summary>Prediction details <span aria-hidden="true">⌄</span></summary>
       <div className="vf-detail-grid">
@@ -164,7 +178,7 @@ function MatchCard({ match, market }) {
           <strong>{match.btts === 'GG' ? 'Yes' : match.btts === 'NG' ? 'No' : 'Not available'}</strong>
         </div>
         {confidence !== null && <div className="vf-confidence">
-          <div className="vf-confidence-label"><span>{market === 'over' ? (match.goals15 != null ? 'Over 1.5 model confidence' : 'Historical BTTS confidence') : 'Model confidence'}</span><strong>{confidence.toFixed(1)}%</strong></div>
+          <div className="vf-confidence-label"><span>{confidenceLabel}</span><strong>{confidence.toFixed(1)}%</strong></div>
           <div className="vf-confidence-track" role="img" aria-label={`Model confidence ${confidence.toFixed(1)} percent`}>
             <span style={{ width: `${confidence}%` }} />
           </div>
@@ -172,6 +186,7 @@ function MatchCard({ match, market }) {
         <p className="vf-published-time">Published {formatTime(match.createdAt)}</p>
       </div>
     </details>
+    </div>
   </article>;
 }
 
@@ -253,6 +268,15 @@ export default function VirtualFootballPage({ showResults = false }) {
     ? historyFor(activeMarket).groups.flatMap(group => group.rows.map(row => row.match))
     : currentMarketMatches(activeMarket).slice(0, activeMarket === 'over' ? 2 : 1);
 
+  const boardRows = (showResults ? resultMarkets : predictionMarkets).map(item => {
+    if (showResults) {
+      const stats = historyFor(item.id);
+      return { ...item, value: `${stats.wins} won · ${stats.losses} lost`, ready: stats.wins + stats.losses > 0 };
+    }
+    const count = currentMarketMatches(item.id).length;
+    return { ...item, value: count ? `${count} ${count === 1 ? 'pick' : 'picks'}` : 'No pick', ready: count > 0 };
+  });
+
   return <main className="page-wrap resource-page vf-page">
     <section className="vf-hero">
       <div className="vf-hero-copy">
@@ -262,15 +286,26 @@ export default function VirtualFootballPage({ showResults = false }) {
           ? 'Review completed virtual fixtures and the scores reported by the match feed.'
           : 'Each round: two qualifying Over 1.5 picks or skip, one GG, one NG and one winner with selection odds above 1.70.'}</p>
         <a className="vf-hero-link" href={showResults ? 'virtual-football.html' : 'virtual-results.html'}>
-          {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">{showResults ? '→' : '↓'}</span>
+          {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">→</span>
         </a>
       </div>
-      <div className="vf-hero-art" aria-hidden="true">
-        <div className="vf-art-pitch"><span /><i /><b /></div>
-        <div className="vf-art-ball">49</div>
-        <div className="vf-art-chip vf-art-chip-top">MATCH<br />INSIGHT</div>
-        <div className="vf-art-chip vf-art-chip-bottom">VIRTUAL<br />LEAGUE</div>
-      </div>
+      <aside className="vf-board" aria-label={showResults ? 'Round record by market' : 'Current round by market'}>
+        <div className="vf-board-head">
+          <span>{showResults ? 'Round record' : 'Current round'}</span>
+          <strong>{showResults ? 'Your filters' : latestRound?.week || '—'}</strong>
+        </div>
+        {data
+          ? <ul className="vf-board-rows">
+              {boardRows.map(row => <li key={row.id} className={row.ready ? 'is-ready' : ''}>
+                <span><strong>{row.label}</strong><small>{row.description}</small></span>
+                <b>{row.value}</b>
+              </li>)}
+            </ul>
+          : <p className="vf-board-wait">{error ? 'The match feed is unavailable right now.' : 'Waiting for the match feed…'}</p>}
+        <div className={`vf-board-foot${data && !data.stale ? ' is-live' : ''}`}>
+          <i aria-hidden="true" />{!data ? 'Not connected' : data.stale ? 'Feed may be out of date' : 'Live feed · refreshes every 10 seconds'}
+        </div>
+      </aside>
     </section>
 
     {error && <section className="vf-error" role="alert">
@@ -293,32 +328,12 @@ export default function VirtualFootballPage({ showResults = false }) {
             {data.sourceAt && ` · Source updated ${formatTime(data.sourceAt)}`}
           </p>
         </div>
-        <span className="vf-refresh-note"><i aria-hidden="true" /> Auto-refresh · 10 sec</span>
+        <dl className="vf-feed-stats">
+          <div><dt>Upcoming</dt><dd>{upcomingCount}</dd></div>
+          <div><dt>Reported</dt><dd>{reportedCount}</dd></div>
+          <div><dt>In feed</dt><dd>{matches.length}</dd></div>
+        </dl>
       </section>
-
-      {!showResults && <section className="vf-overview" aria-label="Feed overview">
-        <div className="vf-overview-heading">
-          <span className="vf-section-eyebrow">YOUR MATCH CENTER</span>
-          <h2>Feed overview</h2>
-        </div>
-        <div className="vf-overview-stats">
-          <article className="vf-stat-card">
-            <span className="vf-stat-icon vf-stat-icon-total" aria-hidden="true">⚽</span>
-            <span className="vf-stat-label">Matches in feed</span>
-            <strong>{matches.length}</strong>
-          </article>
-          <article className="vf-stat-card">
-            <span className="vf-stat-icon vf-stat-icon-reported" aria-hidden="true">✓</span>
-            <span className="vf-stat-label">Reported results</span>
-            <strong>{reportedCount}</strong>
-          </article>
-          <article className="vf-stat-card">
-            <span className="vf-stat-icon vf-stat-icon-upcoming" aria-hidden="true">↗</span>
-            <span className="vf-stat-label">Upcoming picks</span>
-            <strong>{upcomingCount}</strong>
-          </article>
-        </div>
-      </section>}
 
       <section className="vf-fixtures" id="virtual-matches">
         <div className="vf-fixtures-heading">
@@ -402,7 +417,7 @@ export default function VirtualFootballPage({ showResults = false }) {
               })}
             </div>
           : visibleMatches.length === 0
-            ? <div className="vf-empty-state"><span aria-hidden="true">{activeMarket === 'over' ? '1.5' : '⚽'}</span>
+            ? <div className="vf-empty-state"><span aria-hidden="true">{activeMarket === 'over' ? '1.5' : '–'}</span>
               <h3>{activeMarket === 'over' ? 'Over 1.5 picks not available' : 'No picks available for this market'}</h3>
               <p>{activeMarket === 'over'
                 ? 'This round is skipped for Over 1.5 because two qualifying matches are not available. Check again next round.'
