@@ -1,0 +1,167 @@
+/* Real football: league selector, fixture spotlight with analysis, fixture list and results table. */
+
+.rfx-kicker { color: var(--light-gold, var(--green)); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.real-football-page :is(.rfx-stage, .rfx-fixtures, .rfx-results, .rfx-league-picker) button:focus-visible { outline: 3px solid var(--green-bright, var(--green)); outline-offset: 2px; }
+
+/* ---------- Crest: club badge on a light plate so dark badges stay visible on the dark theme ---------- */
+.rfx-crest { display: inline-grid; width: 44px; aspect-ratio: 1; flex: 0 0 auto; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #fff; vertical-align: middle; }
+.rfx-crest img { width: 70%; height: 70%; object-fit: contain; }
+.rfx-crest b { color: #14553f; font-size: 14px; font-weight: 800; line-height: 1; }
+.rfx-crest-lg { width: 92px; box-shadow: 0 12px 26px rgba(16, 35, 27, .16); }
+.rfx-crest-lg b { font-size: 26px; }
+.rfx-crest-sm { width: 26px; }
+.rfx-crest-sm img { width: 74%; height: 74%; }
+.rfx-crest-sm b { font-size: 9.5px; }
+
+/* ---------- League selector ---------- */
+.rfx-league-picker { display: grid; gap: 12px; margin-top: 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.rfx-leagues { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+.rfx-leagues button { min-height: 44px; flex: 0 0 auto; padding: 0 18px; border: 1px solid var(--line); border-radius: 100px; color: var(--text-secondary); background: var(--surface-soft); cursor: pointer; font: inherit; font-size: 13.5px; font-weight: 700; white-space: nowrap; transition: border-color .18s ease, background .18s ease, color .18s ease; }
+.rfx-leagues button:hover { border-color: var(--green); color: var(--ink); }
+.rfx-leagues button[aria-pressed="true"] { border-color: var(--green); color: var(--surface); background: var(--green); }
+
+/* ---------- Fixture spotlight ---------- */
+.rfx-stage { margin-top: 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 12px 30px rgba(46, 38, 16, .07); }
+.rfx-stage-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 28px; border-bottom: 1px solid var(--line); }
+.rfx-stage-top p { margin: 5px 0 0; color: var(--ink); font-size: 15px; font-weight: 600; }
+.rfx-state { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 100px; color: var(--green); background: var(--green-soft); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.rfx-state i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.rfx-state.is-started { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--surface)); }
+.rfx-notice { margin: 0; padding: 10px 28px; color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface)); font-size: 12.5px; }
+
+.rfx-matchup { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 16px; padding: 34px 28px 28px; }
+.rfx-team { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.rfx-team h2 { display: grid; min-height: 2.4em; max-width: 100%; margin: 10px 0 0; align-items: center; overflow-wrap: anywhere; color: var(--ink); font-family: var(--font-display, var(--font-heading)); font-size: clamp(18px, 2.6vw, 26px); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.rfx-team-role { color: var(--muted); font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.rfx-center { display: grid; min-width: 150px; align-self: center; justify-items: center; gap: 6px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-soft); text-align: center; }
+.rfx-center span { color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.rfx-center strong { color: var(--ink); font-family: var(--font-display, var(--font-heading)); font-size: clamp(20px, 2.6vw, 26px); font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.rfx-center small { color: var(--muted); font-size: 11.5px; }
+
+.rfx-form { display: inline-flex; gap: 4px; margin-top: 8px; }
+.rfx-form i,
+.rfx-formlist li > i { display: grid; width: 20px; height: 20px; flex: 0 0 auto; place-items: center; border-radius: 6px; color: #fff; font-size: 10.5px; font-style: normal; font-weight: 800; line-height: 1; }
+.rfx-form-w { background: #1f9d63; }
+.rfx-form-d { background: #8a948c; }
+.rfx-form-l { background: #d2524a; }
+
+/* Market tabs and the pick for the chosen market. */
+.rfx-pick { display: grid; gap: 16px; padding: 22px 28px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface-soft) 42%, var(--surface)); }
+.rfx-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.rfx-tabs button { min-height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: 100px; color: var(--text-secondary); background: var(--surface); cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; transition: border-color .18s ease, background .18s ease, color .18s ease; }
+.rfx-tabs button:hover { border-color: var(--green); }
+.rfx-tabs button[aria-pressed="true"] { border-color: var(--green); color: var(--surface); background: var(--green); }
+.rfx-pick-panel { display: flex; min-height: 104px; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 22px; border: 1px solid color-mix(in srgb, var(--green) 28%, var(--line)); border-radius: 16px; background: color-mix(in srgb, var(--green-soft) 46%, var(--surface)); }
+.rfx-pick-copy { display: grid; min-width: 0; gap: 5px; }
+.rfx-pick-copy small { color: var(--light-gold, var(--muted)); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.rfx-pick-copy strong { overflow-wrap: anywhere; color: var(--ink); font-family: var(--font-display, var(--font-heading)); font-size: clamp(20px, 2.6vw, 26px); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.rfx-pick-copy span { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.rfx-ring { --estimate: 0; position: relative; display: grid; width: 84px; aspect-ratio: 1; flex: 0 0 auto; place-items: center; border-radius: 50%; background: conic-gradient(var(--green) calc(var(--estimate) * 1%), var(--line) 0); }
+.rfx-ring::before { position: absolute; inset: 7px; border-radius: 50%; background: var(--surface); content: ""; }
+.rfx-ring strong { position: relative; color: var(--ink); font-family: var(--font-display, var(--font-heading)); font-size: 23px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.rfx-ring strong i { margin-left: 1px; color: var(--muted); font-size: 12px; font-style: normal; }
+
+/* Analysis blocks. */
+.rfx-analysis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 26px 36px; padding: 26px 28px; border-top: 1px solid var(--line); }
+.rfx-block { display: grid; min-width: 0; align-content: start; gap: 14px; }
+.rfx-block h3 { margin: 0; color: var(--light-gold, var(--green)); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.rfx-block h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--ink); font-size: 13px; font-weight: 700; }
+
+.rfx-bars { display: grid; gap: 7px; }
+.rfx-bar { display: grid; grid-template-columns: minmax(0, 96px) minmax(0, 1fr) 48px; align-items: center; gap: 10px; }
+.rfx-bar > span { overflow: hidden; color: var(--muted); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.rfx-bar > strong { color: var(--text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.rfx-bar-track { height: 7px; overflow: hidden; border-radius: 10px; background: var(--line); }
+.rfx-bar-track i { display: block; height: 100%; border-radius: inherit; background: color-mix(in srgb, var(--muted) 70%, var(--line)); }
+.rfx-bar.is-pick > span,
+.rfx-bar.is-pick > strong { color: var(--ink); font-weight: 800; }
+.rfx-bar.is-pick .rfx-bar-track i { background: linear-gradient(90deg, var(--green), var(--green-bright, var(--green))); }
+
+.rfx-compare-head,
+.rfx-compare-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; align-items: center; gap: 8px; text-align: center; }
+.rfx-compare-head { justify-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.rfx-compare-head small { color: var(--muted); font-size: 11.5px; }
+.rfx-compare-row span { color: var(--muted); font-size: 12.5px; }
+.rfx-compare-row b { padding: 4px 0; border-radius: 8px; color: var(--text-secondary); font-size: 13.5px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rfx-compare-row b.is-leading { color: var(--ink); background: color-mix(in srgb, var(--green) 16%, var(--surface)); font-weight: 800; }
+
+.rfx-formlist ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.rfx-formlist li { display: flex; min-width: 0; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12.5px; }
+.rfx-formlist-venue { width: 16px; flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+.rfx-formlist-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rfx-formlist li > b { flex: 0 0 auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rfx-formlist p { margin: 0; color: var(--muted); font-size: 12.5px; }
+.rfx-caption { margin: 0; padding: 14px 28px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+/* ---------- Upcoming fixture list ---------- */
+.rfx-fixtures,
+.rfx-results { margin-top: 34px; }
+.rfx-section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.rfx-section-head h2 { margin: 6px 0 0; color: var(--ink); font-family: var(--font-display, var(--font-heading)); font-size: clamp(22px, 3vw, 28px); font-weight: 700; letter-spacing: -.03em; }
+.rfx-count { flex: 0 0 auto; padding: 8px 14px; border: 1px solid var(--line); border-radius: 100px; color: var(--text-secondary); background: var(--surface); font-size: 12px; font-weight: 700; }
+.rfx-fixture-list { display: grid; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.rfx-fixture { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 14px 20px; border: 0; border-bottom: 1px solid var(--line); color: var(--text-secondary); background: transparent; cursor: pointer; font: inherit; text-align: left; transition: background .18s ease; }
+.rfx-fixture:last-child { border-bottom: 0; }
+.rfx-fixture:hover { background: color-mix(in srgb, var(--surface-soft) 60%, transparent); }
+.rfx-fixture[aria-pressed="true"] { background: color-mix(in srgb, var(--green-soft) 46%, var(--surface)); box-shadow: inset 3px 0 var(--green); }
+.rfx-fixture-time { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.rfx-fixture-teams { display: grid; min-width: 0; gap: 6px; }
+.rfx-fixture-teams > span { display: flex; min-width: 0; align-items: center; gap: 10px; color: var(--ink); font-size: 14px; font-weight: 600; }
+.rfx-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.rfx-chip { padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--green) 36%, var(--line)); border-radius: 100px; color: var(--text-secondary); background: var(--surface); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.rfx-chip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.rfx-chip.is-muted { border-color: var(--line); color: var(--muted); }
+
+/* ---------- Results ---------- */
+.rfx-record { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rfx-record article { display: grid; gap: 4px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.rfx-record span { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.rfx-record strong { color: var(--ink); font-family: var(--font-display, var(--font-heading)); font-size: 32px; font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1.1; }
+.rfx-record small { color: var(--muted); font-size: 12px; }
+.rfx-table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.rfx-table { width: 100%; min-width: 760px; border-collapse: collapse; text-align: left; }
+.rfx-table th,
+.rfx-table td { padding: 14px 18px; border-bottom: 1px solid var(--line); color: var(--text-secondary); font-size: 13px; vertical-align: middle; }
+.rfx-table thead th { color: var(--muted); background: var(--surface-soft); font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.rfx-table tbody tr:last-child :is(th, td) { border-bottom: 0; }
+.rfx-table tbody th { font-weight: 600; }
+.rfx-table-team { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 14px; white-space: nowrap; }
+.rfx-table-team + .rfx-table-team { margin-top: 6px; }
+.rfx-table tbody th small { display: block; margin-top: 8px; color: var(--muted); font-size: 11.5px; font-weight: 500; }
+.rfx-table-score { color: var(--ink) !important; font-family: var(--font-display, var(--font-heading)); font-size: 17px !important; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.rfx-table-pick { display: block; margin-bottom: 7px; color: var(--ink); font-weight: 600; }
+.rfx-table-pick small { margin-left: 6px; color: var(--muted); font-size: 11.5px; font-weight: 500; }
+.rfx-table-none { color: var(--muted); font-size: 12.5px; }
+.rfx-outcome { display: inline-flex; min-width: 58px; justify-content: center; padding: 4px 10px; border-radius: 100px; color: var(--muted); background: var(--surface-soft); font-size: 11px; font-weight: 800; letter-spacing: .04em; }
+.rfx-outcome-win { color: var(--success); background: color-mix(in srgb, var(--success) 13%, var(--surface)); }
+.rfx-outcome-loss { color: var(--error); background: color-mix(in srgb, var(--error) 11%, var(--surface)); }
+
+/* Crest next to team names in the combination lists. */
+.rfx-inline-fixture { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rfx-inline-fixture i { color: var(--muted); font-size: 12px; font-style: normal; font-weight: 500; }
+
+@media (max-width: 760px) {
+  .rfx-stage-top,
+  .rfx-pick,
+  .rfx-analysis,
+  .rfx-caption { padding-inline: 16px; }
+  .rfx-notice { padding-inline: 16px; }
+  .rfx-matchup { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 10px; padding: 24px 16px 20px; }
+  .rfx-center { grid-column: 1 / -1; grid-row: 2; min-width: 0; grid-template-columns: auto auto; justify-content: center; align-items: baseline; gap: 4px 10px; padding: 12px 16px; }
+  .rfx-center small { grid-column: 1 / -1; }
+  .rfx-crest-lg { width: 70px; }
+  .rfx-pick-panel { padding: 14px 16px; }
+  .rfx-ring { width: 70px; }
+  .rfx-ring strong { font-size: 19px; }
+  .rfx-fixture { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px 16px; }
+  .rfx-chips { justify-content: flex-start; }
+  .rfx-record { grid-template-columns: minmax(0, 1fr); }
+  .rfx-record article { grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 14px 16px; }
+  .rfx-record strong { grid-column: 2; grid-row: 1 / span 2; font-size: 26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rfx-leagues button,
+  .rfx-tabs button,
+  .rfx-fixture { transition: none; }
+}

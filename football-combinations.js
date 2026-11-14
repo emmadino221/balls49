@@ -33,7 +33,7 @@ function buildFootballCombinations(picks, leagues, now = Date.now()) {
         options.sort((a, b) => b.probability - a.probability);
         if (!options.length) continue;
         seen.add(p.id);
-        ranked.push({ id: p.id, home: p.home, away: p.away, kickoff: p.kickoff,
+        ranked.push({ id: p.id, home: p.home, away: p.away, homeId: p.homeId, awayId: p.awayId, kickoff: p.kickoff,
             league: league.name, generatedAt: p.generatedAt, ...options[0] });
     }
     ranked.sort((a, b) => b.probability - a.probability || Date.parse(a.kickoff) - Date.parse(b.kickoff) || a.id - b.id);

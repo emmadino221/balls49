@@ -1,5 +1,6 @@
 import { apiRequest } from '../auth';
 import React, { useEffect, useState } from 'react';
+import TeamCrest from './TeamCrest';
 
 export default function FootballCombinations({ data, isOwner, compact = false }) {
   const [selectedSize, setSelectedSize] = useState(3);
@@ -31,7 +32,7 @@ export default function FootballCombinations({ data, isOwner, compact = false })
         {selections.length < list.size && <p className="resource-note">{fresh ? 'Incomplete: not enough eligible matches in this list.' : 'Waiting for updated selections.'}</p>}
         {isOwner && <button type="button" className="btn btn-secondary" disabled={!!saving || selections.length !== list.size} onClick={() => save(list)}>{saving === list.fingerprint ? 'Saving...' : 'Save combination'}</button>}
         {notice[list.size] && <p role="status">{notice[list.size]}</p>}
-        <ol>{selections.map(p => <li key={p.id}><div className="combination-match"><strong>{p.home} vs {p.away}</strong><span>{p.probability}%<small>model estimate</small></span></div><p>{p.market}: <strong>{p.label}</strong></p><small>{p.league} · {new Date(p.kickoff).toLocaleString()}</small></li>)}</ol>
+        <ol>{selections.map(p => <li key={p.id}><div className="combination-match"><strong className="rfx-inline-fixture"><TeamCrest id={p.homeId} name={p.home} size="sm" />{p.home} <i>vs</i> <TeamCrest id={p.awayId} name={p.away} size="sm" />{p.away}</strong><span>{p.probability}%<small>model estimate</small></span></div><p>{p.market}: <strong>{p.label}</strong></p><small>{p.league} · {new Date(p.kickoff).toLocaleString()}</small></li>)}</ol>
       </article>;
     })}</div>
     <details><summary>How these lists are selected</summary><p>Each match compares the saved home/draw/away, Over/Under 2.5 and BTTS estimates available for it. The highest estimate is selected, then matches are ranked. Older predictions may only include match result. Ties use market order, then earlier kickoff and match ID. Matches less than 15 minutes from kickoff, changed fixtures, and unavailable or stale feeds are excluded.</p><p>Lists overlap: the top three can also appear in the larger lists. These lists refresh. The owner can save a complete list to Combination History, where its selections remain fixed. Individual predictions remain in Results. Percentages are experimental, not proven accuracy or betting odds; they do not indicate the chance of the whole combination winning. More matches increase the chance that at least one selection loses.</p></details>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth';
+import TeamCrest from './TeamCrest';
 
 const label = value => ({ WIN: 'Won', LOSS: 'Lost', VOID: 'Void', PENDING: 'Pending' }[value] || 'Pending');
 export default function FootballCombinationHistory() {
@@ -21,7 +22,7 @@ export default function FootballCombinationHistory() {
       <header><h3>{ticket.size}-match combination</h3><strong>{label(ticket.result)}</strong></header>
       <p><small>Saved {new Date(ticket.createdAt).toLocaleString()} · #{ticket.id.slice(0, 8)}</small></p>
       <details><summary>View {ticket.size} selections</summary><ol>{ticket.selections.map(p => <li key={p.id}>
-        <div className="combination-match"><strong>{p.home} vs {p.away}</strong><span>{label(p.result)}</span></div>
+        <div className="combination-match"><strong className="rfx-inline-fixture"><TeamCrest id={p.homeId} name={p.home} size="sm" />{p.home} <i>vs</i> <TeamCrest id={p.awayId} name={p.away} size="sm" />{p.away}</strong><span>{label(p.result)}</span></div>
         <p>{p.market}: <strong>{p.label}</strong></p><small>{p.league} · {new Date(p.kickoff).toLocaleString()}{p.score ? ` · Score ${p.score}` : ''}</small>
       </li>)}</ol></details>
     </article>)}</div>

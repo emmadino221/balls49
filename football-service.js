@@ -156,9 +156,17 @@ function createFootballService(db) {
             const combinations = buildFootballCombinations(storedPicks, LEAGUES.map(l => ({ ...l, state: getState(l.code) })), now);
             const picks = storedPicks.filter(p => (p.league || 'PL') === code).sort((a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff));
             const next = (state.matches || []).filter(m => Date.parse(m.kickoff) > now && Date.parse(m.kickoff) <= now + 7 * 86400000);
+            // Each team's last ten finished matches in this competition, newest first, for the match analysis.
+            const finished = (state.matches || []).filter(m => m.status === 'FINISHED' && m.homeGoals !== null && m.awayGoals !== null)
+                .sort((a, b) => Date.parse(b.kickoff) - Date.parse(a.kickoff));
+            const teamForm = id => finished.filter(m => m.homeId === id || m.awayId === id).slice(0, 10).map(m => {
+                const atHome = m.homeId === id, scored = atHome ? m.homeGoals : m.awayGoals, conceded = atHome ? m.awayGoals : m.homeGoals;
+                return { kickoff: m.kickoff, atHome, opponent: atHome ? m.away : m.home, opponentId: atHome ? m.awayId : m.homeId,
+                    scored, conceded, result: scored > conceded ? 'W' : scored < conceded ? 'L' : 'D' };
+            });
             return { combinations, leagues: LEAGUES, league: code, accessDenied: !!state.accessDenied, configured: !!apiKey, updatedAt: state.updatedAt || null, error: state.error || null,
                 stale: !state.updatedAt || now - state.updatedAt > 3600000,
-                upcoming: next.sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff)).map(m => ({ ...m, prediction: picks.find(p => p.id === m.id) || null })),
+                upcoming: next.sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff)).map(m => ({ ...m, prediction: picks.find(p => p.id === m.id) || null, form: { home: teamForm(m.homeId), away: teamForm(m.awayId) } })),
                 history: picks.filter(p => Date.parse(p.kickoff) <= now || p.outcome !== 'PENDING').slice(0, 100) };
         }
     };
