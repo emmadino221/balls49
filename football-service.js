@@ -1,13 +1,15 @@
 'use strict';
 const { createFootballTickets } = require('./football-tickets');
 const { buildFootballCombinations } = require('./football-combinations');
+const { fitRatings, estimateStrength } = require('./football-model');
 const LEAGUES = [
     { code: 'PL', name: 'Premier League' }, { code: 'PD', name: 'La Liga' },
     { code: 'BL1', name: 'Bundesliga' }, { code: 'SA', name: 'Serie A' },
     { code: 'FL1', name: 'Ligue 1' }, { code: 'CL', name: 'Champions League' }
 ];
 
-// Experimental pre-match baseline, independent of the casino prediction loop.
+// The first model (last ten matches per team). New picks use football-model.js instead;
+// this stays so scripts/football-backtest.js can compare the two.
 function estimate(match, history) {
     const recent = id => history.filter(m => m.id !== match.id && m.status === 'FINISHED'
         && Date.parse(m.kickoff) < Date.parse(match.kickoff)
@@ -53,6 +55,8 @@ function createFootballService(db) {
     db.exec(`CREATE TABLE IF NOT EXISTS football_state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS football_picks (id INTEGER PRIMARY KEY, data TEXT NOT NULL)`);
     db.exec('CREATE TABLE IF NOT EXISTS football_league_state (code TEXT PRIMARY KEY, data TEXT NOT NULL)');
+    // Finished matches of earlier seasons, used only to rate teams.
+    db.exec('CREATE TABLE IF NOT EXISTS football_past (code TEXT NOT NULL, season INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY (code, season))');
     // Preserve the original Premier League cache and picks on upgrade.
     const legacy = db.prepare('SELECT data FROM football_state WHERE id=1').get();
     if (legacy) db.prepare('INSERT OR IGNORE INTO football_league_state VALUES (?, ?)').run('PL', legacy.data);
@@ -63,16 +67,51 @@ function createFootballService(db) {
     const tickets = createFootballTickets(db, allPicks);
     const apiKey = process.env.FOOTBALL_DATA_API_KEY;
     let busy = false;
+    const pastMatches = code => db.prepare('SELECT data FROM football_past WHERE code=?').all(code).flatMap(row => JSON.parse(row.data));
+    const hasPast = (code, season) => !!db.prepare('SELECT 1 AS found FROM football_past WHERE code=? AND season=?').get(code, season);
+    const pastRetryAt = {};
+    let pastCallAt = 0;
+    // Earlier seasons make the team ratings much better early in a season. They are optional:
+    // if the data plan refuses them, picks are made from the current season alone.
+    async function refreshPast(states, now) {
+        for (const { code, state } of states) {
+            const kickoffs = (state.matches || []).map(m => Date.parse(m.kickoff)).filter(Number.isFinite);
+            if (!kickoffs.length || state.accessDenied || state.error || now < (pastRetryAt[code] || 0)) continue;
+            const start = new Date(Math.min(...kickoffs)).getUTCFullYear();
+            const season = [start - 1, start - 2].find(year => !hasPast(code, year));
+            if (!season) continue;
+            busy = true; pastCallAt = now;
+            try {
+                const response = await fetch(`https://api.football-data.org/v4/competitions/${code}/matches?season=${season}`, {
+                    headers: { 'X-Auth-Token': apiKey }, signal: AbortSignal.timeout(15000), redirect: 'error'
+                });
+                if (!response.ok) { const failure = new Error(`HTTP ${response.status}`); failure.status = response.status; throw failure; }
+                const payload = await response.json();
+                if (!Array.isArray(payload.matches)) throw new Error('unexpected response');
+                const rows = payload.matches.filter(m => m.status === 'FINISHED' && m.homeTeam?.id && m.awayTeam?.id && Number.isFinite(Date.parse(m.utcDate))).map(m => {
+                    const score = m.score?.regularTime || (m.score?.duration === 'REGULAR' ? m.score?.fullTime : null);
+                    return { kickoff: m.utcDate, homeId: m.homeTeam.id, awayId: m.awayTeam.id, homeGoals: score?.home, awayGoals: score?.away };
+                }).filter(m => Number.isInteger(m.homeGoals) && m.homeGoals >= 0 && Number.isInteger(m.awayGoals) && m.awayGoals >= 0);
+                db.prepare('INSERT OR REPLACE INTO football_past VALUES (?, ?, ?)').run(code, season, JSON.stringify(rows));
+                console.log(`[Football] Stored ${rows.length} finished matches of ${code} season ${season} for team ratings.`);
+            } catch (error) {
+                pastRetryAt[code] = now + ([403, 404].includes(error.status) ? 7 * 86400000 : 6 * 3600000);
+                if (error.status === 429) for (const item of states) pastRetryAt[item.code] = now + 3600000;
+                console.log(`[Football] Earlier season ${season} of ${code} is not available (${error.message}); using the current season only.`);
+            } finally { busy = false; }
+            return;
+        }
+    }
     async function refresh() {
         if (!apiKey || busy) return;
         const now = Date.now();
         const states = LEAGUES.map(league => ({ ...league, state: getState(league.code) }));
         // Global spacing survives restarts and limits this service to six calls/minute.
         if (states.some(item => now < (item.state.globalRetryAt || 0))
-            || now - Math.max(0, ...states.map(item => item.state.attemptAt || 0)) < 10000) return;
+            || now - Math.max(pastCallAt, ...states.map(item => item.state.attemptAt || 0)) < 10000) return;
         const next = states.filter(item => now >= (item.state.retryAt || 0) && now - (item.state.attemptAt || 0) >= 30 * 60000)
             .sort((a, b) => (a.state.attemptAt || 0) - (b.state.attemptAt || 0))[0];
-        if (!next) return;
+        if (!next) return refreshPast(states, now);
         const code = next.code, previous = next.state;
         busy = true;
         saveState(code, { ...previous, attemptAt: Date.now() });
@@ -101,6 +140,7 @@ function createFootballService(db) {
                     homeGoals: goal(score?.home), awayGoals: goal(score?.away) };
             });
             const now = Date.now(), existing = new Map(allPicks().map(p => [p.id, p]));
+            let ratings = null;
             db.exec('BEGIN IMMEDIATE');
             try {
                 for (const m of matches) {
@@ -126,7 +166,8 @@ function createFootballService(db) {
                     } else if (['TIMED', 'SCHEDULED'].includes(m.status) && Date.parse(m.kickoff) > now + 15 * 60000
                         && Date.parse(m.kickoff) <= now + 7 * 86400000) {
                         // Only results already finished at generation time can enter the model.
-                        const estimateResult = estimate(m, matches.filter(x => Date.parse(x.kickoff) < now));
+                        ratings = ratings || fitRatings([...pastMatches(code), ...matches.filter(x => x.status === 'FINISHED')], now);
+                        const estimateResult = estimateStrength(m, null, now, ratings);
                         if (estimateResult) savePick({ ...m, ...estimateResult, generatedAt: now, outcome: 'PENDING' });
                     }
                 }
@@ -171,4 +212,4 @@ function createFootballService(db) {
         }
     };
 }
-module.exports = { createFootballService };
+module.exports = { createFootballService, estimate };

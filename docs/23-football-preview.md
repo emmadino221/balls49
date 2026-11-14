@@ -166,3 +166,47 @@ The combination section uses 3/5/10/20 buttons to show one list at a time, keepi
 the owner save action and Combination History available. The calculation and
 settlement logic is unchanged by this presentation update. No bookmaker odds or
 external AI-provider claims are displayed.
+
+## Team-strength model (14 November 2026)
+
+New picks are made by `football-model.js` (`team-strength-v1`) instead of the
+first model, which averaged each team's last ten matches. Saved picks are never
+changed, so older picks keep the model they were made with.
+
+How it works: each team gets an attack and a defence rating fitted over the
+competition's matches, so goals against strong opponents count for more. Recent
+matches weigh more (a match one year old counts half), teams with few matches
+are pulled towards the league average, and a low-score correction fixes the
+habit of predicting too few draws. A pick needs about three recent matches per
+team.
+
+Earlier seasons: the service tries to fetch the two previous seasons of each
+competition from the data provider and stores them in the `football_past`
+table. This is optional. If the data plan refuses them the log says
+`[Football] Earlier season ... is not available` and ratings use the current
+season only, which the test below shows is only slightly better than the first
+model.
+
+Test on two held-out seasons (2025/26 and 2026/27 to date, 1,770 matches in
+five leagues; settings were chosen on three earlier seasons):
+
+| Model | Match result right | Over/Under 2.5 right | Both score right |
+| --- | --- | --- | --- |
+| First model (last ten matches) | 49.3% | 55.8% | 55.4% |
+| Team strength, current season only | 50.2% | 54.9% | 54.7% |
+| Team strength with earlier seasons | 52.7% | 56.3% | 56.0% |
+| Bookmaker odds | 54.0% | 57.9% | not available |
+
+Match-result picks by how sure the model was (team strength with earlier
+seasons): at 60% or more, 75.6% right (16% of matches); at 50% or more, 64.7%
+right (41% of matches); all picks, 52.7%. The model does not beat bookmaker
+odds, so it is not a route to guaranteed profit.
+
+Re-run the test (read-only, downloads free season files from
+football-data.co.uk into the folder):
+
+```bash
+node scripts/football-backtest.js /tmp/football-history --download
+```
+
+Add `--tune` to search the settings again on the older seasons.

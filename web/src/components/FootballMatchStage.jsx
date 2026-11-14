@@ -106,6 +106,11 @@ export default function FootballMatchStage({ matches, stale, leagueName }) {
     }
   }
   const available = typeof probability === 'number' && Number.isFinite(probability);
+  // How match-result picks at each level did in scripts/football-backtest.js (two held-out seasons).
+  const tested = market === 'match' && active && prediction.model === 'team-strength-v1' && available
+    ? (probability >= 60 ? 'Strong pick: in our test on past seasons, picks this sure were right about 3 times in 4.'
+      : probability >= 50 ? 'Fair pick: in our test on past seasons, picks at this level were right a little under 6 times in 10.'
+        : 'Close match: in our test on past seasons, picks this unsure were right less than half the time.') : null;
   const noPick = started ? 'Kickoff reached. Check Results for settlement.' : prediction?.outcome === 'VOID'
     ? 'Saved pick voided after a fixture change.' : !['SCHEDULED', 'TIMED'].includes(match.status)
       ? 'This fixture is not currently scheduled for play.' : active
@@ -146,7 +151,7 @@ export default function FootballMatchStage({ matches, stale, leagueName }) {
           {available
             ? <>
                 <div className="rfx-pick-copy"><small>{strongest ? 'Model pick for this market' : 'Estimate for this outcome'}</small><strong>{label}</strong>
-                  <span>{strongest ? 'The highest estimate in this market.' : 'Not the model’s pick: the other outcome has the higher estimate.'}</span></div>
+                  <span>{tested || (strongest ? 'The highest estimate in this market.' : 'Not the model’s pick: the other outcome has the higher estimate.')}</span></div>
                 <div className="rfx-ring" style={{ '--estimate': Math.max(0, Math.min(100, probability)) }} role="img" aria-label={`Model estimate ${probability} percent`}><strong>{Math.round(probability)}<i>%</i></strong></div>
               </>
             : <div className="rfx-pick-copy"><small>{started ? 'Started' : 'No pick'}</small><span>{noPick}</span></div>}

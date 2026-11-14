@@ -126,7 +126,7 @@ export default function FootballPage() {
       </div>
       {tab === 'upcoming' ? <>
         <FootballMatchStage key={league} matches={data.upcoming} stale={data.stale || !!data.error} leagueName={leagueName} />
-        {league === 'CL' && <p className="resource-note">Champions League picks need five completed matches per team in the current season. Some fixtures may have no pick.</p>}
+        {league === 'CL' && <p className="resource-note">Champions League picks need a few completed matches per team in this competition. Some fixtures may have no pick.</p>}
         <FootballCombinations data={data.combinations} isOwner={isOwner} compact />
       </> : tab === 'history' ? <FootballResults history={data.history} /> : <FootballCombinationHistory />}
       <p className="resource-note">Fixtures, results and club crests supplied by <a href="https://www.football-data.org/" target="_blank" rel="noreferrer">football-data.org</a>. Free-plan results may be delayed. Each league refreshes about every 30 minutes. Initial league loading may take a couple of minutes. Schedule changes, postponements, cancellations and suspensions void existing picks.</p>
