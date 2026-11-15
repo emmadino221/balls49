@@ -127,6 +127,22 @@ export default function FootballMatchStage({ matches, stale, leagueName }) {
       </header>
       {stale && <p className="rfx-notice" role="status">Data may be out of date. The countdown uses the last known kickoff.</p>}
 
+      {matches.length > 1 && <nav className="rfx-fixture-nav" aria-label="Browse league fixtures">
+        <div className="rfx-fixture-nav-buttons">
+          <button type="button" disabled={index === 0} onClick={() => setSelected(matches[index - 1].id)}>Previous</button>
+          <span role="status" aria-live="polite" aria-atomic="true">Fixture {index + 1} of {matches.length}</span>
+          <button type="button" disabled={index === matches.length - 1} onClick={() => setSelected(matches[index + 1].id)}>Next</button>
+        </div>
+        <label className="rfx-fixture-select">
+          <span>Choose a fixture</span>
+          <select value={index} onChange={event => setSelected(matches[Number(event.target.value)].id)}>
+            {matches.map((fixture, fixtureIndex) => <option key={fixture.id} value={fixtureIndex}>
+              {fixtureIndex + 1}. {fixture.home} vs {fixture.away} — {kickoffText(fixture.kickoff)}
+            </option>)}
+          </select>
+        </label>
+      </nav>}
+
       <div className="rfx-matchup">
         <div className="rfx-team">
           <TeamCrest id={match.homeId} name={match.home} size="lg" />
@@ -136,7 +152,6 @@ export default function FootballMatchStage({ matches, stale, leagueName }) {
         <div className="rfx-center">
           <span>{started ? 'Match status' : 'Kickoff in'}</span>
           <strong>{started ? 'Started' : clock(Date.parse(match.kickoff) - now)}</strong>
-          {matches.length > 1 && <small>Fixture {index + 1} of {matches.length}</small>}
         </div>
         <div className="rfx-team">
           <TeamCrest id={match.awayId} name={match.away} size="lg" />

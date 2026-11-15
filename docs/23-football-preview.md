@@ -150,6 +150,14 @@ is created. Public visitors cannot save official combinations.
 
 ## Pitch-style presentation
 
+Navigation update (15 November 2026, local): the fixture spotlight has visible
+Previous/Next buttons and a labelled fixture selector above the match. The counter
+shows the selected position; Previous is disabled at the first fixture and Next
+at the last. Controls appear when more than one fixture is loaded. The existing
+fixture list remains available. Selection stays keyed by match ID across feed
+refreshes, and changing league starts at that league's first fixture. This is a
+frontend navigation change only; no provider fetching or prediction rules change.
+
 The Upcoming view displays one match at a time on a pitch-style panel, with
 home/away initials (not official kits), kickoff metadata and a countdown based
 on the last known fixture time. Previous/next buttons and a match selector switch
