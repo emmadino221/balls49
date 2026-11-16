@@ -9,6 +9,15 @@ const unifiedGames = ['u4', 'color', 'sum', 'totalColor'];
 const fail = message => Object.assign(new Error(message), { status: 409 });
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fresh = () => ({ observed: 0, waiting: true, active: false, batch: 0, attempts: 0, deficit: 0 });
+const riskFractions = { off: 1, low: 0.10, medium: 0.25, high: 0.50 };
+function riskLevelFor(input) {
+    const level = input.riskLevel ?? 'off';
+    if (!Object.hasOwn(riskFractions, level)) throw fail('Choose Off, Low, Medium or High for the suggested risk budget.');
+    if (level !== 'off' && input.capitalMode !== true) throw fail('Use Calculate from my capital for a suggested risk budget.');
+    return level;
+}
+function budgetFor(capital, level) { return Math.floor(capital * riskFractions[level]); }
+function warningThreshold(plan) { return plan.request.riskLevel && plan.request.riskLevel !== 'off' ? plan.sizingBudget : plan.reserve; }
 function current(s) { return s.config.suggestionStrategy; }
 function enabled(s) { return s.automationControl?.controller === 'website' && !current(s)?.needsReview && current(s); }
 function warningOnly(s) {
@@ -17,7 +26,7 @@ function warningOnly(s) {
     return request?.autoUpdate === true && request?.riskWarningOnly === true;
 }
 // Ignore changing history timestamps when deciding whether a new setup exists.
-function setupHash(plan) { return hash({ plans: plan.plans, reserve: plan.reserve }); }
+function setupHash(plan) { return hash({ plans: plan.plans, reserve: plan.reserve, riskLevel: plan.request.riskLevel || 'off', threshold: warningThreshold(plan) }); }
 function recovery(s) { return !current(s)?.needsReview && Object.values(current(s)?.lanes || {}).some(l => l.deficit > 0 || l.attempts > 0); }
 
 function reserve(key, base, steps, bet49ProfitMode = 'fixed') {
@@ -45,8 +54,10 @@ function preview(input, records) {
     if (![50, 100, 200, 500, 1000].includes(window)) throw fail('Choose a supported draw window.');
     const capital = Number(input.capital);
     const capitalMode = input.capitalMode === true;
+    const riskLevel = riskLevelFor(input);
     const base = Number(input.base);
     if (capitalMode ? !Number.isSafeInteger(capital) || capital < 50 || capital > 10000000 : !Number.isSafeInteger(base) || base < 50 || base > 50000) throw fail(capitalMode ? 'Enter allocated capital from NGN 50 to 10,000,000.' : 'Enter a base stake from NGN 50 to 50,000.');
+    const sizingBudget = capitalMode ? budgetFor(capital, riskLevel) : null;
     const bet49ProfitMode = Bet49Staking.mode(input.bet49ProfitMode);
     const history = historySuggestions(records, window);
     const plans = keys.map(key => {
@@ -60,14 +71,14 @@ function preview(input, records) {
         let lo = 50, hi = 50000; fitted = 0;
         while (lo <= hi) {
             const mid = Math.floor((lo + hi) / 2);
-            if (totalReserve(mid) <= capital) { fitted = mid; lo = mid + 1; } else hi = mid - 1;
+            if (totalReserve(mid) <= sizingBudget) { fitted = mid; lo = mid + 1; } else hi = mid - 1;
         }
-        if (!fitted) throw fail('Insufficient capital for these recovery plans at the NGN 50 minimum. Select fewer games or review a different window.');
+        if (!fitted) throw fail(riskLevel !== 'off' ? 'Insufficient capital for this risk level. The selected plans cannot fit within the suggested risk budget at the NGN 50 minimum stake.' : 'Insufficient capital for these recovery plans at the NGN 50 minimum. Select fewer games or review a different window.');
     }
     const required = totalReserve(fitted);
     if (!Number.isFinite(required)) throw fail('A recovery stake exceeds NGN 50,000. Reduce the base stake or choose another plan.');
-    const request = { bet49ProfitMode, games: keys, window, capitalMode, capital: capitalMode ? capital : 0, base: fitted, autoUpdate: input.autoUpdate === true, riskWarningOnly: input.autoUpdate === true && input.riskWarningOnly === true };
-    const result = { request, plans: plans.map(p => ({ ...p, ...(p.key === 'bet49' ? {profitMode: bet49ProfitMode} : {}), base: fitted, reserve: reserve(p.key, fitted, p.steps, bet49ProfitMode) })), reserve: required, draws: history.draws, toDraw: history.toDraw };
+    const request = { bet49ProfitMode, games: keys, window, capitalMode, capital: capitalMode ? capital : 0, riskLevel, base: fitted, autoUpdate: input.autoUpdate === true, riskWarningOnly: input.autoUpdate === true && input.riskWarningOnly === true };
+    const result = { request, sizingBudget, plans: plans.map(p => ({ ...p, ...(p.key === 'bet49' ? {profitMode: bet49ProfitMode} : {}), base: fitted, reserve: reserve(p.key, fitted, p.steps, bet49ProfitMode) })), reserve: required, draws: history.draws, toDraw: history.toDraw };
     return { ...result, token: hash(result) };
 }
 
@@ -88,7 +99,7 @@ function install(s, plan, previous) {
     for (const key of Object.keys(config.sniperSettings || {})) config.sniperSettings[key] = { enabled: false, step: 0, resetLosses: 0 };
     config.suggestionStrategy = { ...plan, lanes: Object.fromEntries(plan.request.games.map(k => [k, fresh()])), lastObserved: Number(plan.toDraw) || 0, lastSettled: previous?.lastSettled || null, capital: plan.request.capitalMode ? plan.request.capital : null, available: plan.request.capitalMode ? plan.request.capital : null, appliedAt: Date.now(), message: 'Plan saved. Waiting for a fresh win before entry.' };
     // Re-selection starts a new entry observation, never a new execution session.
-    if (plan.request.riskWarningOnly) config.suggestionStrategy.risk = { threshold: plan.reserve, net: 0, loss: 0, warnedAt: null };
+    if (plan.request.riskWarningOnly) config.suggestionStrategy.risk = { threshold: warningThreshold(plan), net: 0, loss: 0, warnedAt: null };
     if (previous) config.suggestionStrategy.message = 'Settled recovery completed. Latest eligible plan applied.';
 }
 
@@ -152,7 +163,7 @@ function settle(s, record, details, records) {
     }
     strategy.lastSettled = String(record.drawId);
     if (warningOnly(s)) {
-        strategy.risk ||= { threshold: strategy.reserve, net: 0, loss: 0, warnedAt: null };
+        strategy.risk ||= { threshold: warningThreshold(strategy), net: 0, loss: 0, warnedAt: null };
         strategy.risk.net = Math.round((strategy.risk.net + net) * 100) / 100;
         strategy.risk.loss = Math.max(0, -strategy.risk.net);
         if (strategy.risk.loss >= strategy.risk.threshold && !strategy.risk.warnedAt) strategy.risk.warnedAt = Date.now();
@@ -168,10 +179,12 @@ function settle(s, record, details, records) {
         if (strategy.request.autoUpdate) next = preview({ ...strategy.request, capital: strategy.capital }, records);
         else {
             let lo = 50, hi = 50000, base = 0;
-            const cost = n => strategy.plans.reduce((sum, p) => sum + reserve(p.key, n, p.steps), 0);
-            while (lo <= hi) { const mid = Math.floor((lo + hi) / 2); if (cost(mid) <= strategy.capital) { base = mid; lo = mid + 1; } else hi = mid - 1; }
+            const sizingBudget = budgetFor(strategy.capital, riskLevelFor(strategy.request));
+            const profitMode = Bet49Staking.mode(strategy.request.bet49ProfitMode);
+            const cost = n => strategy.plans.reduce((sum, p) => sum + reserve(p.key, n, p.steps, profitMode), 0);
+            while (lo <= hi) { const mid = Math.floor((lo + hi) / 2); if (cost(mid) <= sizingBudget) { base = mid; lo = mid + 1; } else hi = mid - 1; }
             if (!base) throw fail('Insufficient capital for the existing plan. Review before restarting.');
-            next = { request: { ...strategy.request, capital: strategy.capital, base }, plans: strategy.plans.map(p => ({ ...p, base, reserve: reserve(p.key, base, p.steps) })), reserve: cost(base), draws: strategy.draws, toDraw: record.drawId };
+            next = { request: { ...strategy.request, capital: strategy.capital, base }, sizingBudget, plans: strategy.plans.map(p => ({ ...p, base, reserve: reserve(p.key, base, p.steps, profitMode) })), reserve: cost(base), draws: strategy.draws, toDraw: record.drawId };
         }
         if (warningOnly(s) && setupHash(next) === setupHash(strategy)) {
             strategy.message = 'Settled win confirmed. Setup unchanged; continuing the current suggestion.';
