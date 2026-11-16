@@ -20,6 +20,37 @@ Activity begins with this update; older placements are not reconstructed.
 
 ## Control and execution
 
+### Optional suggested risk budget (16 November 2026)
+
+In Suggested strategies, choose Calculate from my capital, then an optional
+Suggested risk budget: Off (the existing full-capital sizing), Low (10%),
+Medium (25%) or High (50%). Manual base-stake mode clears this option to Off.
+Old saved requests without a level retain Off behavior.
+
+The worker fits the combined recovery reserves of all selected games within
+`floor(capital * fraction)`, retaining the history-selected entry and pause
+rules. For NGN 30,000 at Low, NGN 3,000 sizes the full sequence; the base stake
+is calculated separately. If the NGN 50 minimum cannot fit, preview is rejected.
+No extra amount is locked or deducted from the available-capital ledger.
+
+The saved request includes `riskLevel`; the preview/saved plan also includes
+`sizingBudget`. Both participate in preview validation. Automatic updates carry
+the level forward; after recovery completes the budget is recalculated from
+remaining capital including settled net results. Capital resizing with automatic
+rule updates off also respects the level and the selected Bet49 profit mode.
+
+Existing warning-only settings are preserved. With automatic updates and warning-only
+enabled, the warning threshold is the selected sizing budget (or the existing
+planned reserve when Off). Reaching it warns and continues; entry pauses and
+execution safeguards still apply. These percentages describe stake sizing, not
+win probabilities or a hard maximum loss. Net-loss tracking resets on a newly
+applied setup, including a changed budget; an unchanged setup retains its counter.
+
+This uses the existing strategy preview/apply endpoints and session persistence.
+Deploy the worker module and website UI together; the extension already executes
+the server-specified stakes and requires no new field for this feature. Existing
+saved plans are not rewritten by this local implementation.
+
 ### Transfer a strategy suggestion
 
 On Suggestions, use Preview automation setup to open the linked Automation
