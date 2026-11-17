@@ -172,6 +172,7 @@ export default function PredictionsPage() {
   const [marketPredictions, setMarketPredictions] = useState({});
   const [previousPrediction, setPreviousPrediction] = useState(null);
   const [predictionLastUpdated, setPredictionLastUpdated] = useState(null);
+  const [predictionRefreshError, setPredictionRefreshError] = useState(null);
   const [stakePlans, setStakePlans] = useState({});
   const [bet49ProfitMode, setBet49ProfitMode] = useState('fixed');
   const [stakeDrafts, setStakeDrafts] = useState({});
@@ -186,27 +187,35 @@ export default function PredictionsPage() {
 
   useEffect(() => {
     let active = true;
+    let clockPoll;
+    let controller;
     async function refreshClock() {
+      controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 8000);
       try {
-        const response = await fetch(CLOCK_API, { cache: 'no-store' });
+        const response = await fetch(CLOCK_API, { cache: 'no-store', signal: controller.signal });
         if (!response.ok) throw new Error('Clock unavailable');
         const payload = await response.json();
-        if (active && Number.isFinite(Number(payload.timeLeftSeconds)) && payload.drawId) {
-          // The reading was taken from Bet9ja ageMs ago, so the draw closes that much sooner.
+        if (!Number.isFinite(Number(payload.timeLeftSeconds)) || !payload.drawId) throw new Error('Invalid clock');
+        if (active) {
           const receivedAt = Date.now();
           const ageMs = Math.max(0, Number(payload.ageMs) || 0);
-          setClock({ ...payload, receivedAt, deadline: receivedAt - ageMs + Number(payload.timeLeftSeconds) * 1000 });
+          setClock(current => Number(current?.drawId) > Number(payload.drawId) ? current
+            : { ...payload, receivedAt, deadline: receivedAt - ageMs + Number(payload.timeLeftSeconds) * 1000 });
         }
       } catch {
-        if (active) setClock((current) => current && Date.now() - current.receivedAt < 15000 ? current : null);
+        if (active) setClock(current => current && Date.now() - current.receivedAt < 15000 ? current : null);
+      } finally {
+        window.clearTimeout(timeout);
+        if (active) clockPoll = window.setTimeout(refreshClock, 2500);
       }
     }
     refreshClock();
-    const clockPoll = window.setInterval(refreshClock, 2500);
     const displayTick = window.setInterval(() => setNow(Date.now()), 500);
     return () => {
       active = false;
-      window.clearInterval(clockPoll);
+      controller?.abort();
+      window.clearTimeout(clockPoll);
       window.clearInterval(displayTick);
     };
   }, []);
@@ -252,32 +261,53 @@ export default function PredictionsPage() {
 
   useEffect(() => {
     let active = true;
+    let predictionPoll;
+    let controller;
     async function refreshPrediction() {
       const plan = previewPlan || accountPlan;
       const markets = plan?.tier === 'elite' ? games.map(game => game.id) : plan?.tier === 'premium' ? [...new Set(plan.games || [])] : [activeMarketId];
+      controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 8000);
       try {
         const results = await Promise.all(markets.map(async market => {
           const predictionUrl = new URL(LIVE_PREDICTION_API, window.location.href);
           predictionUrl.searchParams.set('market', market);
-          const response = await fetch(predictionUrl, { cache: 'no-store', credentials: 'include' });
-          if (!response.ok) throw new Error('Prediction feed unavailable');
+          const response = await fetch(predictionUrl, { cache: 'no-store', credentials: 'include', signal: controller.signal });
+          if (!response.ok) throw Object.assign(new Error('Prediction feed unavailable'), { status: response.status });
           return [market, await response.json()];
         }));
         if (active) {
-          setMarketPredictions(Object.fromEntries(results.map(([market, payload]) => [market, payload.prediction || null])));
+          setMarketPredictions(current => Object.fromEntries(results.map(([market, payload]) => {
+            const previous = current[market];
+            const incoming = payload.prediction || null;
+            // Reject older draw responses; render eligibility still follows the live clock.
+            return [market, incoming && previous && Number(incoming.drawId) < Number(previous.drawId)
+              ? previous : incoming];
+          })));
           setPreviousPrediction(results[0]?.[1]?.previous || null);
           const updatedPayload = results.find(([, payload]) => payload.lastUpdated);
           setPredictionLastUpdated(updatedPayload ? updatedPayload[1].lastUpdated : null);
+          setPredictionRefreshError(null);
         }
-      } catch {
-        if (active) { setMarketPredictions({}); setPreviousPrediction(null); }
+      } catch (error) {
+        controller.abort();
+        if (active) {
+          const accessDenied = error.status === 401 || error.status === 403;
+          if (accessDenied) { setMarketPredictions({}); setPreviousPrediction(null); }
+          setPredictionRefreshError(accessDenied
+            ? 'Prediction access unavailable. Check your sign-in and plan.'
+            : 'Connection interrupted?retrying. Any visible numbers are the last received prediction for this draw.');
+        }
+      } finally {
+        window.clearTimeout(timeout);
+        if (active) predictionPoll = window.setTimeout(refreshPrediction, 2500);
       }
     }
     refreshPrediction();
-    const predictionPoll = window.setInterval(refreshPrediction, 2500);
     return () => {
       active = false;
-      window.clearInterval(predictionPoll);
+      controller?.abort();
+      window.clearTimeout(predictionPoll);
     };
   }, [sessionKind, accountPlan, previewPlan, activeMarketId]);
 
@@ -308,10 +338,11 @@ export default function PredictionsPage() {
     }
   }
 
-  const currentPrediction = Object.values(marketPredictions).find(record => record && clock?.drawId === record.drawId) || null;
+  const clockIsCurrent = clock && now < clock.deadline && now - clock.receivedAt < 15000;
+  const currentPrediction = Object.values(marketPredictions).find(record => record && clockIsCurrent && clock.drawId === record.drawId) || null;
   const activeGame = games.find(game => game.id === activeMarketId) || games[0];
   const activeDetailTab = activeDetailTabs[activeGame.id] || 'prediction';
-  const activeMarketPrediction = clock?.drawId === marketPredictions[activeGame.id]?.drawId ? marketPredictions[activeGame.id] : null;
+  const activeMarketPrediction = clockIsCurrent && clock.drawId === marketPredictions[activeGame.id]?.drawId ? marketPredictions[activeGame.id] : null;
   const activeMarketHasAccess = previewPlan?.tier === 'elite' || accountPlan?.tier === 'elite' || (previewPlan?.tier === 'premium' && previewPlan.games.includes(activeGame.id)) || (accountPlan?.tier === 'premium' && accountPlan.games.includes(activeGame.id));
   const activeMarketReveal = Boolean(activeMarketPrediction && activeMarketHasAccess);
   const activePredictionKey = activeMarketPrediction
@@ -385,6 +416,7 @@ export default function PredictionsPage() {
               ? <PredictionAnalysisPanel market={activeGame.id} hasAccess={activeMarketHasAccess} signedIn={sessionKind === 'account' || sessionKind === 'admin'} />
               : <>
             <div className="prediction-card-draw"><span>{activeMarketReveal ? `Draw #${activeMarketPrediction.drawId}` : 'Waiting for prediction'}</span><span>{formatCountdown(secondsLeft)}</span></div>
+            {predictionRefreshError && <p className="stake-plan-error" role="status">{predictionRefreshError}</p>}
             <p className="prediction-market-description">{activeGame.detail}</p>
             <div className={`live-prediction-value${activeMarketReveal ? ' is-revealed' : ' is-hidden'}`}>
               {activeMarketReveal
