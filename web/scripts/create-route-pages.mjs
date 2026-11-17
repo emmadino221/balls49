@@ -15,6 +15,7 @@ const pageFiles = [
   'pricing.html',
   'predictions.html',
   'history.html',
+  'gap-analysis.html',
   'guide.html',
   'calculator.html',
   'testimonials.html',

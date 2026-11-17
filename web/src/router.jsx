@@ -1,3 +1,4 @@
+import GapAnalysisPage from './pages/GapAnalysisPage.jsx';
 import AutomationPage from './pages/AutomationPage.jsx';
 import PrivacyPage from './pages/PrivacyPage.jsx';
 import TermsPage from './pages/TermsPage.jsx';
@@ -35,6 +36,7 @@ export function getPageName() {
   if (route === 'pricing.html') return 'pricing';
   if (route === 'testimonials.html' || route === 'suggestions.html') return 'suggestions';
   if (route === 'videos.html') return 'videos';
+  if (route === 'gap-analysis.html') return 'gap-analysis';
   if (route === 'history.html') return 'history';
   if (route === 'guide.html') return 'guide';
   if (route === 'calculator.html') return 'calculator';
@@ -64,6 +66,7 @@ export function PageRenderer({ page, session }) {
   if (page === 'pricing') return <PricingPage />;
   if (page === 'suggestions') return <SuggestionsPage />;
   if (page === 'videos') return <VideosPage />;
+  if (page === 'gap-analysis') return <GapAnalysisPage />;
   if (page === 'history') return <HistoryPage />;
   if (page === 'guide') return <GuidePage />;
   if (page === 'calculator') return <CalculatorPage />;
