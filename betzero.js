@@ -2,6 +2,32 @@
 
 const { randomInt } = require('crypto');
 const { predictBet49SmallestAdd10 } = require('./bet49');
+// Accept only the persisted Lab record returned by the authenticated feed receiver.
+function predictBetZeroFromLab(record, targetDrawId, now = Date.now()) {
+    const strategy = 'LAB_STREAK_ONE_EXACT_FOUR_V1';
+    const skip = reason => ({ status: 'SKIP', numbers: [], strategy, reason });
+    const target = Number(targetDrawId);
+    if (!Number.isSafeInteger(target) || target <= 0) return skip('INVALID_TARGET_DRAW');
+    if (!record) return skip('LAB_PREDICTION_UNAVAILABLE');
+    if (record.strategyId !== 'statistics_streak_drop_betzero' || record.version !== '3.0.0'
+        || Number(record.targetDrawId) !== target || Number(record.sourceDrawId) !== target - 1)
+        return skip('LAB_PREDICTION_TARGET_OR_VERSION_MISMATCH');
+    if (!record.enabled) return skip('LAB_STRATEGY_DISABLED');
+    if (record.status !== 'PENDING') return skip(record.reason || 'LAB_PREDICTION_NOT_PENDING');
+    const predictedAt = Date.parse(record.predictedAt);
+    if (!record.predictionId || !Number.isFinite(predictedAt) || !Number.isFinite(now)
+        || !Number.isFinite(record.deadline) || predictedAt > now || predictedAt >= record.deadline
+        || now >= record.deadline) return skip('LAB_PREDICTION_EXPIRED_OR_INVALID_TIMING');
+    const numbers = record.selections;
+    if (!Array.isArray(numbers) || numbers.length !== 4 || new Set(numbers).size !== 4
+        || !numbers.every(n => Number.isInteger(n) && n >= 1 && n <= 49))
+        return skip('LAB_REQUIRES_EXACTLY_FOUR_NUMBERS');
+    return { status: 'ACTIVE', numbers: [...numbers], strategy, reason: '',
+        sourceDrawId: Number(record.sourceDrawId), conditions: {
+            labPredictionId: record.predictionId, labStrategyId: record.strategyId,
+            labVersion: record.version, labPredictedAt: record.predictedAt, deadline: record.deadline
+        } };
+}
 
 function predictBetZeroStep10(draws, targetDrawId) {
     const first = predictBet49SmallestAdd10(draws, targetDrawId);
@@ -53,4 +79,4 @@ function predictBetZero(draws, records, targetDrawId) {
         : { ...skip, poolSize: eligible.length, reason: 'Fewer than four eligible BetZero numbers' };
 }
 
-module.exports = { predictBetZero, predictBetZeroStep10 };
+module.exports = { predictBetZero, predictBetZeroStep10, predictBetZeroFromLab };

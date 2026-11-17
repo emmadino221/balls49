@@ -13,7 +13,7 @@ const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history
 const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-clock');
 const LIVE_PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const games = [
-  { id: 'betzero', name: 'BetZero', detail: 'Smallest +10 / Step-10: four numbers. Wins when none of them appear.' },
+  { id: 'betzero', name: 'BetZero', detail: 'Uses the Lab Streak 1 prediction for this draw. Requires four numbers; wins when none appear.' },
   { id: 'bet49', name: 'Bet49', detail: 'One number: previous draw’s smallest number +10. Wins when that number appears.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
@@ -53,6 +53,7 @@ function getRecommendedStake(marketId, baseAmount, step, prediction, bet49Profit
     ? aliases[prediction?.predicted?.unified?.key] || prediction?.predicted?.unified?.key
     : marketId;
   if (!market) return null;
+  if (market === 'betzero' && prediction?.predicted?.betzero?.length !== 4) return null;
 
   const marketStrategies = {
     betzero: { odds: 1.65 },

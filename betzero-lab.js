@@ -829,6 +829,23 @@ function createBetZeroLab(db, options = {}) {
             pending: Number.isSafeInteger(state.pending) ? state.pending : null,
             afterTargetId: Number(state.afterTargetId) || 0 };
     }
+    function mainBetzeroPrediction(targetDrawId) {
+        const target = Number(targetDrawId);
+        if (!Number.isSafeInteger(target) || target <= 1) return null;
+        const strategy = strategies().find(s => s.id === transitions.ZERO && s.version === '3.0.0');
+        const row = db.prepare(`SELECT * FROM betzero_lab_forward_predictions
+            WHERE strategy_id=? AND strategy_version=? AND target_draw_id=?`)
+            .get(transitions.ZERO, '3.0.0', String(target));
+        if (!row) return null;
+        const conditions = JSON.parse(row.conditions_json);
+        const sample = statisticsStore.read(target - 1);
+        return { predictionId: row.prediction_id, strategyId: row.strategy_id, version: row.strategy_version,
+            enabled: Boolean(strategy?.enabled), sourceDrawId: row.source_draw_id,
+            targetDrawId: row.target_draw_id, predictedAt: row.predicted_at,
+            status: sample?.conflicted ? 'SKIP' : row.status,
+            reason: sample?.conflicted ? 'CONFLICTING_STATISTICS_SNAPSHOTS' : conditions.reason,
+            selections: JSON.parse(row.selections_json), deadline: conditions.timing?.expectedTargetAt };
+    }
     function rememberMinmaxResult(record, observedAt) {
         const id = drawIdFromRecord(record), balls = ballsFromRecord(record);
         if (!id || !validBalls(balls)) return;
@@ -985,7 +1002,11 @@ function createBetZeroLab(db, options = {}) {
             }
             noteChange(healMinmax(snapshotAt, validatedAt));
 
-            const targetDrawId = Number(current?.drawId);
+            // Before main publication, wait for this draw's validated statistics so an
+            // earlier clock-only snapshot cannot permanently save a missing-input SKIP.
+            const readyStatistics = transitions.inspect(numberStatistics).sample;
+            const targetDrawId = readyStatistics && readyStatistics.targetDrawId === Number(clock?.drawId)
+                ? Number(clock.drawId) : Number(current?.drawId);
             const clockDrawId = Number(clock?.drawId);
             const timeLeft = Number(clock?.timeLeftSeconds);
             const observedAt = Number(clock?.observedAt);
@@ -1387,6 +1408,7 @@ function createBetZeroLab(db, options = {}) {
         resetStrategyHistory,
         ingestSnapshot,
         minmaxFollowState,
+        mainBetzeroPrediction,
         reconcileArchive,
         listForwardPredictions,
         stats,

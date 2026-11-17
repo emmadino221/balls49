@@ -8,7 +8,7 @@ const { createVirtualFootball } = require('./virtual-football');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, predictBet49SmallestAdd10, bet49Numbers } = require('./bet49');
-const { predictBetZeroStep10 } = require('./betzero');
+const { predictBetZeroFromLab } = require('./betzero');
 const { createBetZeroLab } = require('./betzero-lab');
 const { createJobStore } = require('./betzero-jobs');
 const { handleJobApi, smallBacktestRecords } = require('./betzero-job-api');
@@ -867,6 +867,7 @@ if (!SITE_PUBLIC_MODE && !(persistedState.globalTracker && persistedState.global
 
 const lastPublishedHistoryHashes = new Map();
 let predictionPublishInFlight = false;
+let predictionPublishPromise = null;
 let lastHistoryReconciliationAt = 0;
 
 function buildPublicFeedHistory() {
@@ -1143,7 +1144,13 @@ function buildPublicFeedCurrent() {
     };
 }
 
-async function publishPredictionSnapshot() {
+function publishPredictionSnapshot() {
+    if (predictionPublishPromise) return predictionPublishPromise;
+    predictionPublishPromise = publishPredictionSnapshotOnce().finally(() => { predictionPublishPromise = null; });
+    return predictionPublishPromise;
+}
+
+async function publishPredictionSnapshotOnce() {
     checkDailyHistoryReset();
     if (SITE_PUBLIC_MODE || !PREDICTION_INGEST_URL || predictionPublishInFlight) return;
     predictionPublishInFlight = true;
@@ -1184,7 +1191,7 @@ async function publishPredictionSnapshot() {
         const body = JSON.stringify(snapshot);
         const signature = crypto.createHmac('sha256', PREDICTION_INGEST_SECRET).update(`${timestamp}.${body}`).digest('hex');
         const url = new URL(PREDICTION_INGEST_URL);
-        await new Promise(resolve => {
+        return await new Promise(resolve => {
             const request = https.request({
                 hostname: url.hostname,
                 port: url.port || 443,
@@ -1200,7 +1207,7 @@ async function publishPredictionSnapshot() {
                 response.setEncoding('utf8');
                 let responseBody = '';
                 response.on('data', chunk => {
-                    if (responseBody.length < 512) responseBody += chunk.slice(0, 512 - responseBody.length);
+                    if (responseBody.length < 8192) responseBody += chunk.slice(0, 8192 - responseBody.length);
                 });
                 response.on('end', () => {
                     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -1212,7 +1219,7 @@ async function publishPredictionSnapshot() {
                                 ? { ...labMinmax, asOfDrawId: Number(snapshot.clock.drawId) } : null;
                         } catch { labMinmaxState = null; }
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
-                        resolve(true);
+                        try { resolve(JSON.parse(responseBody).labBetzero || null); } catch { resolve(null); }
                     } else {
                         console.error(`[PredictionFeed] Publish failed (HTTP ${response.statusCode || 'unknown'}): ${responseBody || 'no response body'}`);
                         resolve(false);
@@ -1569,7 +1576,7 @@ function evaluateMLEntryConfidence(key, currentStep, predData, liveStreaks) {
             confidenceScore -= (currentLossStreak * 0.08);
         }
 
-        if (key === 'u4' && predData.brainData.betzero && !['bet49_first_four', 'SMALLEST_ADD10_STEP10_FOUR_V1'].includes(predData.brainData.betzero.strategy)) {
+        if (key === 'u4' && predData.brainData.betzero && !['bet49_first_four', 'SMALLEST_ADD10_STEP10_FOUR_V1', 'LAB_STREAK_ONE_EXACT_FOUR_V1'].includes(predData.brainData.betzero.strategy)) {
             let poolSize = predData.brainData.betzero.poolSize || 0;
             if (poolSize < 12) confidenceScore -= 0.20; 
             else if (poolSize >= 15) confidenceScore += 0.15; 
@@ -2450,7 +2457,7 @@ function apiGet(path) {
     });
 }
 
-function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId, highLowDraws) {
+function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId, highLowDraws, labBetzero = null) {
 
     if (getDailyHistoryResetAt()) {
         stats100TC = null;
@@ -2556,7 +2563,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, totalColor2Pred);
     var bet49Pick = bet49Prediction.numbers;
 
-    const mainBetZero = predictBetZeroStep10(histRaw?.data?.draws, targetDrawId);
+    const mainBetZero = predictBetZeroFromLab(labBetzero, targetDrawId);
     const betzeroStatus = mainBetZero.status;
     const unlikely4 = mainBetZero.numbers.map(number => ({ number }));
     const bzSkipReason = mainBetZero.reason;
@@ -3504,7 +3511,7 @@ async function tick() {
             var stats24Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '24HRS' }).catch(() => null);
             const statisticsRequestedAt = Date.now();
             var stats100Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '100' }).catch(() => null);
-            // Research-only observational snapshot; it never enters production prediction selection.
+            // Observational snapshot shared by main BetZero Streak 1 and Lab research.
             labNumberStatistics = null;
             const statisticsReceivedAt = Date.now();
             const sourceResult = predictionLog.find(r => Number(r.drawId) === Number(nextId)-1 && r.result?.balls?.length === 6);
@@ -3528,8 +3535,11 @@ async function tick() {
             if (getDailyHistoryResetAt() && Number(drawsForPred.resetAt) !== getDailyHistoryResetAt()) return;
             if (!(drawsForPred.draws || []).length) return;
 
+            // Finish an older publication, then send this snapshot and await the saved Lab pick.
+            if (predictionPublishPromise) await predictionPublishPromise;
+            const labBetzero = await publishPredictionSnapshot();
             var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId,
-                [...(drawsForPred.draws || []), ...labRecentResults.map(item => ({ id: item.drawId, balls: item.balls }))]);
+                [...(drawsForPred.draws || []), ...labRecentResults.map(item => ({ id: item.drawId, balls: item.balls }))], labBetzero);
             for (const market of ['betzero', 'rainbow']) {
                 const strategy = pred.adaptiveStrategies?.[market];
                 if (strategy?.switched) console.log(`[Strategy] ${market}: ${strategy.selected} selected for draw ${nextId}; paired samples ${strategy.comparison.pairedDraws}.`);
@@ -3606,6 +3616,7 @@ async function tick() {
                         && String(session.lastBetDrawId) !== String(nextId)) {
                         
                         let bestGame = globalPick.key;
+                        if (bestGame === 'u4' && pred.unlikely4.length !== 4) continue;
                         let bestMlScore = localMlScores[bestGame] || 0;
 
                         if (!automationStrategy.warningOnly(session) && session.config.maxSteps[bestGame] > 0 && session.masterState.step > session.config.maxSteps[bestGame]) {
@@ -3623,7 +3634,7 @@ async function tick() {
                         session.masterState.lastGamePlayed = bestGame;
                         session.masterState.lastStake = computedStake;
 
-                        const emitU4 = bestGame === 'u4' && computedStake > 0 && pred.betzeroStatus === 'ACTIVE';
+                        const emitU4 = bestGame === 'u4' && computedStake > 0 && pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4;
                         const emitColor = bestGame === 'color' && computedStake > 0 && pred.rainbowStatus === 'ACTIVE';
                         const emitSum = bestGame === 'sum' && computedStake > 0 && pred.hiloStatus === 'ACTIVE';
                         const emitTotalColor = bestGame === 'totalColor' && computedStake > 0 && pred.totalColorPred.status === 'ACTIVE';
@@ -3689,7 +3700,7 @@ async function tick() {
                             
                             let isActivePrediction = false;
                             let activeMlScore = 0;
-                            if (key === 'u4' && pred.betzeroStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.u4; }
+                            if (key === 'u4' && pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4) { isActivePrediction = true; activeMlScore = localMlScores.u4; }
                             if (key === 'bet49' && bet49Numbers(pred.bet49Pick).length > 0) { isActivePrediction = true; }
                             if (key === 'color' && pred.rainbowStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.color; }
                             if (key === 'sum' && pred.hiloStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.sum; }
@@ -3725,7 +3736,7 @@ async function tick() {
                         const tc2Stake = Math.max(0, Number(payloadStakes.totalColor2) || 0);
                         const tc1Stake = Math.max(0, Number(payloadStakes.totalColor1) || 0);
 
-                        const hasBetZero = session.config.enabledGames.u4 && pred.betzeroStatus === 'ACTIVE' && bzStake > 0;
+                        const hasBetZero = session.config.enabledGames.u4 && pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 && bzStake > 0;
                         const hasBet49 = session.config.enabledGames.bet49 && bet49Numbers(pred.bet49Pick).length > 0 && bet49Stake > 0;
                         const hasRainbow = session.config.enabledGames.color && pred.rainbowStatus === 'ACTIVE' && rbStake > 0;
                         const hasHiLo = session.config.enabledGames.sum && pred.hiloStatus === 'ACTIVE' && hlStake > 0;
@@ -4017,7 +4028,9 @@ async function handleHttpRequest(req, res) {
             }
             let labMinmax = null;
             try { labMinmax = betzeroLab ? betzeroLab.minmaxFollowState() : null; } catch { labMinmax = null; }
-            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt(), labMinmax });
+            let labBetzero = null;
+            try { labBetzero = betzeroLab ? betzeroLab.mainBetzeroPrediction(snapshot.clock?.drawId) : null; } catch { labBetzero = null; }
+            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt(), labMinmax, labBetzero });
         } catch (error) {
             console.error('[PredictionFeed] Could not store an incoming snapshot.');
             return sendJson(res, 500, { error: 'Prediction snapshot could not be stored.' });
@@ -5122,7 +5135,7 @@ async function handleHttpRequest(req, res) {
                 enabledKeys = enabledKeys.length && selected ? [selected] : [];
             }
             const predictionByKey = {
-                u4: livePred.betzeroStatus,
+                u4: livePred.betzeroStatus === 'ACTIVE' && livePred.unlikely4?.length !== 4 ? 'SKIP' : livePred.betzeroStatus,
                 bet49: bet49Numbers(livePred.bet49Pick).length > 0 ? 'ACTIVE' : 'SKIP',
                 color: livePred.rainbowStatus,
                 sum: livePred.hiloStatus,
@@ -5130,7 +5143,7 @@ async function handleHttpRequest(req, res) {
                 totalColor2: livePred.totalColor2Pred?.status,
                 totalColor1: livePred.totalColor1Pred?.status
             };
-            const skipReasons = { u4: livePred.bzSkipReason, color: livePred.rbSkipReason, sum: livePred.hlSkipReason };
+            const skipReasons = { u4: livePred.betzeroStatus === 'ACTIVE' && livePred.unlikely4?.length !== 4 ? 'BetZero automation requires exactly four selected numbers' : livePred.bzSkipReason, color: livePred.rbSkipReason, sum: livePred.hlSkipReason };
             const missingStakeKey = enabledKeys.find(key => !(session.config.initialStakes[key] > 0) && !(session.config.dynamicStakePercent > 0 && session.wallets[key]?.bankroll > 0));
             const blockedKey = enabledKeys.find(key => predictionByKey[key] === 'SKIP');
             const summaryBlockedKey = enabledKeys.find(key => SUMMARY_MODEL_MARKETS.includes(key)
