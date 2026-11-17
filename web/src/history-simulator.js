@@ -35,7 +35,8 @@ export function simulateHistory(records, game, base, mode) {
       if (target === null) target = base * (odds - count);
     }
     let stake = base;
-    if (game === 'bet49') stake = count === 1 && target === base * 6.8 ? globalThis.Bet49Staking.nextStake(base, cycleLoss, step - 1, mode) : Math.ceil((cycleLoss + target) / (odds - count));
+    if (mode === 'flat') stake = money(base);
+    else if (game === 'bet49') stake = count === 1 && target === base * 6.8 ? globalThis.Bet49Staking.nextStake(base, cycleLoss, step - 1, mode) : Math.ceil((cycleLoss + target) / (odds - count));
     else if (game === 'totalColor1') stake = globalThis.TC1Staking.nextStake(base, cycleLoss, step - 1, mode);
     else if (step > 1) {
       if (game === 'hilo') stake = money(base * Math.pow(mode === '1.4' ? 1.4 : 2, step - 1));
@@ -51,7 +52,7 @@ export function simulateHistory(records, game, base, mode) {
     peak = Math.max(peak, result.net); result.maxDrawdown = Math.max(result.maxDrawdown, money(peak - result.net));
     result.rows.push({ id, outcome, step, stake, count, cost, payout, net: result.net });
     if (outcome === 'WIN') { result.wins++; cycleLoss = 0; step = 1; run = 0; target = null; }
-    else { result.losses++; cycleLoss = money(cycleLoss + cost); step++; run++; result.worst = Math.max(result.worst, run); }
+    else { result.losses++; cycleLoss = money(cycleLoss + cost); if (mode !== 'flat') step++; run++; result.worst = Math.max(result.worst, run); }
   }
   result.unrecovered = cycleLoss;
   return result;
