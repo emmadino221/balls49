@@ -1,3 +1,4 @@
+import LosingStreakGaps from '../components/LosingStreakGaps.jsx';
 import HistorySimulator from '../components/HistorySimulator.jsx';
 import DailyStreakHistory from '../components/DailyStreakHistory';
 import Bet49Pick, { bet49Numbers } from '../components/Bet49Pick';
@@ -290,6 +291,7 @@ export default function HistoryPage() {
       <HistorySimulator />
 
       <DailyStreakHistory markets={markets} />
+      <LosingStreakGaps records={predictions} markets={visibleMarkets} total={total} loading={loading || loadingMore} error={error} />
 
       <section className="history-summary" aria-label="History summary">
         <article className="summary-card"><span>Settled picks</span><strong>{summary.settled.toLocaleString()}</strong><small>Within loaded history</small></article>

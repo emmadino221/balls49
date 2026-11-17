@@ -1,0 +1,11 @@
+.loss-gaps { margin-block: 1.5rem; min-width: 0; }
+.loss-gaps > label { display: grid; gap: .5rem; max-width: 30rem; }
+.loss-gaps select { width: 100%; min-width: 0; font: inherit; padding: .75rem; color: inherit; background: var(--bg, transparent); border: 1px solid currentColor; border-radius: .5rem; }
+.loss-gaps p { line-height: 1.6; overflow-wrap: anywhere; }
+.loss-gaps-market { border-top: 1px solid #8885; padding-block: 1rem; }
+.loss-gaps summary { cursor: pointer; line-height: 1.6; overflow-wrap: anywhere; }
+.loss-gaps summary:focus-visible, .loss-gaps select:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.loss-gaps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; }
+.loss-gaps-grid article { border: 1px solid #8885; border-radius: .75rem; padding: 1rem; min-width: 0; }
+.loss-gaps-grid dl div { display: flex; justify-content: space-between; gap: .75rem; padding-block: .3rem; }
+.loss-gaps-grid dd { margin: 0; font-weight: 700; text-align: right; }
