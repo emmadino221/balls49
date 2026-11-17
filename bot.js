@@ -8,7 +8,7 @@ const { createVirtualFootball } = require('./virtual-football');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
 const { predictBet49, predictBet49SmallestAdd10, bet49Numbers } = require('./bet49');
-const { predictBetZeroStep10 } = require('./betzero');
+const { predictBetZeroFromLab } = require('./betzero');
 const { createBetZeroLab } = require('./betzero-lab');
 ﻿'use strict';
 
@@ -843,6 +843,7 @@ if (!SITE_PUBLIC_MODE && !(persistedState.globalTracker && persistedState.global
 
 const lastPublishedHistoryHashes = new Map();
 let predictionPublishInFlight = false;
+let predictionPublishPromise = null;
 let lastHistoryReconciliationAt = 0;
 
 function buildPublicFeedHistory() {
@@ -1094,7 +1095,7 @@ function buildPublicFeedCurrent() {
         strategies: getStrategyResults(currentRecord || { adaptiveStrategies: pred.adaptiveStrategies }),
         summaryModel: currentRecord ? getRecordSummaryModel(currentRecord) : buildPublicSummaryModel(lastPrediction.summaryModel, pred.unifiedPick?.key),
         pred: {
-            betzeroStatus: pred.betzeroStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
+            betzeroStatus: pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 ? 'ACTIVE' : 'SKIP',
             unlikely4: Array.isArray(pred.unlikely4) ? pred.unlikely4.map(item => ({ number: Number(item.number) })) : [],
             bet49Pick: bet49Numbers(pred.bet49Pick),
             rainbowStatus: pred.rainbowStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
@@ -1119,7 +1120,13 @@ function buildPublicFeedCurrent() {
     };
 }
 
-async function publishPredictionSnapshot() {
+function publishPredictionSnapshot() {
+    if (predictionPublishPromise) return predictionPublishPromise;
+    predictionPublishPromise = publishPredictionSnapshotOnce().finally(() => { predictionPublishPromise = null; });
+    return predictionPublishPromise;
+}
+
+async function publishPredictionSnapshotOnce() {
     checkDailyHistoryReset();
     if (SITE_PUBLIC_MODE || !PREDICTION_INGEST_URL || predictionPublishInFlight) return;
     predictionPublishInFlight = true;
@@ -1154,12 +1161,13 @@ async function publishPredictionSnapshot() {
             current: buildPublicFeedCurrent(),
             clock: publicClock,
             numberStatistics: labNumberStatistics,
+            labResults: predictionLog.filter(r => r.result?.balls?.length === 6).slice(0, 60).map(r => ({ drawId: Number(r.drawId), balls: r.result.balls })),
             historyUpdates
         };
         const body = JSON.stringify(snapshot);
         const signature = crypto.createHmac('sha256', PREDICTION_INGEST_SECRET).update(`${timestamp}.${body}`).digest('hex');
         const url = new URL(PREDICTION_INGEST_URL);
-        await new Promise(resolve => {
+        return await new Promise(resolve => {
             const request = https.request({
                 hostname: url.hostname,
                 port: url.port || 443,
@@ -1175,7 +1183,7 @@ async function publishPredictionSnapshot() {
                 response.setEncoding('utf8');
                 let responseBody = '';
                 response.on('data', chunk => {
-                    if (responseBody.length < 512) responseBody += chunk.slice(0, 512 - responseBody.length);
+                    if (responseBody.length < 8192) responseBody += chunk.slice(0, 8192 - responseBody.length);
                 });
                 response.on('end', () => {
                     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -1187,7 +1195,7 @@ async function publishPredictionSnapshot() {
                                 ? { ...labMinmax, asOfDrawId: Number(snapshot.clock.drawId) } : null;
                         } catch { labMinmaxState = null; }
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
-                        resolve(true);
+                        try { resolve(JSON.parse(responseBody).labBetzero || null); } catch { resolve(null); }
                     } else {
                         console.error(`[PredictionFeed] Publish failed (HTTP ${response.statusCode || 'unknown'}): ${responseBody || 'no response body'}`);
                         resolve(false);
@@ -1544,7 +1552,7 @@ function evaluateMLEntryConfidence(key, currentStep, predData, liveStreaks) {
             confidenceScore -= (currentLossStreak * 0.08);
         }
 
-        if (key === 'u4' && predData.brainData.betzero && !['bet49_first_four', 'SMALLEST_ADD10_STEP10_FOUR_V1'].includes(predData.brainData.betzero.strategy)) {
+        if (key === 'u4' && predData.brainData.betzero && !['bet49_first_four', 'SMALLEST_ADD10_STEP10_FOUR_V1', 'LAB_STREAK_ONE_EXACT_FOUR_V1'].includes(predData.brainData.betzero.strategy)) {
             let poolSize = predData.brainData.betzero.poolSize || 0;
             if (poolSize < 12) confidenceScore -= 0.20; 
             else if (poolSize >= 15) confidenceScore += 0.15; 
@@ -2290,7 +2298,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         strategy: getSelectedStrategy(pred.adaptiveStrategies, market, unifiedKey),
         summary: getPublicSummaryLabel(mlShadow[summaryKey])
     });
-    const betzeroPickText = pred.betzeroStatus === 'ACTIVE'
+    const betzeroPickText = pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4
         ? pred.unlikely4.map(x => `${getBallEmoji(x.number)} <b>${x.number}</b>`).join(' · ') : '';
     const rainbowPickText = pred.rainbowStatus === 'ACTIVE'
         ? `${cEm[pred.topColor.name] || '⚪'} <b>${pred.topColor.name.toUpperCase()}</b>` : '';
@@ -2309,7 +2317,7 @@ async function sendPrediction(drawId, drawDate, pred) {
     const hlFormat = pickBlock('📊 HIGH / LOW', 'hilo', 'sum', hlPickText);
 
     let candidateGames = [];
-    if (pred.betzeroStatus === 'ACTIVE' && mlBz.recommendation === 'ENTER') {
+    if (pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 && mlBz.recommendation === 'ENTER') {
         candidateGames.push({ key: 'u4', score: mlBz.score });
     }
     if (pred.rainbowStatus === 'ACTIVE') {
@@ -2357,7 +2365,7 @@ async function sendPrediction(drawId, drawDate, pred) {
     const predictionRecord = {
         drawId, drawDate,
         predicted: {
-            betzero: pred.betzeroStatus === 'ACTIVE' ? pred.unlikely4.map(x => x.number) : [],
+            betzero: pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 ? pred.unlikely4.map(x => x.number) : [],
             bet49: bet49Numbers(pred.bet49Pick),
             rainbow: pred.rainbowStatus === 'ACTIVE' ? pred.topColor.name : 'SKIP',
             totalColor: pred.totalColorPred,
@@ -2425,7 +2433,7 @@ function apiGet(path) {
     });
 }
 
-function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId) {
+function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, targetDrawId, labBetzero = null) {
 
     if (getDailyHistoryResetAt()) {
         stats100TC = null;
@@ -2531,7 +2539,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, totalColor2Pred);
     var bet49Pick = bet49Prediction.numbers;
 
-    const mainBetZero = predictBetZeroStep10(histRaw?.data?.draws, targetDrawId);
+    const mainBetZero = predictBetZeroFromLab(labBetzero, targetDrawId);
     const betzeroStatus = mainBetZero.status;
     const unlikely4 = mainBetZero.numbers.map(number => ({ number }));
     const bzSkipReason = mainBetZero.reason;
@@ -2681,7 +2689,7 @@ function processUpdates(pred, actualDraw) {
         }
     };
 
-    if (pred.betzeroStatus === 'ACTIVE') updateMLStreak('u4', savedMl.betzero, u4Win, pred.betzeroStatus);
+    if (pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4) updateMLStreak('u4', savedMl.betzero, u4Win, pred.betzeroStatus);
     if (pred.rainbowStatus === 'ACTIVE') updateMLStreak('color', savedMl.rainbow, colorWin, pred.rainbowStatus);
     if (pred.hiloStatus === 'ACTIVE') updateMLStreak('sum', savedMl.hilo, sumWin, pred.hiloStatus);
     if (pred.totalColorPred.status === 'ACTIVE') updateMLStreak('totalColor', savedMl.totalColor, tcWin, pred.totalColorPred.status);
@@ -2700,7 +2708,7 @@ function processUpdates(pred, actualDraw) {
         if (bet49Win) globalTracker.bet49.step = 1;
         else globalTracker.bet49.step++;
     }
-    if (pred.betzeroStatus === 'ACTIVE') { 
+    if (pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4) {
         updateOneStreakByMode(s, 'u4', 'SAFE', u4Win);
         if (u4Win) globalTracker.u4.step = 1; else globalTracker.u4.step++; 
     }
@@ -2869,7 +2877,7 @@ function processUpdates(pred, actualDraw) {
         });
     };
 
-    const betzeroPick = pred.betzeroStatus === 'ACTIVE'
+    const betzeroPick = pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4
         ? pred.unlikely4.map(item => `${getBallEmoji(item.number)} ${item.number}`).join(' ')
         : '';
     const bet49PickText = bet49Active ? bet49Numbers(pred.bet49Pick).map(n => `${getBallEmoji(n)} ${n}`).join(' ') : '';
@@ -2906,7 +2914,7 @@ function processUpdates(pred, actualDraw) {
         '',
         '<b>MARKET RESULTS</b>',
         '',
-        resultLine('🔵 BetZero', pred.betzeroStatus === 'ACTIVE', u4Win, betzeroPick, 'u4'),
+        resultLine('🔵 BetZero', pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4, u4Win, betzeroPick, 'u4'),
         '',
         resultLine('🎯 Bet49', bet49Active, bet49Win, bet49PickText, 'bet49'),
         '',
@@ -3478,7 +3486,7 @@ async function tick() {
             var stats24Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '24HRS' }).catch(() => null);
             const statisticsRequestedAt = Date.now();
             var stats100Num = await apiPost('/Games/Balls49/Statistics', { pff: 1, gameId: GAME_ID, btc: BTC_NUM, period: '100' }).catch(() => null);
-            // Research-only observational snapshot; it never enters production prediction selection.
+            // Statistics supplied to the Lab before copying its saved BetZero prediction.
             labNumberStatistics = null;
             const statisticsReceivedAt = Date.now();
             const sourceResult = predictionLog.find(r => Number(r.drawId) === Number(nextId)-1 && r.result?.balls?.length === 6);
@@ -3497,7 +3505,9 @@ async function tick() {
             if (getDailyHistoryResetAt() && Number(drawsForPred.resetAt) !== getDailyHistoryResetAt()) return;
             if (!(drawsForPred.draws || []).length) return;
 
-            var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId);
+            if (predictionPublishPromise) await predictionPublishPromise;
+            const labBetzero = await publishPredictionSnapshot();
+            var pred = computePredictions({ data: { draws: drawsForPred.draws || [] } }, stats24Num, stats100Num, stats24HiLo, stats100HiLo, stats100TC, nextId, labBetzero);
             for (const market of ['betzero', 'rainbow']) {
                 const strategy = pred.adaptiveStrategies?.[market];
                 if (strategy?.switched) console.log(`[Strategy] ${market}: ${strategy.selected} selected for draw ${nextId}; paired samples ${strategy.comparison.pairedDraws}.`);
@@ -3591,7 +3601,7 @@ async function tick() {
                         session.masterState.lastGamePlayed = bestGame;
                         session.masterState.lastStake = computedStake;
 
-                        const emitU4 = bestGame === 'u4' && computedStake > 0 && pred.betzeroStatus === 'ACTIVE';
+                        const emitU4 = bestGame === 'u4' && computedStake > 0 && pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4;
                         const emitColor = bestGame === 'color' && computedStake > 0 && pred.rainbowStatus === 'ACTIVE';
                         const emitSum = bestGame === 'sum' && computedStake > 0 && pred.hiloStatus === 'ACTIVE';
                         const emitTotalColor = bestGame === 'totalColor' && computedStake > 0 && pred.totalColorPred.status === 'ACTIVE';
@@ -3657,7 +3667,7 @@ async function tick() {
                             
                             let isActivePrediction = false;
                             let activeMlScore = 0;
-                            if (key === 'u4' && pred.betzeroStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.u4; }
+                            if (key === 'u4' && pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4) { isActivePrediction = true; activeMlScore = localMlScores.u4; }
                             if (key === 'bet49' && bet49Numbers(pred.bet49Pick).length > 0) { isActivePrediction = true; }
                             if (key === 'color' && pred.rainbowStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.color; }
                             if (key === 'sum' && pred.hiloStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.sum; }
@@ -3693,7 +3703,7 @@ async function tick() {
                         const tc2Stake = Math.max(0, Number(payloadStakes.totalColor2) || 0);
                         const tc1Stake = Math.max(0, Number(payloadStakes.totalColor1) || 0);
 
-                        const hasBetZero = session.config.enabledGames.u4 && pred.betzeroStatus === 'ACTIVE' && bzStake > 0;
+                        const hasBetZero = session.config.enabledGames.u4 && pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 && bzStake > 0;
                         const hasBet49 = session.config.enabledGames.bet49 && bet49Numbers(pred.bet49Pick).length > 0 && bet49Stake > 0;
                         const hasRainbow = session.config.enabledGames.color && pred.rainbowStatus === 'ACTIVE' && rbStake > 0;
                         const hasHiLo = session.config.enabledGames.sum && pred.hiloStatus === 'ACTIVE' && hlStake > 0;
