@@ -29,6 +29,7 @@ function normalize(input) {
  out.sniperSettings = {};
  for (const key of [...Object.values(aliases),'unified']) { const v = input.sniperSettings?.[key] || {}; const step = Number(v.step || 0), resetLosses = Number(v.resetLosses || 0); if (!Number.isInteger(step) || step < 0 || step > 10 || !Number.isInteger(resetLosses) || resetLosses < 0 || resetLosses > 50 || (v.enabled && (!step || !resetLosses))) throw fail('Sniper needs step 1-10 and reset losses 1-50.'); out.sniperSettings[key] = { enabled: v.enabled === true, step, resetLosses }; }
  out.gapEntry = gapEntry.normalize(input.gapEntry);
+ if (Object.values(out.gapEntry).some(v => v.enabled && v.policy !== 'CONTINUOUS_GAP_WINDOWS_V2')) throw fail('Review and confirm continuous gap windows on the updated website before saving.');
  if (Object.values(out.gapEntry).some(v => v.enabled) && (out.unifiedMode || out.shadowMode || out.bzRbRollover || out.hiloRollover || out.tc3Rollover)) throw fail('Gap entry requires individual mode without shadow or rollover modes.');
  out.summaryModelMarkets = {}; out.summaryModelTargets = {};
  for (const key of ['u4','color','sum','totalColor']) { out.summaryModelMarkets[key] = input.summaryModelMarkets?.[key] === true; out.summaryModelTargets[key] = input.summaryModelTargets?.[key] === 'HOLD' ? 'HOLD' : 'ENTER'; }
