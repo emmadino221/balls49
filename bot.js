@@ -1,3 +1,4 @@
+const gapEntry = require('./automation-gap-entry');
 const { createAutomationReports } = require('./automation-reports');
 const automationStrategy = require('./automation-strategy');
 const automationControl = require('./automation-control');
@@ -705,6 +706,7 @@ function snapshotSession(session) {
         masterState: session.masterState,
         cooldowns: session.cooldowns,
         sniperState: session.sniperState,
+        gapEntryState: session.gapEntryState || {},
         config: session.config,
         stats: session.stats,
         lastBetDrawId: session.lastBetDrawId,
@@ -732,6 +734,7 @@ function persistSessions() {
 function restoreSession(session, clientId) {
     const saved = persistedSessions[clientId];
     if (!saved) return;
+    session.gapEntryState = saved.gapEntryState || {};
     session.automationHistory = Array.isArray(saved.automationHistory) ? saved.automationHistory.slice(0,100) : [];
     session.automationControl = { ...automationControl.state(session), ...saved.automationControl, executorAt: 0, executorToken: "" };
 
@@ -3470,7 +3473,7 @@ async function tick() {
             }
         }
 
-        for (const session of Object.values(userSessions)) automationStrategy.observe(session, predictionLog);
+        for (const session of Object.values(userSessions)) { automationStrategy.observe(session, predictionLog); gapEntry.observe(session, predictionLog); }
 
         if (lastPrediction && nextId && Number(nextId) >= Number(lastPrediction.drawId) + 2) { lastPrediction = null; try { fs.unlinkSync(LAST_PRED_FILE); } catch (e) {} }
 
@@ -3557,6 +3560,7 @@ async function tick() {
 
                 if (isTimeUp(session.config.schedule)) continue;
 
+                if (gapEntry.enabled(session) && (session.config.unifiedMode || automationControl.state(session).controller !== "website")) continue;
                 if (session.config.unifiedMode) {
                     if (session.masterState.inShadowMode) continue;
 
@@ -3654,6 +3658,7 @@ async function tick() {
                             }
 
                             if (!sniperAllowsEntry(session, key)) return;
+                            if (gapEntry.reason(session, key, nextId)) return;
 
                             if (!automationStrategy.warningOnly(session) && session.config.maxSteps[key] > 0 && state.localStep > session.config.maxSteps[key]) {
                                 session.stats.isHalted = true;
@@ -4956,6 +4961,17 @@ async function handleHttpRequest(req, res) {
         if (claim && claim.drawId === drawId && claim.token !== executionToken) {
             return res.end(JSON.stringify({ action: 'WAIT' }));
         }
+        gapEntry.observe(session, predictionLog);
+        const gapBlocked = gapEntry.claim(session, payload, claim);
+        if (gapBlocked) return res.end(JSON.stringify({ action: 'WAIT', reason: gapBlocked }));
+        if (gapEntry.enabled(session)) {
+            // Persist trigger consumption before handing execution to the extension.
+            try { persistSessions(); } catch {
+                session.stats.isHalted = true;
+                session.stats.haltReason = 'Gap entry state could not be saved. Automation stopped.';
+                return res.end(JSON.stringify({ action: 'WAIT', reason: session.stats.haltReason }));
+            }
+        }
         if (!claim || claim.drawId !== drawId) {
             session.betExecutionClaim = { drawId, token: executionToken };
         }
@@ -5071,7 +5087,9 @@ async function handleHttpRequest(req, res) {
                 && !passesStrategyFilter(session, key, lastPredData));
             const readyKey = enabledKeys.find(key => predictionByKey[key] === 'ACTIVE'
                 && passesSummaryModelGate(session, key, lastPredData)
-                && passesStrategyFilter(session, key, lastPredData));
+                && passesStrategyFilter(session, key, lastPredData)
+                && !gapEntry.reason(session, key, lastPrediction?.drawId));
+            const gapBlockedKey = enabledKeys.find(key => gapEntry.reason(session, key, lastPrediction?.drawId));
             if (!enabledKeys.length) {
                 decisionReason = session.config.unifiedMode && Object.values(session.config.enabledGames).some(Boolean)
                     ? 'Unified is waiting for an eligible score-selected prediction.'
@@ -5085,6 +5103,8 @@ async function handleHttpRequest(req, res) {
             } else if (summaryBlockedKey) {
                 decisionReason = `${decisionLabels[summaryBlockedKey]} is waiting for Summary ${getSummaryGateTarget(session.config, summaryBlockedKey)} on this draw.`;
 
+            } else if (gapBlockedKey && !readyKey) {
+                decisionReason = gapEntry.reason(session, gapBlockedKey, lastPrediction?.drawId);
             } else if (readyKey) {
                 decisionReason = `${decisionLabels[readyKey]} is eligible for the next draw.`;
             } else {
@@ -5313,6 +5333,8 @@ async function handleHttpRequest(req, res) {
         session.stats.haltReason = "🛑 Wiped & Stopped by User";
         
         session.sniperState = makeDefaultSniperState();
+        session.gapEntryState = {};
+        gapEntry.configure(session, gapEntry.normalize(session.config.gapEntry), predictionLog);
         session.pendingBetPayload = null;
         session.betExecutionClaim = null;
         session.failedBetRecovery = null;
