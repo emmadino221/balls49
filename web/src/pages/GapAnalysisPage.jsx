@@ -1,3 +1,4 @@
+import GapSuggestion from '../components/GapSuggestion';
 import React, { useEffect, useMemo, useState } from 'react';
 import { losingStreakGaps } from '../losing-streak-gaps';
 import './gap-analysis.css';
@@ -52,6 +53,7 @@ export default function GapAnalysisPage() {
       <button type="button" className="btn btn-primary" disabled={loading} onClick={()=>setRefresh(n=>n+1)}>{loading?'Loading history...':'Refresh charts'}</button>
     </section>
     <nav className="gap-games" aria-label="Select prediction market">{games.map(([id,name])=><button type="button" key={id} aria-pressed={market===id} onClick={()=>setMarket(id)}>{name}</button>)}</nav>
+    <GapSuggestion key={`${market}:${snapshot?.at}`} records={records} market={market} label={label} loading={loading || !!error} />
     {error&&<p role="alert" className="content-card">{error} {snapshot?'Charts retain the previous snapshot.':''}</p>}
     <p className="gap-coverage" role="status">{snapshot?`${label} | ${report.count} loaded / ${snapshot.range} requested draws | #${report.first || '?'} to #${report.latest || '?'} | Refreshed ${new Date(snapshot.at).toLocaleTimeString()}`:'Loading your first history snapshot...'} {provisional?'Partial / provisional coverage.':''}</p>
     <section className="gap-kpis" aria-label="Market overview">{[[report.pending?'Last known loss run':'Current loss run',`${report.lowerBound?'At least ':''}${report.run}`],['Largest observed run',report.worst],['Selected level',`${level} losses`],['Occurrences',selected.count]].map(([name,value])=><article className="content-card" key={name}><span>{name}</span><strong>{value}</strong></article>)}</section>
