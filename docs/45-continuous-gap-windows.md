@@ -9,3 +9,11 @@ An unresolved draw waits; a missing draw or corrected observed result pauses for
 The website estimator uses the chosen level, not profitability ranking: continuous windows do not select different bets after initialization. Old trigger backtest profits are no longer offered for application. Saved settings use exact V2 policy and existing revision guards; settings are read back after save. Other market settings are preserved.
 
 No production deployment or data changes. Node syntax and frontend build are the local validation; automated execution/restart scenarios and demo browser validation remain outstanding. Main and the separately maintained bot release must both receive compatible window code before activation. Require an explicit settings save after upgrade. Rollback requires reviewing saved V2 state; do not assume an older bot interprets it safely.
+
+## Optional automatic next-window selection
+
+`gapEntry[market].autoSelect` defaults false. Enable and confirm through stopped Automation settings. The configured loss level remains the initial choice; `activeLevel` and each frozen window level are persisted separately. Restarts retain current window and selected level. Disabling auto selection holds the current level; changing the initial loss-level setting explicitly reinitializes the window while stopped.
+
+Track bounded samplers for levels 1-100, at most 100 gaps each. At window boundaries only, score the last 30 gaps: require 10 samples, coefficient of variation <=1 and relative half-sample mean drift <=35%. Score n/(1+CV^2). Replace a supported current level only with at least as many samples and score >=1.25 times current; an unsupported level may be replaced by a qualifying one. Ties use the lower numeric level. These heuristic thresholds describe spacing support, not statistical significance or profitability. No viable improvement keeps the current level. Keep the latest 20 decisions with draw IDs and reasons. Initial candidate seeding excludes any draw after the already processed watermark; completed observations advance each sampler once. Existing correction and missing-result pauses still apply. No stake/recovery mutation or mid-window selection.
+
+Validation: syntax and production build only; automated restart/boundary and browser/demo checks remain outstanding. Not deployed.

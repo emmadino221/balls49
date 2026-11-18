@@ -8,7 +8,7 @@ function normalize(input = {}) {
     const value = input[market] || {}, losses = Number(value.losses ?? 3);
     if (!Number.isSafeInteger(losses) || losses < 1 || losses > 100) throw Object.assign(new Error('Gap entry needs a loss threshold between 1 and 100.'), { status: 400 });
     if (value.policy && !['AVERAGE_GAP_AND_LOSS_V1','CONTINUOUS_GAP_WINDOWS_V2'].includes(value.policy)) throw Object.assign(new Error('Unknown gap policy.'), { status: 400 });
-    output[market] = { enabled: value.enabled === true, losses, policy: value.policy || 'AVERAGE_GAP_AND_LOSS_V1' };
+    output[market] = { enabled: value.enabled === true, losses, autoSelect: value.autoSelect === true, policy: value.policy || 'AVERAGE_GAP_AND_LOSS_V1' };
   }
   return output;
 }
@@ -44,11 +44,43 @@ function seed(records, market, threshold) {
   }
   return { history, lastSeen };
 }
+// Spacing support only: never use profit or future outcomes to select a level.
+function support(history) {
+  const gaps = history.gaps.slice(-30);
+  if (gaps.length < 10) return null;
+  const mean = gaps.reduce((a,b)=>a+b,0)/gaps.length;
+  const cv = Math.sqrt(gaps.reduce((a,b)=>a+(b-mean)**2,0)/gaps.length)/mean;
+  const mid = Math.floor(gaps.length/2);
+  const older = gaps.slice(0,mid).reduce((a,b)=>a+b,0)/mid;
+  const newer = gaps.slice(mid).reduce((a,b)=>a+b,0)/(gaps.length-mid);
+  const drift = Math.abs(newer-older)/mean;
+  if (cv > 1 || drift > .35) return null;
+  return { samples:gaps.length, cv, drift, score:gaps.length/(1+cv*cv) };
+}
+function seedCandidates(st, records, market) {
+  const past = records.filter(r=>Number(r.drawId)<=st.lastSeen);
+  st.candidates = Object.fromEntries(Array.from({length:100},(_,i)=>[i+1,seed(past,market,i+1).history]));
+  // Preserve the active sampler, including history older than the current feed.
+  st.candidates[st.activeLevel] = st.history;
+}
+function reviewLevel(st) {
+  const current = support(st.candidates[st.activeLevel]);
+  const eligible = Object.entries(st.candidates).map(([level,h])=>({level:Number(level),...support(h)}))
+    .filter(v=>Number.isFinite(v.score)).sort((a,b)=>b.score-a.score||a.level-b.level);
+  const best = eligible[0];
+  const change = best && best.level !== st.activeLevel && (!current || (best.samples >= current.samples && best.score >= current.score*1.25));
+  const from = st.activeLevel;
+  if (change) { st.activeLevel = best.level; st.history = st.candidates[best.level]; }
+  st.selection = { at:st.lastSeen, from, to:st.activeLevel, changed:!!change,
+    reason:change ? `Level ${best.level}: ${best.samples} recent gaps, spacing variation ${best.cv.toFixed(2)}, average drift ${(best.drift*100).toFixed(0)}%; stronger support than level ${from}.`
+      : 'Kept current level: no alternative meets the evidence and improvement requirements.' };
+  st.selectionHistory = [...(st.selectionHistory || []),st.selection].slice(-20);
+}
 function openWindow(st) {
   if (st.history.gaps.length < MIN_GAPS) { st.window = null; return; }
   const average = st.history.gaps.reduce((a,b)=>a+b,0)/st.history.gaps.length;
   const length = Math.max(1, Math.ceil(average));
-  st.window = { start: st.lastSeen+1, end: st.lastSeen+length, length, average, samples: st.history.gaps.length };
+  st.window = { start: st.lastSeen+1, end: st.lastSeen+length, length, average, level: st.activeLevel, samples: st.history.gaps.length };
   st.windowNumber = (st.windowNumber || 0)+1;
 }
 function configure(s, config, records) {
@@ -59,10 +91,16 @@ function configure(s, config, records) {
       const old = s.gapEntryState[key];
       const seeded = seed(records, market, next.losses);
       s.gapEntryState[key] = { policy: next.policy, ...seeded,
-        losses: seeded.history.run, window: null, windowNumber: 0,
+        activeLevel: next.losses, losses: seeded.history.run, window: null, windowNumber: 0,
         reserved: old?.reserved || null, reservedSettled: old?.reservedSettled || false,
         outcomes: Object.fromEntries(records.filter(r => Number(r.drawId) <= seeded.lastSeen && Number(r.drawId) > seeded.lastSeen-200 && r.result?.[market]).map(r => [r.drawId,r.result[market]])) };
       if (next.policy === POLICY) openWindow(s.gapEntryState[key]);
+    }
+    const st = s.gapEntryState[key];
+    if (next.enabled && st?.policy === POLICY) {
+      st.activeLevel ||= next.losses;
+      if (next.autoSelect && (!prior?.autoSelect || !st.candidates)) seedCandidates(st,records,market);
+      if (!next.autoSelect) delete st.candidates;
     }
   }
   s.config.gapEntry = config;
@@ -76,6 +114,8 @@ function observe(s, records) {
     if (!cfg?.enabled) continue;
     const st = s.gapEntryState[key];
     if (!st || st.paused || st.policy !== POLICY) continue;
+    st.activeLevel ||= cfg.losses;
+    if (cfg.autoSelect && !st.candidates) seedCandidates(st,ordered,market);
     for (const record of ordered) {
       const id = Number(record.drawId), result = record.result?.[market];
       if (!Number.isSafeInteger(id) || id < 1) continue;
@@ -87,10 +127,17 @@ function observe(s, records) {
       if (st.lastSeen && id !== st.lastSeen + 1) { st.paused = 'Missing draw history. Review and reset the stopped session before continuing windows.'; break; }
       st.lastSeen = id; st.outcomes[id] = result;
       for (const seen of Object.keys(st.outcomes)) if (Number(seen) < id - 200) delete st.outcomes[seen];
-      advance(st.history, id, result, cfg.losses);
+      if (cfg.autoSelect) {
+        for (const [level,history] of Object.entries(st.candidates)) advance(history,id,result,Number(level));
+        st.history = st.candidates[st.activeLevel];
+      } else advance(st.history, id, result, st.activeLevel);
       st.losses = st.history.run;
       // Completed SKIPs consume a draw slot, but never touch staking state.
-      if (!st.window || id >= st.window.end) openWindow(st);
+      if (!st.window || id >= st.window.end) {
+        // Review only after the current window completes; initial sizing keeps the chosen level.
+        if (st.window && cfg.autoSelect) reviewLevel(st);
+        openWindow(st);
+      }
       if (Number(st.reserved) === id) st.reservedSettled = true;
     }
   }
@@ -131,7 +178,7 @@ function view(s) {
     const st = s.gapEntryState?.[key];
     const w = st?.window;
     return [market, { policy: st?.policy, averageGap: w?.average ?? null, gapSamples: w?.samples ?? 0,
-      losses: st?.losses || 0, threshold: s.config.gapEntry[market].losses,
+      losses: st?.losses || 0, threshold: w?.level ?? st?.activeLevel ?? s.config.gapEntry[market].losses, configuredLevel: s.config.gapEntry[market].losses, autoSelect: s.config.gapEntry[market].autoSelect === true, selection: st?.selection || null, selectionHistory: st?.selectionHistory || [],
       windowStart: w?.start ?? null, windowEnd: w?.end ?? null, windowLength: w?.length ?? null,
       windowNumber: st?.windowNumber || 0, completedDraws: w ? Math.max(0,Math.min(w.length,st.lastSeen-w.start+1)) : 0,
       phase: st?.policy !== POLICY ? 'Review and save settings to use continuous windows' : st.paused ? 'Paused: history needs review' : st.reserved && !st.reservedSettled ? 'Waiting for settlement' : !w ? 'Waiting for two historical gaps' : 'Playing window: every eligible draw' }];
