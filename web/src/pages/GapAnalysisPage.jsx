@@ -25,6 +25,14 @@ function Pie({ rows }) {
 export default function GapAnalysisPage() {
   const [market,setMarket]=useState('bet49'),[range,setRange]=useState('1000'),[view,setView]=useState('levels'),[level,setLevel]=useState(3);
   const [snapshot,setSnapshot]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[refresh,setRefresh]=useState(0);
+  const [autoRefresh,setAutoRefresh]=useState(false),[windowBusy,setWindowBusy]=useState(false);
+  useEffect(()=>{
+    if(!autoRefresh || loading || windowBusy)return;
+    const tick=()=>{if(!document.hidden)setRefresh(n=>n+1);};
+    const timer=setTimeout(tick,10000);
+    document.addEventListener('visibilitychange',tick);
+    return()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',tick);};
+  },[autoRefresh,loading,windowBusy,refresh]);
   useEffect(()=>{
     let active=true;const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);
     setLoading(true);setError('');
@@ -50,10 +58,12 @@ export default function GapAnalysisPage() {
       <label>History window<select value={range} onChange={e=>setRange(e.target.value)}>{[100,200,500,1000].map(n=><option key={n} value={n}>Last {n} draws</option>)}</select></label>
       <label>Counting method<select value={view} onChange={e=>setView(e.target.value)}><option value="levels">Loss levels reached</option><option value="completed">Completed streaks: exact length</option></select></label>
       <label>Explore loss level<input type="number" min="1" max={Math.max(100,report.worst)} value={level} onChange={e=>setLevel(Math.max(1,Math.min(Math.max(100,report.worst),Math.floor(Number(e.target.value))||1)))} /></label>
-      <button type="button" className="btn btn-primary" disabled={loading} onClick={()=>setRefresh(n=>n+1)}>{loading?'Loading history...':'Refresh charts'}</button>
+      <button type="button" className="btn btn-primary" disabled={loading||windowBusy} onClick={()=>setRefresh(n=>n+1)}>{loading?'Loading history...':'Refresh charts'}</button>
+      <button type="button" className="btn btn-secondary" aria-pressed={autoRefresh} onClick={()=>setAutoRefresh(v=>!v)}>Auto refresh: {autoRefresh?'ON':'OFF'}</button>
+      <p className="gap-refresh-help">{autoRefresh?'Refreshes every 10 seconds after requests finish; pauses while this tab is hidden or settings are saving.':'Automatic refresh is off. Use Refresh charts or Calculate playing window for a manual update.'} Refreshing never applies settings or starts automation.</p>
     </section>
     <nav className="gap-games" aria-label="Select prediction market">{games.map(([id,name])=><button type="button" key={id} aria-pressed={market===id} onClick={()=>setMarket(id)}>{name}</button>)}</nav>
-    <GapSuggestion key={`${market}:${level}:${snapshot?.at}`} level={level} records={records} market={market} label={label} loading={loading || !!error} />
+    <GapSuggestion key={`${market}:${level}`} snapshotAt={snapshot?.at} autoRefresh={autoRefresh} onBusy={setWindowBusy} level={level} records={records} market={market} label={label} loading={loading || !!error} />
     {error&&<p role="alert" className="content-card">{error} {snapshot?'Charts retain the previous snapshot.':''}</p>}
     <p className="gap-coverage" role="status">{snapshot?`${label} | ${report.count} loaded / ${snapshot.range} requested draws | #${report.first || '?'} to #${report.latest || '?'} | Refreshed ${new Date(snapshot.at).toLocaleTimeString()}`:'Loading your first history snapshot...'} {provisional?'Partial / provisional coverage.':''}</p>
     <section className="gap-kpis" aria-label="Market overview">{[[report.pending?'Last known loss run':'Current loss run',`${report.lowerBound?'At least ':''}${report.run}`],['Largest observed run',report.worst],['Selected level',`${level} losses`],['Occurrences',selected.count]].map(([name,value])=><article className="content-card" key={name}><span>{name}</span><strong>{value}</strong></article>)}</section>
