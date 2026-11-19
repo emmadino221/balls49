@@ -3525,12 +3525,18 @@ async function tick() {
                 if (isTimeUp(session.config.schedule)) continue;
 
                 // Retired markets: pause instead of switching legacy settings to other games.
+                // The old settings are switched off once, so the session can be started again after review;
+                // otherwise nothing could clear them and every start would be paused again.
                 if (session.config.unifiedMode || session.config.enabledGames?.totalColor2) {
-                    if (!session.stats.isHalted) {
-                        session.stats.isHalted = true;
-                        session.stats.haltReason = 'A saved market has been removed. Review supported games and save settings before restarting.';
-                        sendSessionDM(session, '⏸ <b>Automation paused.</b>\nTotal Color 2-way and Unified have been removed. Choose supported games and save your settings to restart.').catch(() => {});
-                    }
+                    session.config.unifiedMode = false;
+                    session.config.enabledGames.totalColor2 = false;
+                    session.config.initialStakes.totalColor2 = 0;
+                    session.stats.isHalted = true;
+                    session.stats.haltReason = 'A saved market has been removed. Review supported games and save settings before restarting.';
+                    session.pendingBetPayload = session.betExecutionClaim ? session.pendingBetPayload : null;
+                    persistSessions();
+                    // sendSessionDM sends nothing once a session is halted, so message directly.
+                    sendPersonalDM(session.config.telegramChatId, '⏸ <b>Automation paused.</b>\nTotal Color 2-way and Unified have been removed. Review your games and settings, then press Start.').catch(() => {});
                     continue;
                 }
 
@@ -5378,10 +5384,18 @@ async function handleHttpRequest(req, res) {
                     delete cfg.telegramChatId;
                     session.config.telegramChatId = null;
                 }
-                session.stats.isHalted = false;
-                session.stats.haltReason = "";
-                
-                if (cfg.running !== undefined && cfg.running === false) {
+                // Validate before changing anything, so a rejected request leaves the session as it was.
+                const requestedChatId = cfg.telegramChatId === undefined ? undefined : String(cfg.telegramChatId).trim();
+                if (requestedChatId !== undefined && !/^-?\d+$/.test(requestedChatId) && requestedChatId !== '' && requestedChatId !== 'null') {
+                    return sendJson(res, 400, { error: 'Invalid Telegram Chat ID format' });
+                }
+                // Only an explicit start or stop changes the running state. Saving settings from the
+                // popup and the settings sync on every Bet9ja page load send no "running" field;
+                // treating that as "run" restarted a stopped session and cleared a limit stop.
+                if (cfg.running === true) {
+                    session.stats.isHalted = false;
+                    session.stats.haltReason = "";
+                } else if (cfg.running === false) {
                     session.stats.isHalted = true;
                     session.stats.haltReason = "🛑 Stopped by User";
                 }
@@ -5425,9 +5439,8 @@ async function handleHttpRequest(req, res) {
                         session.config.enabledGames.totalColor = Boolean(cfg.enabledGames.totalColor);
                     }
                     if (cfg.enabledGames.totalColor1 !== undefined) session.config.enabledGames.totalColor1 = Boolean(cfg.enabledGames.totalColor1);
-                    if (cfg.enabledGames.totalColor2 !== undefined) {
-                        session.config.enabledGames.totalColor2 = Boolean(cfg.enabledGames.totalColor2);
-                    }
+                    // Retired market: any saved game list switches it off (newer builds never send it).
+                    session.config.enabledGames.totalColor2 = false;
                 }
                 if (cfg.takeProfit !== undefined) {
                     const tp = parseInt(cfg.takeProfit, 10);
@@ -5438,18 +5451,12 @@ async function handleHttpRequest(req, res) {
                     session.config.stopLoss = (isNaN(sl) || sl > 0) ? 0 : Math.max(sl, -10000000); 
                 }
                 if (cfg.hiloMultiplier !== undefined) {
+                    // The website and popup offer 1.4x and 2x only; anything else falls back to 2x.
                     const hm = parseFloat(cfg.hiloMultiplier);
-                    session.config.hiloMultiplier = (isNaN(hm) || hm <= 0) ? 2.0 : hm;
+                    session.config.hiloMultiplier = [1.4, 2].includes(hm) ? hm : 2.0;
                 }
-                if (cfg.telegramChatId !== undefined) {
-                    const chatId = String(cfg.telegramChatId).trim();
-                    if (/^-?\d+$/.test(chatId)) {
-                        session.config.telegramChatId = chatId;
-                    } else if (chatId === '' || chatId === 'null') {
-                        session.config.telegramChatId = null;
-                    } else {
-                        return res.writeHead(400), res.end(JSON.stringify({ error: 'Invalid Telegram Chat ID format' }));
-                    }
+                if (requestedChatId !== undefined) {
+                    session.config.telegramChatId = /^-?\d+$/.test(requestedChatId) ? requestedChatId : null;
                 }
                 if (cfg.flatBetting !== undefined) session.config.flatBetting = Boolean(cfg.flatBetting);
                 if (cfg.sniperSettings && typeof cfg.sniperSettings === 'object') {
@@ -5485,7 +5492,7 @@ async function handleHttpRequest(req, res) {
                         }
                     }
                 }
-                if (cfg.unifiedMode !== undefined) session.config.unifiedMode = Boolean(cfg.unifiedMode);
+                if (cfg.unifiedMode !== undefined) session.config.unifiedMode = false; // retired; true is rejected above
                 if (cfg.bzRbRollover !== undefined) session.config.bzRbRollover = Boolean(cfg.bzRbRollover);
                 if (cfg.hiloRollover !== undefined) session.config.hiloRollover = Boolean(cfg.hiloRollover);
                 if (cfg.tc3Rollover !== undefined) session.config.tc3Rollover = Boolean(cfg.tc3Rollover);

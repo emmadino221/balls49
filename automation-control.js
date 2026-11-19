@@ -17,7 +17,10 @@ function settings(s) {
 }
 function view(s) { guard(s); const c = state(s); return { gapEntry: gapEntry.view(s), suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, settledDraws: s.stats.settledDraws || 0, currentLossStreak: s.stats.currentLossStreak || 0, maxLossStreak: s.stats.maxLossStreak || 0, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
 function normalize(input) {
- if (input.unifiedMode === true || input.enabledGames?.totalColor2 === true) throw fail('Total Color 2-way and Unified have been removed. Reload and choose a supported game.');
+ // Total Color 2-way and Unified are retired. The dashboard sends back whatever settings()
+ // returned, including an old enabled flag the page has no control for, so a save switches
+ // them off rather than refusing (which left no way to clear them).
+ input = { ...input, unifiedMode: false, enabledGames: { ...(input.enabledGames || {}), totalColor2: false } };
  const out = {};
  for (const [field,max] of [['stakes',50000],['gameSteps',1000]]) { out[field] = {}; for (const key of Object.values(aliases)) { const n = Number(input[field]?.[key]); if (!Number.isSafeInteger(n) || n < 0 || n > max) throw fail(`Invalid ${field} for ${key}.`); out[field][key] = n; } }
  out.enabledGames = {}; for (const key of Object.values(aliases)) out.enabledGames[key] = input.enabledGames?.[key] === true;
@@ -26,7 +29,6 @@ function normalize(input) {
  out.tc1ProfitMode = input.tc1ProfitMode === 'accumulating' ? 'accumulating' : 'fixed';
  out.bet49ProfitMode = input.bet49ProfitMode === 'accumulating' ? 'accumulating' : 'fixed';
  for (const key of ['flatBetting','unifiedMode','bzRbRollover','hiloRollover','tc3Rollover','shadowMode','weightedStaking']) out[key] = input[key] === true;
- if (out.unifiedMode && out.enabledGames.totalColor1) throw fail('Winning Color requires individual mode.');
  out.sniperSettings = {};
  for (const key of [...Object.values(aliases),'unified']) { const v = input.sniperSettings?.[key] || {}; const step = Number(v.step || 0), resetLosses = Number(v.resetLosses || 0); if (!Number.isInteger(step) || step < 0 || step > 10 || !Number.isInteger(resetLosses) || resetLosses < 0 || resetLosses > 50 || (v.enabled && (!step || !resetLosses))) throw fail('Sniper needs step 1-10 and reset losses 1-50.'); out.sniperSettings[key] = { enabled: v.enabled === true, step, resetLosses }; }
  out.gapEntry = gapEntry.normalize(input.gapEntry);
