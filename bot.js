@@ -332,7 +332,6 @@ function siteSession(req) {
         const user = getSiteUser(session.email);
         if (!user || user.emailVerified === false) return null;
     }
-    retiredMarkets.guard(session);
     return session;
 }
 function setSessionCookie(res, token, maxAgeSeconds) {

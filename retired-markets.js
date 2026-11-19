@@ -7,8 +7,10 @@ function clean(value) {
  if(!value || typeof value!=='object') return value;
  return Object.fromEntries(Object.entries(value).filter(([k])=>!fields.has(k)).map(([k,v])=>[k,clean(v)]));
 }
+// Automation sessions only: website login sessions have no config and are left alone.
 function guard(session) {
- const c=session.config;
+ const c=session?.config;
+ if(!c) return;
  if(c.unifiedMode || c.enabledGames?.totalColor2 || c.suggestionStrategy?.request?.games?.some(k=>retired.has(k))) {
    session.stats.isHalted=true;session.stats.haltReason='A saved market has been removed. Review supported games and save settings before restarting.';
    if(!session.betExecutionClaim)session.pendingBetPayload=null;
