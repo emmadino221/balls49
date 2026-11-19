@@ -2,11 +2,42 @@ import AutomationEmailReports from '../components/AutomationEmailReports';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../auth.js';
 import './automation.css';
+import './balls49-automation.css';
 import AutomationSuggestion from '../components/AutomationSuggestion';
 const games = [['betzero','BetZero','u4'],['bet49','Bet49','bet49'],['rainbow','Rainbow','color'],['hilo','High / Low','sum'],['totalColor','Total Color 3-way','totalColor'],['totalColor1','Winning Color','totalColor1']];
 const money = n => n == null ? '--' : new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN',maximumFractionDigits:2}).format(n);
 const copy = value => JSON.parse(JSON.stringify(value));
-const showPick = value => value == null ? '--' : Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? (value.topColors || value.top2 || value.top1 || []).join(', ') || value.key || '--' : String(value);
+const ballColor = n => Number(n) === 49 ? 'yellow' : Number(n) % 3 === 1 ? 'red' : Number(n) % 3 === 2 ? 'blue' : 'green';
+const COLOR_NAMES = { red: 'Red', blue: 'Blue', green: 'Green', black: 'No winning colour', yellow: 'Gold' };
+const isBallNumber = v => /^\d{1,2}$/.test(String(v).trim()) && Number(v) >= 1 && Number(v) <= 49;
+function Ball({ n, color, size }) {
+  const shade = color || ballColor(n);
+  return <span className={`ba-ball is-${shade}${size ? ` is-${size}` : ''}`} title={n != null ? `Ball ${n}` : COLOR_NAMES[shade]}>{n != null ? n : ''}</span>;
+}
+function selectionItems(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'object') return value.topColors || value.top2 || value.top1 || (value.key ? [value.key] : []);
+  return [value];
+}
+// A pick as it appears in the game: numbered balls, colour chips, or a High/Low badge.
+function Selection({ value }) {
+  const items = selectionItems(value);
+  if (!items.length) return <span className="ba-muted">--</span>;
+  return <span className="ba-selection">{items.map((item, i) => isBallNumber(item) ? <Ball key={i} n={Number(item)} size="sm" />
+    : COLOR_NAMES[String(item).toLowerCase()] ? <span key={i} className={`ba-chip is-${String(item).toLowerCase()}`}><i aria-hidden="true" />{COLOR_NAMES[String(item).toLowerCase()]}</span>
+    : <span key={i} className="ba-tag">{String(item)}</span>)}</span>;
+}
+// The last played draw's picks, resting in the glass draw tube.
+function DrawTube({ row }) {
+  const balls = row ? row.games.flatMap(g => selectionItems(g.selections).map(item => isBallNumber(item) ? { n: Number(item) } : COLOR_NAMES[String(item).toLowerCase()] ? { color: String(item).toLowerCase() } : null).filter(Boolean)).slice(0, 7) : [];
+  return <figure className="ba-tube-wrap" aria-label={row ? `Your last pick, draw ${row.drawId}` : 'No picks played yet'}>
+    <div className="ba-tube">{balls.length ? balls.map((b, i) => <span key={i} className="ba-tube-slot" style={{ '--i': i }}><Ball n={b.n} color={b.color} size="lg" /></span>)
+      : <span className="ba-tube-empty">Your picks land here after the first bet.</span>}</div>
+    <figcaption>{row ? `Your last pick, draw #${row.drawId}` : 'Waiting for the first draw'}</figcaption>
+  </figure>;
+}
+
 export default function AutomationPage() {
  const [data,setData]=useState(null), [draft,setDraft]=useState(null), [draftRevision,setDraftRevision]=useState(null), [key,setKey]=useState('');
  const [error,setError]=useState(''), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false), [updated,setUpdated]=useState(null);
@@ -46,10 +77,25 @@ export default function AutomationPage() {
  const gapStatuses=Object.entries(c?.gapEntry||{});
  const nextStep=stale?'Waiting for a fresh connection.':!web?'Choose Use website control to manage this session here.':!c?.online?'Open Bet9ja with the extension connected.':c?.suggestionStrategy?.needsReview?'Review and reapply your strategy before starting.':!selectedGames.length?'Choose a strategy or enable a game in Settings.':c?.running?'Your saved setup is running.':c?.busy?'An execution or recovery sequence is in progress.':'Your saved setup is ready. Press Start when you want to begin.';
  const sections=[['overview','Overview'],['strategies','Strategies'],['activity','Activity'],['reports','Email reports'],['settings','Settings']];
+ const tabRefs=useRef([]);
+ function tabKey(event,index){const moves={ArrowRight:1,ArrowLeft:-1};const next=event.key==='Home'?0:event.key==='End'?sections.length-1:moves[event.key]!=null?(index+moves[event.key]+sections.length)%sections.length:null;if(next==null)return;event.preventDefault();setSection(sections[next][0]);tabRefs.current[next]?.focus();}
 
- return <main className="page-wrap automation-page">
+ return <main className="page-wrap automation-page ba-page">
   {gapStatuses.length>0 && <section className="content-card" aria-label="Gap entry status"><h2>Continuous gap windows</h2>{gapStatuses.map(([id,status])=><p key={id}><strong>{games.find(g=>g[0]===id)?.[1]||id}:</strong> {status.phase} | Auto gap: {status.autoSelect ? "ON" : "OFF"} | Selected level: {status.threshold} | {status.selection?.reason || "No automatic review yet"} | {status.losses}/{status.threshold} losses · Average gap: {status.averageGap == null ? "Waiting for history" : `${status.averageGap.toFixed(1)} draws`} ({status.gapSamples || 0} prior gaps) · Window: {status.completedDraws ?? 0}/{status.windowLength ?? "--"} draws | #{status.windowStart ?? "--"} to #{status.windowEnd ?? "--"}</p>)}</section>}
-  <section className="automation-hero"><div><span className="overline">YOUR AUTOMATION WORKSPACE</span><h1>Stay in control.</h1><p>Your session, strategies and results in one place.</p></div><div className="automation-hero-meta"><span className="automation-live-label">{updated&&!stale?'Status updated':'Waiting for status'}</span><strong>{updated?new Date(updated).toLocaleTimeString():'--'}</strong><a href="guide.html">Automation guide ↗</a></div></section>
+   <section className={`ba-studio${c?.running&&!stale?' is-live':''}`} aria-labelledby="ba-title">
+    <div className="ba-studio-copy"><h1 id="ba-title">Your 49ja bot</h1>
+     <p>{!data?'Connecting to your account...':!data.linked?'Link your extension to bring your bot into the studio.':c?.reason}</p>
+     <small>{updated?`Status updated at ${new Date(updated).toLocaleTimeString()}`:'Waiting for status'}. <a href="guide.html">Automation guide</a></small></div>
+    <DrawTube row={c?.history?.[0]} />
+    {c && <div className="ba-board" role="status" aria-label="Session board">
+     <span className={`ba-board-state${c.running&&!stale?' is-live':''}`}><i aria-hidden="true" />{stale?'No signal':!c.online?'Extension offline':c.running?'Live':'Paused'}</span>
+     <span className="ba-board-cell is-profit"><small>Session</small><b className={c.profit>0?'ba-pos':c.profit<0?'ba-neg':''}>{money(c.profit)}</b></span>
+     <span className="ba-board-cell"><small>Record</small><b>{c.wins} W {c.losses} L</b></span>
+     <span className="ba-board-cell"><small>Losing streak</small><b>{c.currentLossStreak || 0}</b></span>
+     <span className="ba-board-cell"><small>Control</small><b>{web?'Website':'Extension'}</b></span>
+    </div>}
+    {c && <div className="ba-controls"><button className="btn btn-primary" disabled={busy||stale||!web||!c.online||c.running||!selectedGames.length||!!c.suggestionStrategy?.needsReview} onClick={()=>command('start')}>Start automation</button><button className="btn automation-stop" disabled={busy} onClick={()=>command('stop')}>Stop automation</button><button className="btn btn-secondary" disabled={busy||stale} onClick={()=>command(web?'extension':'website')}>{web?'Use extension control':'Use website control'}</button></div>}
+   </section>
   {error && <div className="automation-warning" role="alert">{error} <a href="login.html">Sign in</a></div>}
   {notice && <p className="automation-notice" role="status">{notice}</p>}
 
@@ -57,11 +103,10 @@ export default function AutomationPage() {
   {!data && !error && <p role="status">Connecting to your account...</p>}
   {data && !data.linked && <section className="content-card automation-connect"><span className="overline">ONE-TIME CONNECTION</span><h2>Link your extension</h2><p>Enter your own extension access key. This links the same session you already use in the extension. It is not your Bet9ja password or the site admin key.</p><form onSubmit={link}><label>Extension access key<input type="password" value={key} onChange={e=>setKey(e.target.value)} autoComplete="off" minLength="32" maxLength="256" required /></label><button className="btn btn-primary" disabled={busy}>Connect my extension</button></form><p>Your key is stored encrypted. Keep it private.</p></section>}
   {c && <>
-   <section className="automation-control-bar content-card"><div><span className={`automation-status ${c.online&&!stale?'online':''}`}>{stale?'Status unavailable':c.online?'Extension connected':'Extension offline'}</span><h2>{stale?'Connection interrupted':c.running?'Automation active':'Automation paused'}</h2><p>{c.reason}</p><small>Controller: {web?'Website':'Extension'} / Last seen: {c.lastSeen?new Date(c.lastSeen).toLocaleTimeString():'Not connected'}</small></div><div className="automation-actions"><button className="btn btn-primary" disabled={busy||stale||!web||!c.online||c.running||!selectedGames.length||!!c.suggestionStrategy?.needsReview} onClick={()=>command('start')}>Start automation</button><button className="btn automation-stop" disabled={busy} onClick={()=>command('stop')}>Stop automation</button><button className="btn btn-secondary" disabled={busy||stale} onClick={()=>command(web?'extension':'website')}>{web?'Use extension control':'Use website control'}</button></div></section>
    <div className="automation-next-step"><span>SESSION STATUS</span><p>{nextStep}</p></div>
    <p className="automation-session-note">Keep Bet9ja and the extension open. You can close this dashboard.</p>
-   <nav className="automation-section-nav" aria-label="Automation sections">{sections.map(([id,label])=><button type="button" key={id} aria-pressed={section===id} aria-controls={`automation-${id}`} onClick={()=>setSection(id)}>{label}{id==='activity'&&<span>{c.history.length}</span>}</button>)}</nav>
-   <section id="automation-overview" hidden={section!=='overview'} aria-label="Session overview">
+    <div className="ba-tabs" role="tablist" aria-label="Automation sections">{sections.map(([id,label],index)=><button type="button" key={id} role="tab" id={`automation-tab-${id}`} aria-selected={section===id} tabIndex={section===id?0:-1} aria-controls={`automation-${id}`} ref={el=>{tabRefs.current[index]=el;}} onKeyDown={e=>tabKey(e,index)} onClick={()=>setSection(id)}>{label}{id==='activity'&&c.history.length>0&&<span className="ba-count">{c.history.length}</span>}</button>)}</div>
+   <section id="automation-overview" role="tabpanel" aria-labelledby="automation-tab-overview" hidden={section!=='overview'}>
    <div className="automation-section-title"><div><span className="overline">AT A GLANCE</span><h2>Session performance</h2></div><span className="automation-caption">Since your last execution reset</span></div>
 
    <section className="automation-metrics">{[['Reported Bet9ja balance',money(c.liveBalance)],['Calculated balance',money(c.virtualBalance)],['Session profit / loss',money(c.profit)],['Session record',`${c.wins} wins / ${c.losses} losses`],['Current losing streak',`${c.currentLossStreak || 0} draws`],['Worst losing streak',`${c.maxLossStreak || 0} draws`]].map(([label,value])=><article className="content-card" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>
@@ -74,13 +119,13 @@ export default function AutomationPage() {
     <section className="content-card automation-snapshot"><div className="automation-section-title"><h2>Session limits</h2><button type="button" className="text-button" onClick={()=>{setSection('settings');setSetupOpen(true);}}>Edit limits &rarr;</button></div><dl className="automation-limit-list"><div><dt>Take profit</dt><dd>{c.settings.takeProfit?money(c.settings.takeProfit):'Not set'}</dd></div><div><dt>Stop loss</dt><dd>{c.settings.stopLoss?money(Math.abs(c.settings.stopLoss)):'Not set'}</dd></div><div><dt>Allocated capital</dt><dd>{c.suggestionStrategy?.capital!=null?money(c.suggestionStrategy.capital):'Manual stakes'}</dd></div><div><dt>Recovery status</dt><dd>{c.busy?'Execution or recovery in progress':'Ready for a new sequence'}</dd></div><div><dt>Email reports</dt><dd>{data.emailReports?.enabled?`Every ${data.emailReports.interval} played draws`:'Off'}</dd></div></dl><p className="automation-help">Limits use saved settings. A pending bet can still settle after you press Stop.</p></section>
    </div>
    </section>
-   <section id="automation-reports" hidden={section!=='reports'} aria-label="Email reports">
+   <section id="automation-reports" role="tabpanel" aria-labelledby="automation-tab-reports" hidden={section!=='reports'}>
    {data.emailReports && <AutomationEmailReports settings={data.emailReports} onSaved={emailReports=>setData(d=>({...d,emailReports}))} />}
    </section>
-   <section id="automation-strategies" hidden={section!=='strategies'} aria-label="Suggested strategies">
+   <section id="automation-strategies" role="tabpanel" aria-labelledby="automation-tab-strategies" hidden={section!=='strategies'}>
    <AutomationSuggestion control={c} disabled={busy||stale} onSaved={async()=>{const next=await apiRequest('/account/automation');setData(next);setDraft(copy(next.control.settings));setDraftRevision(next.control.revision);setNotice('Suggested plans saved. Review the setup and press Start when ready.');}} />
    </section>
-   <section id="automation-settings" hidden={section!=='settings'} aria-label="Automation settings">
+   <section id="automation-settings" role="tabpanel" aria-labelledby="automation-tab-settings" hidden={section!=='settings'}>
    <div className="automation-section-title"><div><span className="overline">CONFIGURE YOUR SESSION</span><h2>Settings &amp; access</h2></div></div>
   <details className="content-card automation-account"><summary>Extension access <span>Membership &amp; private access key</span></summary><h2>Extension membership</h2><p>The Elite + Extension bundle is NGN 120,000 for 30 days and includes all prediction markets. After the owner approves extension access, retrieve your key here to unlock the extension.</p><button className="btn btn-secondary" onClick={()=>accessKey?setAccessKey(''):revealKey()}>{accessKey?'Hide my access key':'Show my extension access key'}</button>{accessKey&&<label>Keep this key private<input type="text" readOnly value={accessKey} onFocus={e=>e.target.select()} /></label>}</details>
    {draft && <details className="automation-setup-panel" open={setupOpen} onToggle={e=>setSetupOpen(e.currentTarget.open)}><summary>Game setup <span>Games, stakes, sniper &amp; limits</span></summary><form className="automation-settings" onSubmit={e=>{e.preventDefault();command('save');}}>
@@ -98,9 +143,9 @@ export default function AutomationPage() {
    <details className="content-card automation-account"><summary>Connection help</summary><p>Closing this dashboard does not stop automation. Keep Bet9ja and the extension connected. A disconnect longer than 15 seconds pauses new bets. Reconnect, review your session and press Start again. Switching controllers pauses automation and preserves progression.</p></details>
    <button className="text-button automation-unlink" disabled={busy} onClick={()=>{if(window.confirm('Stop automation and unlink this extension session?'))command('unlink');}}>Stop and unlink extension</button>
    </section>
-   <section id="automation-activity" hidden={section!=='activity'} aria-label="Session activity">
+   <section id="automation-activity" role="tabpanel" aria-labelledby="automation-tab-activity" hidden={section!=='activity'}>
    <section className="content-card automation-history"><div className="automation-section-title"><div><span className="overline">YOUR PLAYED GAMES</span><h2>Session activity</h2></div><span className="automation-caption">Latest {c.history.length} draws &middot; newest first</span></div><div className="automation-history-filters"><label>Find a draw or game<input type="search" value={historyQuery} placeholder="Draw ID or game name" onChange={e=>setHistoryQuery(e.target.value)} /></label><label>Result<select value={historyOutcome} onChange={e=>setHistoryOutcome(e.target.value)}><option value="ALL">All results</option><option value="WIN">Wins</option><option value="LOSS">Losses</option><option value="PENDING">Pending</option><option value="UNKNOWN">Unknown</option></select></label></div>
-   {!historyRows.length?<div className="automation-empty"><h3>{c.history.length?'No matching activity':'Your activity will appear here'}</h3><p>{c.history.length?'Try another game, draw ID or result filter.':'Placed bets appear once reported by your extension.'}</p></div>:<div className="automation-table" tabIndex="0" role="region" aria-label="Recent played games"><table><thead><tr><th>Draw</th><th>Game</th><th>Selections</th><th>Total stake</th><th>Result</th></tr></thead><tbody>{historyRows.map(row=><tr key={`${row.drawId}-${row.index}`}><td data-label="Draw">#{row.drawId}</td><td data-label="Game">{games.find(g=>g[0]===row.game)?.[1]||row.game}</td><td data-label="Selections">{showPick(row.selections)}</td><td data-label="Total stake">{money(row.stake)}</td><td data-label="Result"><span className={`outcome-badge ${row.result.toLowerCase()}`}>{row.result}</span></td></tr>)}</tbody></table></div>}<p className="automation-help">Up to 100 draws. Check pending and partial submissions against your Bet9ja slip.</p></section>
+   {!historyRows.length?<div className="automation-empty"><h3>{c.history.length?'No matching activity':'Your activity will appear here'}</h3><p>{c.history.length?'Try another game, draw ID or result filter.':'Placed bets appear once reported by your extension.'}</p></div>:<div className="automation-table" tabIndex="0" role="region" aria-label="Recent played games"><table><thead><tr><th>Draw</th><th>Game</th><th>Selections</th><th>Total stake</th><th>Result</th></tr></thead><tbody>{historyRows.map(row=><tr key={`${row.drawId}-${row.index}`}><td data-label="Draw">#{row.drawId}</td><td data-label="Game">{games.find(g=>g[0]===row.game)?.[1]||row.game}</td><td data-label="Selections"><Selection value={row.selections} /></td><td data-label="Total stake">{money(row.stake)}</td><td data-label="Result"><span className={`outcome-badge ${row.result.toLowerCase()}`}>{row.result}</span></td></tr>)}</tbody></table></div>}<p className="automation-help">Up to 100 draws. Check pending and partial submissions against your Bet9ja slip.</p></section>
    </section>
   </>}
  </main>;
