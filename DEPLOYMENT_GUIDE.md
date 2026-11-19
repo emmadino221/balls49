@@ -99,14 +99,14 @@ If `git status --short` shows unexpected changes, preserve them and resolve that
 before pulling. The worker and website are separate services; restart the worker
 only when its code needs updating.
 
-### Website domain (prediction.emmyfxchart.com)
+### Website domain (predictions.emmyfxchart.com)
 
 The site, the Balls49 extension routes and the virtual football API can also be served on a
 domain. First add a DNS A record for the domain pointing to `159.65.25.30` at the DNS
 provider, and wait until it resolves. Then, as the `balls49` user in the site checkout:
 
 ```bash
-bash deploy/add-site-domain.sh prediction.emmyfxchart.com
+bash deploy/add-site-domain.sh predictions.emmyfxchart.com
 ```
 
 The script checks DNS, gets a Let's Encrypt certificate (renewed automatically), adds an
