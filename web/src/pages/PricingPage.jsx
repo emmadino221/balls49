@@ -5,9 +5,9 @@ const gameOptions = [
   ['bet49', 'Bet49'],
   ['rainbow', 'Rainbow Color'],
   ['totalColor', 'Total Color (3-way)'],
-  ['totalColor2', 'Total Color (2-way)'], ['totalColor1', 'Winning Color'],
+   ['totalColor1', 'Winning Color'],
   ['hilo', 'High / Low'],
-  ['unified', 'Unified'],
+
 ];
 const pricePerGame = 18000;
 const weeklyPricePerGame = 5000;
@@ -67,14 +67,14 @@ export default function PricingPage() {
           <div className="section-kicker">ELITE · ALL ACCESS</div>
           <div className="price">{naira(80000)}<small>/ 30 days</small></div>
           <p className="plan-card-summary">Every prediction market in one monthly plan.</p>
-          <ul><li>All eight prediction markets included</li><li>Predictions available as soon as they are generated</li><li>Elite Telegram access entitlement</li><li>Save {naira(64000)} vs. eight separate Premium games</li></ul>
+          <ul><li>All six prediction markets included</li><li>Predictions available as soon as they are generated</li><li>Elite Telegram access entitlement</li><li>Save {naira(28000)} vs. six separate Premium games</li></ul>
           <a className="btn btn-primary" href="signup.html">Create account to request Elite</a>
         </article>
         <article className="price-card">
           <div className="section-kicker">ELITE + EXTENSION · ALL ACCESS</div>
           <div className="price">{naira(120000)}<small>/ 30 days</small></div>
           <p className="plan-card-summary">All predictions plus browser extension automation in one monthly plan.</p>
-          <ul><li>All eight prediction markets included</li><li>Browser extension and connected automation dashboard</li><li>Game, stake, progression and session controls</li><li>Owner approval and extension key included</li></ul>
+          <ul><li>All six prediction markets included</li><li>Browser extension and connected automation dashboard</li><li>Game, stake, progression and session controls</li><li>Owner approval and extension key included</li></ul>
           <a className="btn btn-primary" href="signup.html">Create account to request All Access</a>
         </article>
       </section>

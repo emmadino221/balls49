@@ -1,5 +1,7 @@
 # Public suggestions and video library
 
+> **Documentation status ? 15 November 2026:** The six-number Bet49 monetary example predates current single-number staking. Later Gameplay planner polling details supersede the earlier fixed-refresh description. See [Current architecture](00-current-architecture.md).
+
 ## Pages
 
 - `suggestions.html` replaces Testimonials. Old `testimonials.html` links render the same page.

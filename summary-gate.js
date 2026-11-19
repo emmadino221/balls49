@@ -23,7 +23,7 @@ function getIssuedSummaryLabels(prediction, records) {
     if (prediction?.drawId === undefined || prediction.drawId === null) return {};
     const record = records.find(item => String(item.drawId) === String(prediction.drawId));
     return record ? getRecordSummaryModel(record)
-        : buildPublicSummaryModel(prediction.summaryModel, prediction.pred?.unifiedPick?.key);
+        : buildPublicSummaryModel(prediction.summaryModel);
 }
 
 function applySummaryGateConfig(config, update) {

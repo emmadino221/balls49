@@ -1,5 +1,7 @@
 # Daily fresh-data reset
 
+> **Documentation status ? 15 November 2026:** The reset lifecycle is documented here, but the Fresh-data waiting period lists old algorithm requirements. Do not use those counts for the current Bet49/BetZero/High-Low rules. See [Current architecture](00-current-architecture.md).
+
 The collector, private bot and public website reset their active history daily
 at **00:00 midnight Nigeria time (23:00 UTC the previous day)**. The schedule does not depend on the
 VPS timezone. First installation arms the next midnight; it does not immediately
@@ -43,7 +45,7 @@ Backups containing user accounts retain their existing retention policy.
 ## Fresh-data waiting period
 
 - BetZero needs 10 consecutive new completed draws.
-- Rainbow's base strategy and Total Color 2-way need at least 20 new draws.
+- Rainbow's base strategy needs at least 20 new draws.
 - Bet49 needs 100 new draws.
 - High/Low and the other Total Color markets resume when their normal minimum
   valid-history conditions are met.

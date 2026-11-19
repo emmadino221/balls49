@@ -14,10 +14,8 @@ const markets = [
   { id: 'bet49', label: 'Bet49', resultKey: 'bet49' },
   { id: 'rainbow', label: 'Rainbow', resultKey: 'rainbow' },
   { id: 'totalColor', label: 'Total Color 3-way', resultKey: 'totalColor' },
-  { id: 'totalColor2', label: 'Total Color 2-way', resultKey: 'totalColor2' },
   { id: 'totalColor1', label: 'Winning Color', resultKey: 'totalColor1' },
   { id: 'hilo', label: 'High / Low', resultKey: 'hilo' },
-  { id: 'unified', label: 'Unified', resultKey: 'unified' },
 ];
 
 function getBallColor(number) {
@@ -55,12 +53,6 @@ function MarketPick({ record, market }) {
   if (market.id === 'totalColor') {
     return <TotalColorPick pick={predicted.totalColor} />;
   }
-  if (market.id === 'totalColor2') {
-    const colors = predicted.totalColor2?.top2 || [];
-    return predicted.totalColor2?.status === 'ACTIVE' && colors.length
-      ? <span className="pick-colors">{colors.map((color) => <ColorTag key={color} color={color} />)}</span>
-      : <NoPick />;
-  }
   if (market.id === 'totalColor1') {
     const colors = predicted.totalColor1?.top1 || [];
     return predicted.totalColor1?.status === 'ACTIVE' && colors.length
@@ -71,15 +63,6 @@ function MarketPick({ record, market }) {
     const range = predicted.hilo;
     return range && range !== 'SKIP'
       ? <span className={`range-tag range-${String(range).toLowerCase()}`}>{range}</span>
-      : <NoPick />;
-  }
-  if (market.id === 'unified') {
-    if (!predicted.unified?.key) return <NoPick>None selected</NoPick>;
-    const marketAliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
-    const sourceId = marketAliases[predicted.unified.key] || predicted.unified.key;
-    const sourceMarket = markets.find((item) => item.id === sourceId);
-    return sourceMarket
-      ? <span className="unified-pick"><span>{sourceMarket.label}</span><MarketPick record={record} market={sourceMarket} /></span>
       : <NoPick />;
   }
   return <NoPick />;
@@ -97,12 +80,7 @@ function getOutcome(record, market) {
 }
 
 function getSummaryLabel(record, marketId) {
-  let sourceMarket = marketId;
-  if (marketId === 'unified') {
-    const key = record.predicted?.unified?.key;
-    sourceMarket = ({ u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' })[key] || 'unified';
-  }
-  const label = record.summaryModel?.[sourceMarket];
+  const label = record.summaryModel?.[marketId];
   return ['ENTER', 'HOLD', 'LEARNING'].includes(label) ? label : null;
 }
 

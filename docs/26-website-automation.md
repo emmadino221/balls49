@@ -1,5 +1,7 @@
 # Website automation dashboard
 
+> **Documentation status ? 15 November 2026:** Some earlier paragraphs describe six-number Bet49 and pre-warning-only automation. Current single-number profit modes are documented in 41-bet49-profit-modes.md. Review exact checkout branches before using the historical deployment commands below. See [Current architecture](00-current-architecture.md).
+
 The Automation page controls the existing extension session. The extension must
 remain open in the Bet9ja tab to execute selections. Manual extension use remains
 available. This update does not embed Bet9ja inside the website.

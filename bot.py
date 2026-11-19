@@ -134,33 +134,6 @@ def calculate_total_color_steps(initial_stake: float, max_steps: int):
 
     return bets, profits, round(total_lost, 2)
 
-# ── Total Color 2-Way Profit Calculation (2-Way Split, 1.8 Margin Factor) ──
-def calculate_total_color_2way_steps(initial_stake: float, max_steps: int):
-    total_lost = 0.0
-    bets = []
-    profits = []
-    current_stake = initial_stake
-
-    for step in range(1, max_steps + 1):
-        if step == 1:
-            current_stake = initial_stake
-            net_profit = round((current_stake * 3.8) - (current_stake * 2), 2)
-        else:
-            # Dynamic formula: Required Stake = (Total Cumulative Loss + Base Target Profit) / 1.8
-            current_stake = (total_lost + initial_stake) / 1.8
-            net_profit = round(initial_stake, 2) # Maintains steady target profit per step
-        
-        bet = round(current_stake, 2)
-        bets.append(bet)
-        
-        # 2 tickets purchased per draw
-        draw_cost = bet * 2
-        total_lost += draw_cost
-            
-        profits.append(net_profit)
-
-    return bets, profits, round(total_lost, 2)
-
 # ── Standard Custom Martingale ──
 def calculate_martingale_steps(initial_stake: float, odds: float, max_steps: int):
     target_profit = initial_stake * (odds - 1)
@@ -196,7 +169,6 @@ def start_plan(message):
     markup.add(types.InlineKeyboardButton("📊 High/Low (2x Multiplier)", callback_data="strat_hilo"))
     markup.add(types.InlineKeyboardButton("📈 High/Low (1.40x Multiplier)", callback_data="strat_hilo_140"))
     markup.add(types.InlineKeyboardButton("🎨 Total Color (Break-Even 3W)", callback_data="strat_total_color"))
-    markup.add(types.InlineKeyboardButton("🎭 Total Color (Profit 2W)", callback_data="strat_total_color_2way"))
     markup.add(types.InlineKeyboardButton("⚙️ Custom Martingale", callback_data="strat_martingale"))
 
     bot.reply_to(message, "🎯 Choose game strategy:", parse_mode='HTML', reply_markup=markup)
@@ -227,18 +199,13 @@ def handle_callback(call):
         elif call.data == "strat_total_color":
             strategy = "total_color"
             name = "Total Color Break-Even (3W)"
-        elif call.data == "strat_total_color_2way":
-            strategy = "total_color_2way"
-            name = "Total Color Profit (2W)"
-
         user_data[user_id] = {'state': 'odd', 'strategy': strategy, 'name': name}
 
         # Dedicated strategies bypass the odds selection menu
-        dedicated_strats = ["total_color", "total_color_2way", "hilo", "hilo_140", "rainbow", "betzero"]
+        dedicated_strats = ["total_color", "hilo", "hilo_140", "rainbow", "betzero"]
         if strategy in dedicated_strats:
             odds_map = {
                 "total_color": 3.8,
-                "total_color_2way": 3.8,
                 "hilo": 2.0,
                 "hilo_140": 2.0,
                 "rainbow": 1.5,
@@ -327,9 +294,6 @@ def handle_all(message):
                 bets, profits, total = calculate_betzero_steps(stake, max_steps)
             elif strategy == "total_color":
                 bets, profits, total = calculate_total_color_steps(stake, max_steps)
-            elif strategy == "total_color_2way":
-                bets, profits, total = calculate_total_color_2way_steps(stake, max_steps)
-
             # Build output
             text = f"📊 <b>{name} Sequence</b>\n\n"
             text += f"Target Odds: <b>{odds}</b> | Base Unit: <b>₦{stake:,.2f}</b> | Steps: <b>{max_steps}</b>\n\n"

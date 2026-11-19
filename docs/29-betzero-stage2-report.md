@@ -1,5 +1,7 @@
 # BetZero Stage 2 implementation report
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Completed locally on 2026-11-05. No push, deployment, service installation, or strategy activation was performed.
 
 ## Safety checkpoint

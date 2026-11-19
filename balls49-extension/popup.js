@@ -1,5 +1,5 @@
-const GAMES = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'totalColor1', 'hilo'];
-const SNIPER_MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
+const GAMES = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor1', 'hilo'];
+const SNIPER_MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor1'];
 const SUMMARY_MODEL_MARKETS = [
     { id: 'betzero', key: 'u4' },
     { id: 'rainbow', key: 'color' },
@@ -276,7 +276,7 @@ document.getElementById('btn-run-backtest')?.addEventListener('click', async () 
     const capital = Math.max(1000, parseFloat(document.getElementById('auto-capital')?.value) || 100000);
     const basePercent = Math.min(100, Math.max(0.01, parseFloat(document.getElementById('base-stake-percent')?.value) || 0.5));
     const drawWindow = Math.min(10000, Math.max(1, parseInt(document.getElementById('backtest-draws')?.value, 10) || 1000));
-    if (['all', 'unified', 'totalColor1', 'bet49'].includes(game) || ['flat', 'summary', 'winning_accumulating'].includes(profile)) {
+    if (['all', 'totalColor1', 'bet49'].includes(game) || ['flat', 'summary', 'winning_accumulating'].includes(profile)) {
         previewEl.style.display = 'block';
         previewEl.textContent = 'This combination is supported by the history preview. The legacy backtest does not simulate it.';
         return;
@@ -351,7 +351,6 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         bet49: parseInt(document.getElementById('stake-bet49').value) || 0,
         rainbow: parseInt(document.getElementById('stake-rainbow').value) || 0,
         totalColor: parseInt(document.getElementById('stake-totalColor').value) || 0,
-        totalColor2: parseInt(document.getElementById('stake-totalColor2').value) || 0,
         totalColor1: parseInt(document.getElementById('stake-totalColor1').value) || 0,
         hilo:    parseInt(document.getElementById('stake-hilo').value)    || 0,
     };
@@ -361,7 +360,6 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         bet49: parseInt(document.getElementById('step-bet49').value) || 0,
         rainbow: parseInt(document.getElementById('step-rainbow').value) || 0,
         totalColor: parseInt(document.getElementById('step-totalColor').value) || 0,
-        totalColor2: parseInt(document.getElementById('step-totalColor2').value) || 0,
         totalColor1: parseInt(document.getElementById('step-totalColor1').value) || 0,
         hilo: parseInt(document.getElementById('step-hilo').value) || 0,
     };
@@ -375,7 +373,6 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         bet49: document.getElementById('btn-bet49').classList.contains('active'),
         rainbow: document.getElementById('btn-rainbow').classList.contains('active'),
         totalColor: document.getElementById('btn-totalColor').classList.contains('active'),
-        totalColor2: document.getElementById('btn-totalColor2').classList.contains('active'),
         totalColor1: document.getElementById('btn-totalColor1').classList.contains('active'),
         hilo:    document.getElementById('btn-hilo').classList.contains('active')
     };
@@ -387,7 +384,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
 
     const telegramChatId = (document.getElementById('telegram-chat-id')?.value || '').trim();
     const flatBetting = getToggleValue('flat-betting');
-    const unifiedMode = getToggleValue('unified-mode');
+    const unifiedMode = false;
     if (unifiedMode && currentGames.totalColor1) {
         btn.textContent = originalText;
         alert('Turn off Unified mode to use Winning Color with its separate progression.');
@@ -403,7 +400,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         key, document.getElementById(`summary-model-${id}`)?.value === 'HOLD' ? 'HOLD' : 'ENTER'
     ])));
     const shadowMode = getToggleValue('shadowMode');
-    const weightedStaking = getToggleValue('weightedStaking');
+    const weightedStaking = false;
     
     const tc3Rollover = getToggleValue('tc3-rollover');
     const tc3TargetInput = document.getElementById('tc3-rollover-target');

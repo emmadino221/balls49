@@ -46,7 +46,7 @@ export default function WelcomePanel() {
       </div>
       <div className="welcome-shortcuts">
         {[
-          ['01', '49ja Casino', 'Eight number, color, and range markets.', 'predictions.html', 'casino'],
+          ['01', '49ja Casino', 'Six number, color, and range markets.', 'predictions.html', 'casino'],
           ['02', 'Real Football', 'Pre-match fixtures, picks, and combinations.', 'football.html', 'football'],
           ['03', 'Virtual Football', 'Browse the virtual football prediction feed.', 'virtual-football.html', 'virtual'],
           ['04', 'Prediction History', 'Review recorded picks beside draw results.', 'history.html', 'history'],

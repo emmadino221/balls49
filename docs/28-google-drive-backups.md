@@ -1,5 +1,7 @@
 # Encrypted application backups
 
+> **Documentation status ? 15 November 2026:** Implementation-stage deployment statements below are historical. Check current timer/journal evidence for live status. This review does not establish full restore readiness or backup coverage of the separate virtual-football database/models. See [Current architecture](00-current-architecture.md).
+
 ## Current status
 
 The operator configured `gdrive` with `drive.file` and `gdrive_backup` with

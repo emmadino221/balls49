@@ -18,23 +18,18 @@ const markets = [
   },
   {
     name: 'Total Color (3-way)',
-    pick: 'Use the same two colors selected by Total Color 2-way, plus No Winning Color. The remaining color is omitted. If Total Color 2-way is inactive, this market has no pick.',
+    pick: 'Use the two highest-ranked colors from the shared color ranking, plus No Winning Color. The remaining color is omitted. If the ranking is unavailable, this market has no pick.',
     result: 'A win means the actual outcome is one of the three selections. A tie for the most frequent color is DRAW / No Winning Color. When that outcome is eliminated, another DRAW is a loss.',
   },
   {
-    name: 'Total Color (2-way)',
-    pick: 'Two target colors.',
-    result: 'A win means the result color is one of the two picks. When colors tie for most frequent, the result is recorded as BLACK.',
+    name: 'Winning Color',
+    pick: 'The highest-ranked color from the shared color ranking.',
+    result: 'A win means that color is the actual winning color.',
   },
   {
     name: 'High / Low',
     pick: 'A prediction of HIGH or LOW based on the draw total.',
     result: 'The prediction wins when it matches the recorded range. Totals up to 148 are LOW, 149–151 are MID, and 152 or more are HIGH. The bot may show no pick when conditions are not met.',
-  },
-  {
-    name: 'Unified',
-    pick: 'The bot’s selected market and its corresponding pick.',
-    result: 'It is graded using the selected market’s rule above.',
   },
 ];
 

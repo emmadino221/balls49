@@ -13,7 +13,6 @@ const strategies = [
   { id: 'hilo', label: 'High / Low · 2×', odds: 2, multiplier: 2, type: 'multiplier' },
   { id: 'hilo140', label: 'High / Low · 1.4× progression', odds: 2, multiplier: 1.4, type: 'multiplier' },
   { id: 'totalColor', label: 'Total Color · 3-way', odds: 3.8, costFactor: 3, type: 'totalColor' },
-  { id: 'totalColor2', label: 'Total Color · 2-way', odds: 3.8, costFactor: 2, type: 'totalColor2' },
   { id: 'totalColor1', label: 'Winning Color - same profit', odds: 3.8, type: 'totalColor1', mode: 'fixed' },
   { id: 'totalColor1Accumulating', label: 'Winning Color - accumulating profit', odds: 3.8, type: 'totalColor1', mode: 'accumulating' },
   { id: 'custom', label: 'Custom odds', odds: 2, type: 'custom' },
@@ -65,14 +64,11 @@ function buildSequence(strategy, baseStake, steps, customOdds) {
       profit = roundMoney((bet * 2) - (totalCost + bet));
       exposure = bet;
       nextBet = bet * strategy.multiplier;
-    } else if (strategy.type === 'totalColor' || strategy.type === 'totalColor2') {
-      const twoWay = strategy.type === 'totalColor2';
-      bet = step === 1 ? baseStake : twoWay ? (totalCost + baseStake) / 1.8 : totalCost / 0.8;
+    } else if (strategy.type === 'totalColor') {
+      bet = step === 1 ? baseStake : totalCost / 0.8;
       bet = roundMoney(bet);
       exposure = bet * strategy.costFactor;
-      profit = roundMoney(twoWay
-        ? (step === 1 ? (bet * 3.8) - (bet * 2) : baseStake)
-        : (step === 1 ? (bet * 3.8) - (bet * 3) : 0));
+      profit = roundMoney(step === 1 ? (bet * 3.8) - (bet * 3) : 0);
     } else {
       const stepProfitTarget = strategy.id === 'bet49'
         ? targetProfit + ((step - 1) * baseStake)

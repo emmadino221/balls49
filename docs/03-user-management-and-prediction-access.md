@@ -1,5 +1,7 @@
 # Website Accounts, Market Access, and Personal Stake Plans
 
+> **Documentation status ? 15 November 2026:** The immediate password-signup description is superseded by the verified-code flow in 25-email-verification.md. Current membership and extension linking are described in 26-website-automation.md. See [Current architecture](00-current-architecture.md).
+
 ## Two separate identity/session systems
 
 The website account system and extension automation sessions are separate:

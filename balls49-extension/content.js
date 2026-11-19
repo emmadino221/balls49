@@ -1285,7 +1285,7 @@ async function pollOverlayData() {
 }
 
 function setSelectedGameFromSettings(settings) {
-    IS_UNIFIED_MODE = Boolean(settings?.unifiedMode);
+    IS_UNIFIED_MODE = false;
     if (IS_UNIFIED_MODE || !settings?.enabledGames) return;
 
     const enabledGames = settings.enabledGames;
@@ -1436,7 +1436,7 @@ async function listen() {
                         : calcLocalStake('sum', serverSteps.hilo, userStakes, gameStepsLimits, hiloMult);
                 const tcStake  = m.tcStake || calcLocalStake('totalColor', serverSteps.totalColor, userStakes, gameStepsLimits, hiloMult);
                 const tc1Stake = Number(m.tc1Stake) || 0;
-                const tc2Stake = m.tc2Stake || calcLocalStake('totalColor2', serverSteps.totalColor2, userStakes, gameStepsLimits, hiloMult);
+
 
                 const executionReport = { version: 2, games: [], bet49Numbers: [], unconfirmedBet49: [], colorSelections: { totalColor: [], totalColor2: [] } };
                 currentPlacementReport = executionReport;
@@ -1506,13 +1506,6 @@ async function listen() {
                         SELECTED_GAME = 'totalcolor1';
                         let res = await runTotalColor1(m.totalColor1, tc1Stake);
                         if (res) executionReport.games.push('totalColor1');
-                        if (!res) failed();
-                        playedAny = true;
-                    } 
-                    if (m.totalColor2 && m.tc2Stake > 0) {
-                        SELECTED_GAME = 'totalcolor2';
-                        let res = await runTotalColor2(m.totalColor2, tc2Stake);
-                        if (res) executionReport.games.push('totalColor2');
                         if (!res) failed();
                         playedAny = true;
                     } 
@@ -1671,6 +1664,9 @@ async function startApp() {
             'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
         ], (data) => {
             if (data) {
+                data.unifiedMode = false;
+                if(data.enabledGames) data.enabledGames.totalColor2 = false;
+                if(data.stakes) data.stakes.totalColor2 = 0;
                 // Strategy selection is automatic; retire any saved specific-strategy gate.
                 data.strategyFilters = { u4: 'follow', color: 'follow' };
                 setSelectedGameFromSettings(data);

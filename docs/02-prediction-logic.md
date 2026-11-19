@@ -1,5 +1,7 @@
 # Prediction, Settlement, and Stake Progression
 
+> **Documentation status ? 15 November 2026:** Historical rules below are superseded for Bet49, BetZero, High/Low and Bet49 staking. Do not use the multi-number tables as current main-market rules. See [Current architecture](00-current-architecture.md).
+
 ## Sources of truth
 
 `bot.js` computes predictions, tracks market steps, settles outcomes, serves the local automation/API routes, and sends Telegram channel messages. `collector.js` gathers draw data. In local-worker mode, predictions/results are persisted in `predictions.json`, the active prediction is checkpointed in `last_prediction.json`, and tracker/session data is stored in files such as `session_state.json` and `streaks.json`. In public-site mode, sanitized prediction feed/history snapshots are persisted in SQLite. These runtime and account files are private and must not be committed.
@@ -8,22 +10,18 @@ The `ml_retrainer.py` script consumes prediction history and writes the optional
 
 ## Markets and results
 
-The public prediction/history surfaces expose eight markets:
+The public prediction/history surfaces expose six markets:
 
 | Public market | Prediction/result keys | Rule summary |
 |---|---|---|
-| BetZero | `betzero` | Take the first four numbers from the same draw's active Bet49 selection, in its recency order. Skip when Bet49 skips. Win if none of the four appear in the draw. |
-| Bet49 | `bet49` | Use the last 10 consecutive completed draws. Use the two colors in the same draw's active Total Color 2-way prediction, and take up to six most-recent numbers from those colors that appeared at least twice. Skip whenever Total Color 2-way skips. Skip if fewer than four qualify. Any selected number appearing wins. Each number is a separate 7.80-odds bet. |
-| Rainbow Color | `rainbow` | Win when at least two drawn balls match the selected color. |
-| Total Color (3-way) | `totalColor` | Reuse the two colors selected by Total Color 2-way, then add DRAW (No Winning Color). Skip when Total Color 2-way is inactive. |
-| Total Color (2-way) | `totalColor2` | Select two colors; a tie outcome is represented as black. |
-| Winning Color | `totalColor1` | Use the first (top-ranked) color in the active Total Color 2-way selection. Skip when Total Color 2-way is inactive or invalid; ties are No Winning Color and lose. |
-| High/Low | `hilo` | Use weighted 20/50/100-draw HIGH/LOW counts, with LOW on ties. Always pick with valid history; MID loses for either side. |
-| Unified | `unified` | A wrapper around the chosen supported market; its result follows that market. |
+| BetZero | `betzero` | Copies the active Lab Streak 1 prediction for the exact target draw. Requires exactly four selections; otherwise skips. Wins when none appear. |
+| Bet49 | `bet49` | Selects the immediately preceding draw's smallest number plus 10. Invalid input or overflow skips. Wins on appearance. |
+| Rainbow Color | `rainbow` | Selects the majority color of the legacy internal multi-number Bet49 pool; ties or an unavailable pool skip. Wins when at least two drawn balls match. |
+| Total Color (3-way) | `totalColor` | Select the two ranked colors plus No Winning Color. |
+| Winning Color | `totalColor1` | Use the first color from the shared internal color ranking; ties are No Winning Color and lose. |
+| High/Low | `hilo` | MIN/MAX v2 method MIN selects HIGH and MAX selects LOW, using validated Lab state where usable and historical replay otherwise. |
 
-Skipped/inactive picks settle as `SKIP` and are not wins or losses. Bet49 is an independent market and is not a target in the extension's Unified automation strategy.
-
-Bet49 breaks equal absence streaks by choosing the lowest number, so the same draw history always produces the same initial pick. Its active target and the draw ID from which it is being tracked are saved with the global tracker, allowing the pick to survive worker restarts and absences longer than 100 draws. After a hit, it selects a new target using the longest current absence in the latest 100 draws.
+Total Color 2-way and Unified prediction are retired and are omitted from current prediction and history output. The shared color ranking remains an internal input for Total Color 3-way and Winning Color. Skipped/inactive picks settle as `SKIP` and are not wins or losses.
 
 ## Draw lifecycle
 
@@ -61,7 +59,7 @@ See [the selection rules](../SITE_ACCESS_SETUP.md#highlow-rolling-analysis-witho
 ### Bet49 multi-number execution
 
 - Requires 10 consecutive valid completed draws before the target. Draw order in the input does not affect selection.
-- Use exactly the two colors from the same draw's active Total Color 2-way prediction. Skip if that prediction is missing, skipped, or has invalid colors. There is no separate dominant-color calculation for Bet49. Number 49 remains mapped to yellow and is not eligible for a red/blue/green pair.
+- Legacy multi-number Bet49 records used the internal ranked color selection; that retired rule is not used by current Bet49 picks.
 - Within the two selected colors, numbers must appear at least twice. Take up to six by latest draw appearance; equal-recency numbers use ascending number order. Fewer than four means SKIP.
 - A published WIN means any predicted number appeared. Session settlement uses only the numbers submitted by that extension. Multiple hits each pay 7.80 times the per-number stake.
 - The configured Bet49 stake is per number. Total exposure is the number count times that stake. Recovery uses actual prior cycle costs divided by (7.80 minus the current number count), plus the cycle's initial one-hit profit target; amounts round up. Flat mode keeps the configured stake per number. A win clears Bet49 recovery.
@@ -73,7 +71,7 @@ See [the selection rules](../SITE_ACCESS_SETUP.md#highlow-rolling-analysis-witho
 
 ### Rainbow follows Bet49
 
-Live Rainbow 2+ uses the most common color among the current Bet49 selected numbers (each selected number contributes one vote). A tied highest count or a skipped Bet49 prediction makes Rainbow SKIP. It does not fall back to an older color or the previous adaptive selector. Total Color 2-way is computed first using its existing rule, then Bet49, then Rainbow; a Rainbow skip does not overwrite Total Color 2-way. Old extension strategy filters no longer gate Rainbow entries. Settlement remains a win when at least two balls of the predicted color appear in the actual draw. Historical records are unchanged.
+Live Rainbow 2+ uses the most common color among the current Bet49 selected numbers (each selected number contributes one vote). A tied highest count or a skipped Bet49 prediction makes Rainbow SKIP. It does not fall back to an older color or the previous adaptive selector. The internal color ranking is computed for supported color selections; a Rainbow skip does not change it. Old extension strategy filters no longer gate Rainbow entries. Settlement remains a win when at least two balls of the predicted color appear in the actual draw. Historical records are unchanged.
 
 
 ### BetZero follows Bet49

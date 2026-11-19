@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { apiRequest } from '../auth';
 
-const markets = [['betzero','BetZero'],['bet49','Bet49'],['rainbow','Rainbow'],['hilo','High / Low'],['totalColor','Total Color 3-way'],['totalColor2','Total Color 2-way'],['totalColor1','Winning Color'],['unified','Unified']];
+const markets = [['betzero','BetZero'],['bet49','Bet49'],['rainbow','Rainbow'],['hilo','High / Low'],['totalColor','Total Color 3-way'],['totalColor1','Winning Color'],];
 const money = value => `NGN ${Number(value).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 const riskLevels = { off: { label: 'Off', percent: 100 }, low: { label: 'Low', percent: 10 }, medium: { label: 'Medium', percent: 25 }, high: { label: 'High', percent: 50 } };
 function RiskBudgetSummary({ plan }) {
@@ -17,7 +17,7 @@ export default function AutomationSuggestion({ control, disabled, onSaved }) {
   const locked = disabled || loading || control.controller !== 'website' || control.running || control.busy;
   function change(key,value) { setInput(s => ({...s,[key]:value,...(key === 'capitalMode' && !value ? {riskLevel:'off'} : {})})); setPreview(null); setError(''); }
   function select(id,checked) {
-    change('games', id === 'unified' ? checked ? ['unified'] : [] : checked ? [...input.games.filter(g => g !== 'unified'),id] : input.games.filter(g => g !== id));
+    change('games', checked ? [...input.games, id] : input.games.filter(g => g !== id));
   }
   async function submit(apply) {
     setLoading(true); setError('');
@@ -37,7 +37,7 @@ export default function AutomationSuggestion({ control, disabled, onSaved }) {
     <fieldset disabled={locked}>
       <legend>Select games</legend>
       <div className="strategy-game-options">{markets.map(([id,label]) => <label className="automation-check" key={id}><input type="checkbox" checked={input.games.includes(id)} onChange={e=>select(id,e.target.checked)} />{label}</label>)}</div>
-      <p className="automation-help">Multiple games share one capital allocation. Unified runs alone and follows its supported market selection.</p>
+      <p className="automation-help">Multiple games share one capital allocation. </p>
       <div className="automation-fields">
         {input.games.includes('bet49') && <label>Bet49 profit (7.80 odds)<select value={input.bet49ProfitMode || 'fixed'} onChange={e=>change('bet49ProfitMode',e.target.value)}><option value="fixed">Same profit</option><option value="accumulating">Accumulating profit</option></select></label>}
         <label>Review history<select value={input.window} onChange={e=>change('window',Number(e.target.value))}>{[50,100,200,500,1000].map(n=><option key={n} value={n}>Last {n} draws</option>)}</select></label>

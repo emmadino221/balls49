@@ -1,5 +1,7 @@
 # BetZero v2 database migration safety review
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Local review completed 7 November 2026. No VPS connection or production database
 was used. This report concerns `betzero-version-migration.js`, not strategy rules.
 

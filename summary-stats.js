@@ -1,8 +1,6 @@
 'use strict';
 
 const SUMMARY_LABELS = ['ENTER', 'HOLD'];
-const UNIFIED_MARKETS = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' };
-
 function getPublicSummaryLabel(value) {
     if (value === 'ENTER' || value === 'HOLD' || value === 'LEARNING') return value;
     if (!value || typeof value !== 'object') return null;
@@ -11,34 +9,25 @@ function getPublicSummaryLabel(value) {
     return null;
 }
 
-function buildPublicSummaryModel(source, unifiedKey = null) {
+function buildPublicSummaryModel(source) {
     const model = source && typeof source === 'object' ? source : {};
-    const labels = {
+    return {
         betzero: getPublicSummaryLabel(model.u4 ?? model.betzero),
         bet49: getPublicSummaryLabel(model.bet49),
         rainbow: getPublicSummaryLabel(model.color ?? model.rainbow),
         hilo: getPublicSummaryLabel(model.sum ?? model.hilo),
-        totalColor: getPublicSummaryLabel(model.totalColor),
-        totalColor2: getPublicSummaryLabel(model.totalColor2),
-        unified: getPublicSummaryLabel(model.unified)
+        totalColor: getPublicSummaryLabel(model.totalColor)
     };
-    const unifiedMarket = UNIFIED_MARKETS[unifiedKey];
-    if (unifiedMarket) labels.unified = labels[unifiedMarket];
-    return labels;
 }
 
-function getPublicSummaryLabelForMarket(summaryModel, market, unifiedKey = null) {
-    if (market === 'unified') {
-        const sourceMarket = UNIFIED_MARKETS[unifiedKey];
-        return sourceMarket ? summaryModel?.[sourceMarket] || null : summaryModel?.unified || null;
-    }
+function getPublicSummaryLabelForMarket(summaryModel, market) {
     return summaryModel?.[market] || null;
 }
 
 function getRecordSummaryModel(record) {
     // Use the labels saved when the prediction was issued. Older local records
     // may only contain mlShadow; hosted records only contain summaryModel.
-    return buildPublicSummaryModel(record?.summaryModel || record?.mlShadow, record?.predicted?.unified?.key);
+    return buildPublicSummaryModel(record?.summaryModel || record?.mlShadow);
 }
 
 function calculateSummaryLossStats(records, marketResultKeys, resetAt = 0) {

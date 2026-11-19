@@ -38,3 +38,6 @@ Thumbs.db
 # Daily reset checkpoints (runtime only)
 collector_daily_reset.json
 daily_pending_settlements.json
+
+# Private rollback copies created by retired-market cleanup
+retirement-backups/

@@ -35,7 +35,7 @@ export default function GapSuggestion({records,market,label,loading,level,snapsh
    if(!c)throw new Error('Link your extension on Automation first.');
    if(c.controller!=='website'||c.running||c.busy)throw new Error('Use website control, stop automation, and wait for outstanding execution/recovery to finish.');
    const s=c.settings;
-   if(c.suggestionStrategy||s.unifiedMode||s.shadowMode||s.bzRbRollover||s.hiloRollover||s.tc3Rollover)throw new Error('Review manual individual settings on Automation first. Automatic suggestions, Unified, shadow and rollover are incompatible.');
+   if(c.suggestionStrategy||s.unifiedMode||s.shadowMode||s.bzRbRollover||s.hiloRollover||s.tc3Rollover)throw new Error('Review manual individual settings on Automation first. Automatic suggestions, legacy combined mode, shadow and rollover are incompatible.');
    if(!s.enabledGames?.[market]||!(s.stakes?.[market]>0))throw new Error('Enable this game and save its stake on Automation first.');
    if(!window.confirm(`Apply ${label}: ${result.level}-loss spacing for continuous windows (estimated ${result.length} draws)? Play every eligible draw and recalculate at each window end, preserving recovery stakes. Only this game gap setting changes; its existing automatic gap selection preference is preserved. Existing stakes and other entry filters remain in force. Automation stays stopped. The server calculates the actual window from its latest history. Window boundaries do not reset martingale.`))return;
    const settings={...s,gapEntry:{...s.gapEntry,[market]:{...s.gapEntry?.[market],enabled:true,losses:result.level,policy:'CONTINUOUS_GAP_WINDOWS_V2'}}};

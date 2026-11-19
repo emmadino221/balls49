@@ -4,8 +4,8 @@ import './account.css';
 
 const markets = [
   ['betzero', 'BetZero'], ['bet49', 'Bet49'], ['rainbow', 'Rainbow Color'],
-  ['totalColor', 'Total Color (3-way)'], ['totalColor2', 'Total Color (2-way)'], ['totalColor1', 'Winning Color'],
-  ['hilo', 'High / Low'], ['unified', 'Unified'],
+  ['totalColor', 'Total Color (3-way)'],  ['totalColor1', 'Winning Color'],
+  ['hilo', 'High / Low'],
 ];
 const planNames = { trial: 'Free Trial', premium: 'Premium', elite: 'Elite' };
 

@@ -5,7 +5,6 @@ const PRESET_META = {
     betzero: ['BetZero', 'u4', 1.65, 1], bet49: ['Bet49', 'bet49', 7.8, 1],
     rainbow: ['Rainbow', 'color', 1.5, 1], hilo: ['High/Low', 'sum', 2, 1],
     totalColor: ['Total Color 3-way', 'totalColor', 3.8, 3],
-    totalColor2: ['Total Color 2-way', 'totalColor2', 3.8, 2],
     totalColor1: ['Winning Color', 'totalColor1', 3.8, 1]
 };
 const presetRate = stats => stats.settled ? stats.wins / stats.settled : 0;
@@ -70,7 +69,8 @@ async function previewHistoricalPreset() {
         if (!Number.isFinite(capital) || capital < 1000 || !Number.isFinite(percent) || percent < 0.01 || percent > 100
             || !Number.isFinite(riskPercent) || riskPercent < 1 || riskPercent > 100) throw new Error('Enter capital of at least 1,000 and valid stake/risk percentages.');
         const target = presetValue('preset-game-select'), profile = presetValue('preset-profile-select');
-        const unified = target === 'unified' || ['unified_sniper', 'antivol_ghost', 'highroller_scale'].includes(profile);
+        if(target === 'unified' || target === 'totalColor2' || ['unified_sniper','antivol_ghost','highroller_scale'].includes(profile)) throw new Error('This market or profile has been removed.');
+        const unified = false;
         if (unified && !['unified', 'all', 'betzero', 'rainbow', 'hilo', 'totalColor'].includes(target)) throw new Error('Unified supports BetZero, Rainbow, High/Low and Total Color 3-way only. Select an individual profile for this game.');
         if (profile === 'winning_accumulating' && target !== 'totalColor1') throw new Error('Choose Winning Color for accumulating recovery.');
         if (profile === 'tc3_aggressive' && target !== 'totalColor') throw new Error('TC3 rollover requires Total Color 3-way.');

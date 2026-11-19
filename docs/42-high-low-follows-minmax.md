@@ -14,13 +14,19 @@ Win/loss is unchanged: six-ball total 148 or less is LOW, 152 or more is HIGH,
 
 ## How the worker gets the method
 
-The Lab's saved state lives in the website database, which the worker cannot
-read. The worker instead replays Minimum/Maximum v2 over the completed draws
-it already has (`predictHighLowFromMinmax` in `high-low.js`, same
-`betzero-minmax.js` rules). It also includes the last 40 archive results so
-the pick keeps going across the daily history reset.
+The Lab's saved state lives in the website database. The website includes
+`labMinmax` in its signed-feed ingestion response; the private worker keeps that
+state with the snapshot draw ID. `predictHighLowFromMinmax` in `high-low.js`
+uses it when its validation permits (`stateSource: LAB`). It does not directly
+open the website database.
 
-Two replays that start from different points settle onto the same method
-after a few draws, so the live pick matches the Lab card in normal running.
-They can differ for a short time after the Lab's HIGH/LOW or
-Minimum/Maximum v2 history is reset or the Lab misses draws.
+When transmitted state cannot be used, the helper replays Minimum/Maximum v2
+over completed history (`stateSource: REPLAY`, same `betzero-minmax.js` rules).
+The worker also includes the last 40 archive results across daily history reset.
+Replay uses up to 300 earlier valid draws and consecutive pairs. It cannot use
+the target result to select that target's method.
+
+Different starting histories, missing results or a Lab reset can produce
+different state. Do not promise eventual agreement merely because both paths
+use the same transition rule. Check the recorded state source, target draw,
+method and skip reason when investigating a mismatch.

@@ -1,5 +1,7 @@
 # BetZero selection and daily streak archive
 
+> **Documentation status ? 15 November 2026:** The BetZero selection section is superseded by the Step-10 main prediction. The daily archive is a separate feature and should not be confused with that retired selection rule. See [Current architecture](00-current-architecture.md).
+
 ## BetZero
 
 The live worker keeps Bet49's issued selection unchanged. For BetZero it ranks

@@ -1,9 +1,11 @@
 # Complete Balls49 Runtime Workflow
 
+> **Documentation status ? 15 November 2026:** The local-only extension and seven-market descriptions are historical. Current deployment includes authenticated extension access, a website automation bridge, research and football services. See [Current architecture](00-current-architecture.md).
+
 ## Components
 
 - `collector.js` and the draw API provide current draw metadata and history.
-- `bot.js` computes and settles the seven public markets, serves local automation and website APIs, and sends Telegram channel messages.
+- `bot.js` computes and settles the six supported public markets, serves local automation and website APIs, and sends Telegram channel messages.
 - `bot.py` is a separate Telegram martingale/sequence calculator bot; it does not publish the prediction feed or settle draw outcomes.
 - `balls49-extension/` receives local instructions, carries out the selected market's browser actions, acknowledges execution, and renders the overlay.
 - `web/` is a React/Vite site for predictions, history, Free Trial, market guide, calculator, pricing, and accounts.
@@ -12,7 +14,7 @@
 
 ## Prediction and result lifecycle
 
-1. The worker reads the draw clock and historical data, then computes BetZero, Bet49, Rainbow, both Total Color markets, High/Low, and Unified.
+1. The worker reads the draw clock and historical data, then computes the six supported markets: BetZero, Bet49, Rainbow, Total Color 3-way, Winning Color, and High/Low.
 2. The prediction is recorded against a draw ID and checkpointed before delivery.
 3. Telegram picks and draw results are separate channel messages. Picks are stored in the local `telegram_prediction_outbox.json` before the first send and retried with backoff when Telegram rejects or cannot receive them. Correlate both messages by draw ID.
 4. The matching draw settles the stored prediction as `WIN`, `LOSS`, or `SKIP`. Active loss steps are advanced/reset according to the market tracker; skips do not represent losses.
@@ -20,7 +22,7 @@
 
 ## Extension execution
 
-The extension connects to the private worker on `http://localhost:3001`, receives `/stream` instructions, validates the active market and stake, performs DOM actions, and posts `/ack`. Bet49 has its own single-number flow and is not a Unified automation target. Extension settings and progression are distinct from personal stake plans saved by website accounts.
+The extension connects to the private worker on `http://localhost:3001`, receives `/stream` instructions, validates the active market and stake, performs DOM actions, and posts `/ack`. Extension settings and progression are distinct from personal stake plans saved by website accounts.
 
 Do not assume DOM selectors are stable across changes to the third-party betting page. Verify the flow manually before enabling live automation.
 

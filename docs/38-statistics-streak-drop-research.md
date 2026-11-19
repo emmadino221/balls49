@@ -1,5 +1,7 @@
 # Statistics streak-drop research (local implementation)
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 ## Rules, version 1.0.0
 
 - `statistics_streak_drop_betzero`: compare two consecutive observational snapshots of

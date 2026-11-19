@@ -1,3 +1,4 @@
+const retiredMarkets = require('./retired-markets');
 const gapEntry = require('./automation-gap-entry');
 const { createAutomationReports } = require('./automation-reports');
 const automationStrategy = require('./automation-strategy');
@@ -203,7 +204,7 @@ const siteSessions = {
 };
 siteDb.prepare('DELETE FROM site_sessions WHERE expires_at <= ?').run(Date.now());
 const siteAuthRateLimits = new Map();
-const siteMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'totalColor1', 'hilo', 'unified'];
+const siteMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor1', 'hilo'];
 // Public hosting should expose only the account and read-only website API routes.
 const SITE_PUBLIC_MODE = process.env.SITE_PUBLIC_MODE === 'true';
 const SITE_SERVE_WEB = process.env.SITE_SERVE_WEB === 'true';
@@ -331,6 +332,7 @@ function siteSession(req) {
         const user = getSiteUser(session.email);
         if (!user || user.emailVerified === false) return null;
     }
+    retiredMarkets.guard(session);
     return session;
 }
 function setSessionCookie(res, token, maxAgeSeconds) {
@@ -445,8 +447,8 @@ let globalTracker = {
     totalColor1: { step: 1 },
     unified: { step: 1 }
 };
-const SNIPER_SETTING_MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
-const SNIPER_TRACKERS = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
+const SNIPER_SETTING_MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor1'];
+const SNIPER_TRACKERS = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1'];
 const TRACKER_TO_SNIPER_MARKET = { u4: 'betzero', bet49: 'bet49', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor2: 'totalColor2', totalColor1: 'totalColor1', unified: 'unified' };
 const makeDefaultSniperSettings = () => Object.fromEntries(SNIPER_SETTING_MARKETS.map(market => [market, { enabled: false, step: 0, resetLosses: 0 }]));
 const makeDefaultSniperState = () => Object.fromEntries(SNIPER_TRACKERS.map(tracker => [tracker, { losses: 0, waitingForTarget: false }]));
@@ -651,7 +653,7 @@ function loadJSON(file, fallback) {
     }
 
     try {
-        return JSON.parse(contents);
+        return retiredMarkets.restoreRanking(JSON.parse(contents));
     } catch (error) {
         if (path.resolve(file) === path.resolve(STREAKS_FILE) && contents.trim() === '') {
             const rebuilt = rebuildStreaksFromPredictionHistory();
@@ -668,7 +670,7 @@ function loadJSON(file, fallback) {
 function saveJSON(file, data) {
     let serialized;
     try {
-        serialized = JSON.stringify(data, null, 2);
+        serialized = JSON.stringify(retiredMarkets.clean(data), null, 2);
         if (serialized === undefined) throw new TypeError('JSON serialization returned no data.');
     } catch (error) {
         const message = `[Persistence] Failed to serialize JSON for "${file}": ${error.message || error}`;
@@ -894,16 +896,11 @@ function buildPublicFeedHistory() {
                 topColors: Array.isArray(record.predicted.totalColor.topColors) ? record.predicted.totalColor.topColors : [],
                 noWinColor: record.predicted.totalColor.noWinColor || null
             } : null,
-            totalColor2: record.predicted?.totalColor2 ? {
-                status: record.predicted.totalColor2.status || 'SKIP',
-                top2: Array.isArray(record.predicted.totalColor2.top2) ? record.predicted.totalColor2.top2 : []
-            } : null,
             totalColor1: record.predicted?.totalColor1 ? {
                 status: record.predicted.totalColor1.status || 'SKIP',
                 top1: Array.isArray(record.predicted.totalColor1.top1) ? record.predicted.totalColor1.top1 : []
             } : null,
-            hilo: record.predicted?.hilo || 'SKIP',
-            unified: record.predicted?.unified?.key ? { key: String(record.predicted.unified.key) } : null
+            hilo: record.predicted?.hilo || 'SKIP'
         },
         result: record.result && typeof record.result === 'object' ? {
             balls: Array.isArray(record.result.balls) ? record.result.balls : [],
@@ -914,10 +911,8 @@ function buildPublicFeedHistory() {
             bet49: record.result.bet49 || 'SKIP',
             rainbow: record.result.rainbow || 'SKIP',
             totalColor: record.result.totalColor || 'SKIP',
-            totalColor2: record.result.totalColor2 || 'SKIP',
             totalColor1: record.result.totalColor1 || 'SKIP',
-            hilo: record.result.hilo || 'SKIP',
-            unified: record.result.unified || 'SKIP'
+            hilo: record.result.hilo || 'SKIP'
         } : null
     })).filter(record => {
         if (!/^[0-9]{1,32}$/.test(record.drawId) || !Number.isSafeInteger(Number(record.drawId))) return false;
@@ -933,9 +928,8 @@ const PUBLIC_MARKET_RESULT_KEYS = {
     bet49: 'bet49',
     rainbow: 'rainbow',
     totalColor: 'totalColor',
-    totalColor2: 'totalColor2', totalColor1: 'totalColor1',
-    hilo: 'hilo',
-    unified: 'unified'
+    totalColor1: 'totalColor1',
+    hilo: 'hilo'
 };
 
 const dailyStreakArchive = createDailyStreakArchive(siteDb, Object.keys(PUBLIC_MARKET_RESULT_KEYS));
@@ -1120,7 +1114,7 @@ function buildPublicFeedCurrent() {
         marketStatsResetAt: getMarketStatsResetAt(),
         marketStats: buildPublicMarketStats(currentRecord),
         strategies: getStrategyResults(currentRecord || { adaptiveStrategies: pred.adaptiveStrategies }),
-        summaryModel: currentRecord ? getRecordSummaryModel(currentRecord) : buildPublicSummaryModel(lastPrediction.summaryModel, pred.unifiedPick?.key),
+        summaryModel: currentRecord ? getRecordSummaryModel(currentRecord) : buildPublicSummaryModel(lastPrediction.summaryModel),
         pred: {
             betzeroStatus: pred.betzeroStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             unlikely4: Array.isArray(pred.unlikely4) ? pred.unlikely4.map(item => ({ number: Number(item.number) })) : [],
@@ -1132,17 +1126,12 @@ function buildPublicFeedCurrent() {
                 topColors: Array.isArray(pred.totalColorPred?.topColors) ? pred.totalColorPred.topColors : [],
                 noWinColor: pred.totalColorPred?.noWinColor || null
             },
-            totalColor2Pred: {
-                status: pred.totalColor2Pred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
-                top2: Array.isArray(pred.totalColor2Pred?.top2) ? pred.totalColor2Pred.top2 : []
-            },
             totalColor1Pred: {
                 status: pred.totalColor1Pred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
                 top1: Array.isArray(pred.totalColor1Pred?.top1) ? pred.totalColor1Pred.top1 : []
             },
             hiloStatus: pred.hiloStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
-            sumRange: pred.sumRange || 'SKIP',
-            unifiedPick: pred.unifiedPick?.key ? { key: String(pred.unifiedPick.key) } : null
+            sumRange: pred.sumRange || 'SKIP'
         }
     };
 }
@@ -1630,9 +1619,9 @@ function rebuildStreaksFromPredictionHistory() {
         ['u4', 'betzero'],
         ['color', 'rainbow'],
         ['totalColor', 'totalColor'],
-        ['totalColor2', 'totalColor2'], ['totalColor1', 'totalColor1'],
+        ['totalColor2'], ['totalColor1', 'totalColor1'],
         ['sum', 'hilo'],
-        ['unified', 'unified']
+        ['unified']
     ];
 
     for (const record of predictionLog.slice().reverse()) {
@@ -1668,6 +1657,7 @@ function exceedsStopLossWithPayload(session, payload) {
 }
 
 function enforceSessionLimits(session) {
+    retiredMarkets.guard(session);
     automationControl.guard(session);
     // Debited stakes are not settled losses: wait for the placed bet's result.
     if (!session.stats.isHalted && !session.lastBetDetails && !automationStrategy.warningOnly(session)) {
@@ -1714,6 +1704,7 @@ function haltForPayloadRisk(session, clientId, payload) {
 }
 
 function runBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) {
+    if (['unified','totalColor2'].includes(gameKey) || ['unified_sniper','antivol_ghost','highroller_scale'].includes(profile)) return { error: 'This market or profile has been removed.' };
     const meta = {
         betzero: { resultKey: 'betzero', odds: 1.65, costFactor: 1 },
         rainbow: { resultKey: 'rainbow', odds: 1.50, costFactor: 1 },
@@ -1875,6 +1866,7 @@ function runBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) 
 }
 
 function runLiveStyleBacktest(gameKey, capital, basePercent, profile, drawWindow = 1000) {
+    if (['unified','totalColor2'].includes(gameKey) || ['unified_sniper','antivol_ghost','highroller_scale'].includes(profile)) return { error: 'This market or profile has been removed.' };
     const meta = {
         u4: { resultKey: 'betzero', scoreKey: 'betzero', odds: 1.65, costFactor: 1 },
         bet49: { resultKey: 'bet49', scoreKey: 'bet49', odds: 7.80, costFactor: 1 },
@@ -2337,44 +2329,11 @@ async function sendPrediction(drawId, drawDate, pred) {
     const bet49Format = pickBlock('🎯 BET49', 'bet49', 'bet49', bet49Numbers(pred.bet49Pick).map(n => `${getBallEmoji(n)} <b>${n}</b>`).join(' '));
     const rainbowFormat = pickBlock('🌈 RAINBOW', 'rainbow', 'color', rainbowPickText);
     const tcFormat = pickBlock('🎨 TOTAL COLOR · 3-WAY', 'totalColor', 'totalColor', tcPickText);
-    const tc2Format = pickBlock('🎨 TOTAL COLOR · 2-WAY', 'totalColor2', 'totalColor2', pred.totalColor2Pred.status === 'ACTIVE'
-        ? pred.totalColor2Pred.top2.map(color => `${cEm[color] || '⚪'} <b>${color.toUpperCase()}</b>`).join(' + ') : '');
     const tc1Format = pickBlock('🎨 WINNING COLOR', 'totalColor1', 'totalColor1', pred.totalColor1Pred?.status === 'ACTIVE'
         ? pred.totalColor1Pred.top1.map(color => `${cEm[color] || '⚪'} <b>${totalColorName(color)}</b>`).join(' + ') : '');
     const hlFormat = pickBlock('📊 HIGH / LOW', 'hilo', 'sum', hlPickText);
 
-    let candidateGames = [];
-    if (pred.betzeroStatus === 'ACTIVE' && mlBz.recommendation === 'ENTER') {
-        candidateGames.push({ key: 'u4', score: mlBz.score });
-    }
-    if (pred.rainbowStatus === 'ACTIVE') {
-        candidateGames.push({ key: 'color', score: mlRb.score });
-    }
-    if (pred.hiloStatus === 'ACTIVE' && mlHl.recommendation === 'ENTER') {
-        candidateGames.push({ key: 'sum', score: mlHl.score });
-    }
-    if (pred.totalColorPred.status === 'ACTIVE' && mlTc.recommendation === 'ENTER') {
-        candidateGames.push({ key: 'totalColor', score: mlTc.score });
-    }
-
-    var unifiedFormat = '';
-    if (candidateGames.length > 0) {
-        candidateGames.sort((a, b) => {
-            if (b.score !== a.score) {
-                return b.score - a.score;
-            }
-            return Math.random() - 0.5;
-        });
-        
-        let best = candidateGames[0];
-        pred.unifiedPick = best;
-        const unifiedNames = { u4: 'BetZero', color: 'Rainbow', sum: 'High / Low', totalColor: 'Total Color 3-way' };
-        const unifiedPicks = { u4: betzeroPickText, color: rainbowPickText, sum: hlPickText, totalColor: tcPickText };
-        unifiedFormat = pickBlock(`🔗 UNIFIED · ${unifiedNames[best.key]}`, 'unified', 'unified', unifiedPicks[best.key], best.key, best.key);
-    } else {
-        pred.unifiedPick = null;
-        unifiedFormat = pickBlock('🔗 UNIFIED', 'unified', 'unified', '');
-    }
+    pred.unifiedPick = null;
 
     const publicSummaryModel = buildPublicSummaryModel(mlShadow, pred.unifiedPick?.key);
     if (lastPrediction && String(lastPrediction.drawId) === String(drawId)) {
@@ -2386,7 +2345,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         `🎯 <b>PICKS · DRAW #${drawId}</b>`,
         `<i>${String(drawDate).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</i>`,
         '', u4Format, '', bet49Format, '', rainbowFormat, '', tcFormat,
-        '', tc2Format, '', tc1Format, '', hlFormat, '', unifiedFormat
+        '', tc1Format, '', hlFormat
     ];
 
     const predictionRecord = {
@@ -2396,20 +2355,16 @@ async function sendPrediction(drawId, drawDate, pred) {
             bet49: bet49Numbers(pred.bet49Pick),
             rainbow: pred.rainbowStatus === 'ACTIVE' ? pred.topColor.name : 'SKIP',
             totalColor: pred.totalColorPred,
-            totalColor2: pred.totalColor2Pred,
             totalColor1: pred.totalColor1Pred,
-            hilo: pred.hiloStatus === 'ACTIVE' ? pred.sumRange : 'SKIP',
-            unified: pred.unifiedPick || null
+            hilo: pred.hiloStatus === 'ACTIVE' ? pred.sumRange : 'SKIP'
         },
         steps: {
             betzero: globalTracker.u4.step,
             bet49: globalTracker.bet49.step,
             rainbow: globalTracker.color.step,
             totalColor: globalTracker.totalColor.step, 
-            totalColor2: globalTracker.totalColor2.step,
             totalColor1: globalTracker.totalColor1.step,
-            hilo: globalTracker.sum.step,
-            unified: globalTracker.unified.step
+            hilo: globalTracker.sum.step
         },
         mlScores: { betzero: mlBz.score, rainbow: mlRb.score, hilo: mlHl.score, totalColor: mlTc.score },
         mlShadow,
@@ -2553,17 +2508,17 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var rawColorFreq = colorFreqs100[selectedColorName] || 0;
     var topColor = { name: selectedColorName, freq: rawColorFreq, freqs: colorFreqs100, weighted: maxFreq100 };
 
-    var totalColor2Pred = { status: 'SKIP', top2: [], confidence: 0, gap: 0 };
+    var colorRanking = { status: 'SKIP', top2: [], confidence: 0, gap: 0 };
     if (rainbowStatus === 'ACTIVE' && rainbowOptions.length >= 2) {
-        totalColor2Pred.status = 'ACTIVE';
-        totalColor2Pred.top2 = [rainbowOptions[0].name, rainbowOptions[1].name];
-        totalColor2Pred.confidence = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
-        totalColor2Pred.gap = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
+        colorRanking.status = 'ACTIVE';
+        colorRanking.top2 = [rainbowOptions[0].name, rainbowOptions[1].name];
+        colorRanking.confidence = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
+        colorRanking.gap = Math.max(0, rainbowOptions[0].count - rainbowOptions[1].count);
     }
 
     // Retain the legacy multi-number pool for Rainbow and High/Low.
     // The published Bet49 selection is replaced independently below.
-    const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, totalColor2Pred);
+    const bet49Prediction = predictBet49(histRaw?.data?.draws, targetDrawId, colorRanking);
     var bet49Pick = bet49Prediction.numbers;
 
     const mainBetZero = predictBetZeroFromLab(labBetzero, targetDrawId);
@@ -2590,7 +2545,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
 
 
     // Total Color 3-way adds No Winning Color to the active 2-way selection.
-    var totalColorPred = totalColor3WayPrediction(totalColor2Pred);
+    var totalColorPred = totalColor3WayPrediction(colorRanking);
 
     // High/Low follows the Lab's HIGH/LOW rule: Minimum/Maximum v2 on MAX gives LOW, on MIN gives HIGH.
     const highLow = predictHighLowFromMinmax(highLowDraws || histRaw?.data?.draws, targetDrawId, labMinmaxState);
@@ -2616,8 +2571,8 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         unlikely4, betzeroStatus, bzSkipReason, bet49Pick,
         topColor, rainbowStatus, rbSkipReason,
         totalColorPred, 
-        totalColor2Pred,
-        totalColor1Pred: singleColorPrediction(totalColor2Pred),
+        colorRanking,
+        totalColor1Pred: singleColorPrediction(colorRanking),
         sumRange, hiloStatus, oppositeStreakLimit, hlSkipReason,
         brainData 
     };
@@ -2653,9 +2608,9 @@ function processUpdates(pred, actualDraw) {
 
     const tc1Win = singleColorWins(pred.totalColor1Pred, actualNums);
     var tc2Win = false;
-    if (pred.totalColor2Pred && pred.totalColor2Pred.status === 'ACTIVE') {
+    if (pred.colorRanking && pred.colorRanking.status === 'ACTIVE') {
         let actualOutcomeId = actualTopColors.length === 1 ? actualTopColors[0].toLowerCase() : 'black';
-        tc2Win = pred.totalColor2Pred.top2.includes(actualOutcomeId);
+        tc2Win = pred.colorRanking.top2.includes(actualOutcomeId);
     }
 
     var u4Win = pred.unlikely4.filter(x => new Set(actualNums).has(x.number)).length === 0;
@@ -2686,9 +2641,7 @@ function processUpdates(pred, actualDraw) {
             rainbow: pred.rainbowStatus === 'SKIP' ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
             totalColor: pred.totalColorPred.status === 'SKIP' ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
             totalColor1: pred.totalColor1Pred?.status === 'ACTIVE' ? (tc1Win ? 'WIN' : 'LOSS') : 'SKIP',
-            totalColor2: pred.totalColor2Pred.status === 'SKIP' ? 'SKIP' : (tc2Win ? 'WIN' : 'LOSS'),
-            hilo: pred.hiloStatus === 'SKIP' ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
-            unified: unifiedStatus === 'SKIP' ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
+            hilo: pred.hiloStatus === 'SKIP' ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS')
         };
         targetItem.settledAt = new Date().toISOString();
         dailyStreakArchive.recordMany([targetItem]);
@@ -2751,8 +2704,8 @@ function processUpdates(pred, actualDraw) {
         updateOneStreakByMode(s, 'totalColor1', 'SAFE', tc1Win);
         globalTracker.totalColor1.step = tc1Win ? 1 : globalTracker.totalColor1.step + 1;
     }
-    if (pred.totalColor2Pred.status === 'ACTIVE') { 
-        updateOneStreakByMode(s, 'totalColor2', 'SAFE', tc2Win);
+    if (pred.colorRanking.status === 'ACTIVE') {
+        updateOneStreakByMode(s, 'SAFE', tc2Win);
         if (tc2Win) globalTracker.totalColor2.step = 1; else globalTracker.totalColor2.step++; 
     }
     if (pred.hiloStatus === 'ACTIVE') { 
@@ -2760,7 +2713,7 @@ function processUpdates(pred, actualDraw) {
         if (sumWin) globalTracker.sum.step = 1; else globalTracker.sum.step++; 
     } 
     if (unifiedStatus === 'ACTIVE') { 
-        updateOneStreakByMode(s, 'unified', 'SAFE', unifiedWin);
+        updateOneStreakByMode(s, 'SAFE', unifiedWin);
         if (unifiedWin) globalTracker.unified.step = 1; else globalTracker.unified.step++; 
     }
 
@@ -2800,7 +2753,7 @@ function processUpdates(pred, actualDraw) {
     applySniperReset('u4', pred.betzeroStatus, u4Win);
     applySniperReset('color', pred.rainbowStatus, colorWin);
     applySniperReset('totalColor', pred.totalColorPred.status, tcWin);
-    applySniperReset('totalColor2', pred.totalColor2Pred.status, tc2Win);
+    applySniperReset('totalColor2', pred.colorRanking.status, tc2Win);
     applySniperReset('totalColor1', pred.totalColor1Pred?.status, tc1Win);
     applySniperReset('sum', pred.hiloStatus, sumWin);
     applySniperReset('unified', unifiedStatus, unifiedWin);
@@ -2838,25 +2791,19 @@ function processUpdates(pred, actualDraw) {
         bet49Pred: bet49Active ? pred.bet49Pick : 'SKIP',
         rbPred: pred.rainbowStatus === 'SKIP' ? 'SKIP' : pred.topColor.name, 
         tcPred: pred.totalColorPred.status === 'SKIP' ? 'SKIP' : getTotalColorTargets(pred.totalColorPred).map(totalColorName).join(' & '),
-        tc2Pred: pred.totalColor2Pred.status === 'SKIP' ? 'SKIP' : pred.totalColor2Pred.top2.join(' & ').toUpperCase(),
         hlPred: pred.hiloStatus === 'SKIP' ? 'SKIP' : pred.sumRange, 
-        umPred: umPredStr,
         
         bzStep: globalTracker.u4.step, 
         bet49Step: globalTracker.bet49.step,
         rbStep: globalTracker.color.step, 
         tcStep: globalTracker.totalColor.step, 
-        tc2Step: globalTracker.totalColor2.step,
         hlStep: globalTracker.sum.step, 
-        umStep: globalTracker.unified.step,
         
         bzResult: pred.betzeroStatus === 'SKIP' ? 'SKIP' : (u4Win ? 'WIN' : 'LOSS'),
         bet49Result: bet49Active ? (bet49Win ? 'WIN' : 'LOSS') : 'SKIP',
         rbResult: pred.rainbowStatus === 'SKIP' ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
         tcResult: pred.totalColorPred.status === 'SKIP' ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
-        tc2Result: pred.totalColor2Pred.status === 'SKIP' ? 'SKIP' : (tc2Win ? 'WIN' : 'LOSS'),
         hlResult: pred.hiloStatus === 'SKIP' ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
-        umResult: unifiedStatus === 'SKIP' ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS'),
         
         bzMLRec: savedMl.betzero >= 0.50 ? 'ENTER' : 'HOLD', 
         bzMLScore: `${(savedMl.betzero * 100).toFixed(0)}%`, 
@@ -2873,8 +2820,6 @@ function processUpdates(pred, actualDraw) {
         hlMLStreak: mlStreaks.sum.current, 
         hlMLWorst: mlStreaks.sum.worst,
         
-        umCurrentStreak: s.unified?.current || 0,
-        umMaxLoss: getPublicMarketMaxLosses().unified || 0
     });
 
     const periodMaxLosses = getPublicMarketMaxLosses();
@@ -2915,8 +2860,8 @@ function processUpdates(pred, actualDraw) {
     const tcPick = pred.totalColorPred.status === 'ACTIVE'
         ? getTotalColorTargets(pred.totalColorPred).map(color => `${colorEmojis[color] || '⚪'} ${totalColorName(color)}`).join(' + ')
         : '';
-    const tc2Pick = pred.totalColor2Pred.status === 'ACTIVE'
-        ? pred.totalColor2Pred.top2.map(color => `${colorEmojis[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')
+    const tc2Pick = pred.colorRanking.status === 'ACTIVE'
+        ? pred.colorRanking.top2.map(color => `${colorEmojis[color] || '⚪'} ${color.toUpperCase()}`).join(' + ')
         : '';
     const tc1Pick = pred.totalColor1Pred?.status === 'ACTIVE'
         ? pred.totalColor1Pred.top1.map(color => `${colorEmojis[color] || '⚪'} ${totalColorName(color)}`).join(' + ')
@@ -2949,13 +2894,11 @@ function processUpdates(pred, actualDraw) {
         '',
         resultLine('🎨 Total Color · 3-way', pred.totalColorPred.status === 'ACTIVE', tcWin, tcPick, 'totalColor'),
         '',
-        resultLine('🎨 Total Color · 2-way', pred.totalColor2Pred.status === 'ACTIVE', tc2Win, tc2Pick, 'totalColor2'),
         '',
         resultLine('🎨 Winning Color', pred.totalColor1Pred?.status === 'ACTIVE', tc1Win, tc1Pick, 'totalColor1'),
         '',
         resultLine('📊 High / Low', pred.hiloStatus === 'ACTIVE', sumWin, hiloPick, 'sum'),
         '',
-        resultLine(`🔗 Unified${unifiedName ? ` · ${unifiedName}` : ''}`, unifiedStatus === 'ACTIVE', unifiedWin, unifiedPickText, 'unified')
     ];
     const strategyMarkets = ['betzero', 'rainbow'].filter(market =>
         getSelectedStrategy(targetItem?.adaptiveStrategies, market));
@@ -3004,7 +2947,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     const sumWin = r.hilo === 'WIN';
     const tcWin = details.colorSelections ? details.colorSelections.totalColor.includes(getTotalColorOutcome(r.balls)) : r.totalColor === 'WIN';
     const tc1Win = r.totalColor1 === 'WIN';
-    const tc2Win = details.colorSelections ? details.colorSelections.totalColor2.includes(getTotalColorOutcome(r.balls)) : r.totalColor2 === 'WIN';
+    const tc2Win = details.colorSelections ? (details.colorSelections.totalColor2 || []).includes(getTotalColorOutcome(r.balls)) : r.totalColor2 === 'WIN';
     const placedBet49 = bet49Numbers(details.bet49Numbers ?? pLogItem.predicted.bet49);
     const bet49Hits = placedBet49.filter(n => (r.balls || []).map(Number).includes(n)).length;
     const bet49Win = bet49Hits > 0;
@@ -3177,7 +3120,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
             session.stats.betsPlaced++; session.stats.lastStake = displayStake; session.stats.lastOdds = playedOdds;
         }
     } else {
-        ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].forEach(key => {
+        ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1'].forEach(key => {
             const state = session.martingaleState[key];
             if ((state.active && session.config.enabledGames[key]) || (key === 'totalColor1' && details.games?.includes(key))) {
                 if (!details.games?.includes(key)) return;
@@ -3336,7 +3279,7 @@ async function tick() {
             if (session.betExecutionClaim && dailyPendingSettlements.some(record => String(record.drawId) === String(session.betExecutionClaim.drawId))) continue;
             // 🛡️ SHADOW MODE LOGIC (Updated for Deficit Recovery)
             if (session.config.shadowMode) {
-                ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].forEach(k => {
+                ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1'].forEach(k => {
                     if (session.martingaleState[k].inShadowMode && globalTracker[k].step === 1) {
                         session.martingaleState[k].inShadowMode = false;
                         
@@ -3467,9 +3410,7 @@ async function tick() {
                             rainbow: (!p.predicted.rainbow || p.predicted.rainbow === 'SKIP') ? 'SKIP' : (colorWin ? 'WIN' : 'LOSS'),
                             totalColor: (!p.predicted.totalColor || p.predicted.totalColor.status === 'SKIP') ? 'SKIP' : (tcWin ? 'WIN' : 'LOSS'),
                             totalColor1: p.predicted.totalColor1?.status === 'ACTIVE' ? (tc1Win ? 'WIN' : 'LOSS') : 'SKIP',
-                            totalColor2: (!p.predicted.totalColor2 || p.predicted.totalColor2.status === 'SKIP') ? 'SKIP' : (tc2Win ? 'WIN' : 'LOSS'),
-                            hilo: (!p.predicted.hilo || p.predicted.hilo === 'SKIP') ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
-                            unified: !p.predicted.unified ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
+                            hilo: (!p.predicted.hilo || p.predicted.hilo === 'SKIP') ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS')
                         };
                         p.settledAt = new Date().toISOString();
                         dailyStreakArchive.recordMany([p]);
@@ -3566,7 +3507,7 @@ async function tick() {
             };
 
             const clearStrandedStates = (sess) => {
-                ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].forEach(k => {
+                ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1'].forEach(k => {
                     if (k === 'totalColor1') { sess.martingaleState[k].active = false; return; }
                     sess.martingaleState[k].isRollover = false;
                     sess.martingaleState[k].rolloverStake = 0;
@@ -3614,7 +3555,7 @@ async function tick() {
                         }
                     }
 
-                    if (!sniperAllowsEntry(session, 'unified')) continue;
+                    if (!sniperAllowsEntry(session)) continue;
 
                     if (globalPick && session.config.enabledGames[globalPick.key] && !isUnifiedCoolingDown
                         && String(session.lastBetDrawId) !== String(nextId)) {
@@ -3671,7 +3612,7 @@ async function tick() {
                     let payloadStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, totalColor1: 0 };
                     let payloadGenerated = false;
 
-                    ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].forEach(key => {
+                    ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1'].forEach(key => {
                         if (session.config.enabledGames[key]) {
                             if (!passesStrategyFilter(session, key)) return;
                             const state = session.martingaleState[key];
@@ -3710,7 +3651,7 @@ async function tick() {
                             if (key === 'color' && pred.rainbowStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.color; }
                             if (key === 'sum' && pred.hiloStatus === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.sum; }
                             if (key === 'totalColor' && pred.totalColorPred.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = localMlScores.totalColor; }
-                            if (key === 'totalColor2' && pred.totalColor2Pred.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = 0; }
+                            if (key === 'totalColor2' && pred.colorRanking.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = 0; }
                             if (key === 'totalColor1' && pred.totalColor1Pred?.status === 'ACTIVE') { isActivePrediction = true; activeMlScore = 0; }
 
                             if (isActivePrediction && !passesSummaryModelGate(session, key)) {
@@ -3746,7 +3687,7 @@ async function tick() {
                         const hasRainbow = session.config.enabledGames.color && pred.rainbowStatus === 'ACTIVE' && rbStake > 0;
                         const hasHiLo = session.config.enabledGames.sum && pred.hiloStatus === 'ACTIVE' && hlStake > 0;
                         const hasTotalColor = session.config.enabledGames.totalColor && pred.totalColorPred.status === 'ACTIVE' && tcStake > 0;
-                        const hasTotalColor2 = session.config.enabledGames.totalColor2 && pred.totalColor2Pred.status === 'ACTIVE' && tc2Stake > 0;
+                        const hasTotalColor2 = session.config.enabledGames.totalColor2 && pred.colorRanking.status === 'ACTIVE' && tc2Stake > 0;
                         const hasTotalColor1 = session.config.enabledGames.totalColor1 && pred.totalColor1Pred?.status === 'ACTIVE' && tc1Stake > 0;
 
                         session.pendingBetPayload = {
@@ -3769,7 +3710,7 @@ async function tick() {
                             totalColor: hasTotalColor ? getTotalColorTargets(pred.totalColorPred) : null,
                             tcStake: hasTotalColor ? tcStake : 0,
                             
-                            totalColor2: hasTotalColor2 ? pred.totalColor2Pred.top2 : null,
+                            totalColor2: hasTotalColor2 ? pred.colorRanking.top2 : null,
                             totalColor1: hasTotalColor1 ? pred.totalColor1Pred.top1 : null,
                             tc2Stake: hasTotalColor2 ? tc2Stake : 0,
                             tc1Stake: hasTotalColor1 ? tc1Stake : 0,
@@ -3947,8 +3888,8 @@ async function handleHttpRequest(req, res) {
                 range: safeText(record.result.range),
                 betzero: safeText(record.result.betzero), rainbow: safeText(record.result.rainbow),
                 bet49: safeText(record.result.bet49),
-                totalColor: safeText(record.result.totalColor), totalColor2: safeText(record.result.totalColor2), totalColor1: safeText(record.result.totalColor1),
-                hilo: safeText(record.result.hilo), unified: safeText(record.result.unified)
+                totalColor: safeText(record.result.totalColor), totalColor1: safeText(record.result.totalColor1),
+                hilo: safeText(record.result.hilo)
             } : null;
             normalizedHistoryUpdates.push({
                 drawId,
@@ -3958,7 +3899,7 @@ async function handleHttpRequest(req, res) {
                     drawDate: safeText(record.drawDate, 64),
                     timestamp: safeText(record.timestamp, 64),
                     settledAt: safeText(record.settledAt, 64),
-                    summaryModel: buildPublicSummaryModel(record.summaryModel, record.predicted.unified?.key),
+                    summaryModel: buildPublicSummaryModel(record.summaryModel),
                     strategyResults: getStrategyResults({ strategyResults: record.strategyResults }),
                     steps: {
                         bet49: safePublicCount(record.steps?.bet49)
@@ -3972,16 +3913,11 @@ async function handleHttpRequest(req, res) {
                             topColors: safeArray(record.predicted.totalColor.topColors, 3).map(value => String(value).slice(0, 20)),
                             noWinColor: safeText(record.predicted.totalColor.noWinColor)
                         } : null,
-                        totalColor2: record.predicted.totalColor2 && typeof record.predicted.totalColor2 === 'object' ? {
-                            status: safeText(record.predicted.totalColor2.status),
-                            top2: safeArray(record.predicted.totalColor2.top2, 2).map(value => String(value).slice(0, 20))
-                        } : null,
                         totalColor1: record.predicted.totalColor1 && typeof record.predicted.totalColor1 === 'object' ? {
                             status: safeText(record.predicted.totalColor1.status),
                             top1: safeArray(record.predicted.totalColor1.top1, 1).map(value => String(value).slice(0, 20))
                         } : null,
-                        hilo: safeText(record.predicted.hilo),
-                        unified: record.predicted.unified?.key ? { key: safeText(String(record.predicted.unified.key)) } : null
+                        hilo: safeText(record.predicted.hilo)
                     },
                     result
                 }
@@ -3989,7 +3925,7 @@ async function handleHttpRequest(req, res) {
         }
         try {
             if (incomingEpoch > getDailyHistoryResetAt()) applyDailyHistoryReset(incomingEpoch);
-            const currentJson = snapshot.current === null ? null : JSON.stringify(snapshot.current);
+            const currentJson = snapshot.current === null ? null : JSON.stringify(retiredMarkets.clean(snapshot.current));
             const clockJson = JSON.stringify(snapshot.clock);
             siteDb.exec('BEGIN IMMEDIATE');
             try {
@@ -4000,7 +3936,7 @@ async function handleHttpRequest(req, res) {
                 }
                 if (snapshot.dailyStreaks !== undefined) dailyStreakArchive.importSummaries(snapshot.dailyStreaks);
                 for (const item of normalizedHistoryUpdates) {
-                    upsertPublicPredictionHistoryStatement.run(item.drawId, item.sortDrawId, JSON.stringify(item.record));
+                    upsertPublicPredictionHistoryStatement.run(item.drawId, item.sortDrawId, JSON.stringify(retiredMarkets.clean(item.record)));
                 }
                 savePublicPredictionFeedStatement.run(currentJson, clockJson, '[]', '', snapshotAt);
                 syncMarketStatsReset(snapshot.marketStatsResetAt);
@@ -4609,7 +4545,7 @@ async function handleHttpRequest(req, res) {
                         session.stats.totalReturned = Math.round(data.balance - session.stats.initialBalance);
                     }
 
-                    ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].forEach(key => {
+                    ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1'].forEach(key => {
                         session.wallets[key].bankroll = data.balance;
                     });
                 }
@@ -4700,16 +4636,11 @@ async function handleHttpRequest(req, res) {
                     topColors: Array.isArray(p.predicted.totalColor.topColors) ? p.predicted.totalColor.topColors : [],
                     noWinColor: p.predicted.totalColor.noWinColor || null
                 } : { status: 'SKIP', topColors: [], noWinColor: null },
-                totalColor2: p.predicted?.totalColor2 ? {
-                    status: p.predicted.totalColor2.status || 'SKIP',
-                    top2: Array.isArray(p.predicted.totalColor2.top2) ? p.predicted.totalColor2.top2 : []
-                } : { status: 'SKIP', top2: [] },
                 totalColor1: p.predicted?.totalColor1 ? {
                     status: p.predicted.totalColor1.status || 'SKIP',
                     top1: Array.isArray(p.predicted.totalColor1.top1) ? p.predicted.totalColor1.top1 : []
                 } : { status: 'SKIP', top1: [] },
-                hilo: p.result?.hilo === 'SKIP' ? 'SKIP' : (p.predicted?.hilo || 'SKIP'),
-                unified: p.predicted?.unified?.key ? { key: String(p.predicted.unified.key) } : null
+                hilo: p.result?.hilo === 'SKIP' ? 'SKIP' : (p.predicted?.hilo || 'SKIP')
             },
             result: {
                 balls: Array.isArray(p.result?.balls) ? p.result.balls : [],
@@ -4720,10 +4651,8 @@ async function handleHttpRequest(req, res) {
                 bet49: p.result?.bet49 || (p.result ? 'SKIP' : 'PENDING'),
                 rainbow: p.result?.rainbow || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor: p.result?.totalColor || (p.result ? 'SKIP' : 'PENDING'),
-                totalColor2: p.result?.totalColor2 || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor1: p.result?.totalColor1 || (p.result ? 'SKIP' : 'PENDING'),
-                hilo: p.result?.hilo || (p.result ? 'SKIP' : 'PENDING'),
-                unified: p.result?.unified || (p.result ? 'SKIP' : 'PENDING')
+                hilo: p.result?.hilo || (p.result ? 'SKIP' : 'PENDING')
             }
         }));
         res.writeHead(200, {
@@ -4791,16 +4720,11 @@ async function handleHttpRequest(req, res) {
                     topColors: Array.isArray(live.totalColorPred?.topColors) ? live.totalColorPred.topColors : [],
                     noWinColor: live.totalColorPred?.noWinColor || null
                 },
-                totalColor2: {
-                    status: live.totalColor2Pred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
-                    top2: Array.isArray(live.totalColor2Pred?.top2) ? live.totalColor2Pred.top2 : []
-                },
                 totalColor1: {
                     status: live.totalColor1Pred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
                     top1: Array.isArray(live.totalColor1Pred?.top1) ? live.totalColor1Pred.top1 : []
                 },
-                hilo: live.hiloStatus === 'ACTIVE' ? live.sumRange || 'SKIP' : 'SKIP',
-                unified: live.unifiedPick?.key ? { key: String(live.unifiedPick.key) } : null
+                hilo: live.hiloStatus === 'ACTIVE' ? live.sumRange || 'SKIP' : 'SKIP'
             }
         };
         const publicPrevious = previousRecord ? {
@@ -4815,16 +4739,11 @@ async function handleHttpRequest(req, res) {
                     topColors: Array.isArray(previousRecord.predicted.totalColor.topColors) ? previousRecord.predicted.totalColor.topColors : [],
                     noWinColor: previousRecord.predicted.totalColor.noWinColor || null
                 } : { status: 'SKIP', topColors: [], noWinColor: null },
-                totalColor2: previousRecord.predicted?.totalColor2 ? {
-                    status: previousRecord.predicted.totalColor2.status || 'SKIP',
-                    top2: Array.isArray(previousRecord.predicted.totalColor2.top2) ? previousRecord.predicted.totalColor2.top2 : []
-                } : { status: 'SKIP', top2: [] },
                 totalColor1: previousRecord.predicted?.totalColor1 ? {
                     status: previousRecord.predicted.totalColor1.status || 'SKIP',
                     top1: Array.isArray(previousRecord.predicted.totalColor1.top1) ? previousRecord.predicted.totalColor1.top1 : []
                 } : { status: 'SKIP', top1: [] },
-                hilo: previousRecord.result?.hilo === 'SKIP' ? 'SKIP' : (previousRecord.predicted?.hilo || 'SKIP'),
-                unified: previousRecord.predicted?.unified?.key ? { key: String(previousRecord.predicted.unified.key) } : null
+                hilo: previousRecord.result?.hilo === 'SKIP' ? 'SKIP' : (previousRecord.predicted?.hilo || 'SKIP')
             },
             result: {
                 balls: Array.isArray(previousRecord.result.balls) ? previousRecord.result.balls : [],
@@ -4835,18 +4754,16 @@ async function handleHttpRequest(req, res) {
                 bet49: previousRecord.result.bet49 || 'SKIP',
                 rainbow: previousRecord.result.rainbow || 'SKIP',
                 totalColor: previousRecord.result.totalColor || 'SKIP',
-                totalColor2: previousRecord.result.totalColor2 || 'SKIP',
                 totalColor1: previousRecord.result.totalColor1 || 'SKIP',
-                hilo: previousRecord.result.hilo || 'SKIP',
-                unified: previousRecord.result.unified || 'SKIP'
+                hilo: previousRecord.result.hilo || 'SKIP'
             }
         } : null;
         const selectedMarket = parsedUrl.searchParams.get('market');
-        const allowedMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'totalColor1', 'hilo', 'unified'];
+        const allowedMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor1', 'hilo'];
         const market = allowedMarkets.includes(selectedMarket) ? selectedMarket : 'betzero';
         const currentSummaryModel = logged ? getRecordSummaryModel(logged)
-            : buildPublicSummaryModel(lastPrediction.summaryModel, live.unifiedPick?.key);
-        publicPrediction.summaryLabel = getPublicSummaryLabelForMarket(currentSummaryModel, market, live.unifiedPick?.key);
+            : buildPublicSummaryModel(lastPrediction.summaryModel);
+        publicPrediction.summaryLabel = getPublicSummaryLabelForMarket(currentSummaryModel, market);
         const clockFresh = publicClock.observedAt && Date.now() - publicClock.observedAt <= POLL_SEC * 3000;
         const secondsRemaining = clockFresh
             ? Math.max(0, publicClock.timeLeftSeconds - Math.floor((Date.now() - publicClock.observedAt) / 1000))
@@ -4872,7 +4789,7 @@ async function handleHttpRequest(req, res) {
         const useSuppliedStats = SITE_PUBLIC_MODE
             && Number(lastPrediction.marketStatsResetAt) === getMarketStatsResetAt();
         const selectedMarketStats = useSuppliedStats ? suppliedMarketStats : {};
-        publicPrediction.strategy = getSelectedStrategy(logged?.adaptiveStrategies || lastPrediction.strategies, market, live.unifiedPick?.key);
+        publicPrediction.strategy = getSelectedStrategy(logged?.adaptiveStrategies || lastPrediction.strategies, market);
         publicPrediction.marketStats = {
             step: selectedMarketStats.step ?? calculatedMarketStats[market].step,
             currentWinStreak: selectedMarketStats.currentWinStreak ?? calculatedMarketStats[market].currentWinStreak,
@@ -4883,25 +4800,15 @@ async function handleHttpRequest(req, res) {
         const selectedPicks = {
             betzero: [], bet49: null, rainbow: 'SKIP',
             totalColor: { status: 'SKIP', topColors: [], noWinColor: null },
-            totalColor2: { status: 'SKIP', top2: [] },
             totalColor1: { status: 'SKIP', top1: [] },
-            hilo: 'SKIP', unified: null
+            hilo: 'SKIP'
         };
-        const marketAliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
         if (market === 'betzero') selectedPicks.betzero = publicPrediction.predicted.betzero;
         if (market === 'bet49') selectedPicks.bet49 = publicPrediction.predicted.bet49;
         if (market === 'rainbow') selectedPicks.rainbow = publicPrediction.predicted.rainbow;
         if (market === 'totalColor') selectedPicks.totalColor = publicPrediction.predicted.totalColor;
-        if (market === 'totalColor2') selectedPicks.totalColor2 = publicPrediction.predicted.totalColor2;
         if (market === 'totalColor1') selectedPicks.totalColor1 = publicPrediction.predicted.totalColor1;
         if (market === 'hilo') selectedPicks.hilo = publicPrediction.predicted.hilo;
-        if (market === 'unified' && publicPrediction.predicted.unified) {
-            selectedPicks.unified = publicPrediction.predicted.unified;
-            const sourceMarket = marketAliases[selectedPicks.unified.key] || selectedPicks.unified.key;
-            if (allowedMarkets.includes(sourceMarket) && sourceMarket !== 'unified') {
-                selectedPicks[sourceMarket] = publicPrediction.predicted[sourceMarket];
-            }
-        }
         publicPrediction.predicted = selectedPicks;
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
         return res.end(JSON.stringify({ prediction: publicPrediction, previous: publicPrevious, lastUpdated, secondsUntilReveal: 0, access: { tier: planTier || 'trial', games: planGames || [] } }));
@@ -4932,14 +4839,13 @@ async function handleHttpRequest(req, res) {
         let historyStats = {};
 
         const calcStats = (slice) => {
-            let st = { u4: { w:0, l:0, s:0 }, color: { w:0, l:0, s:0 }, totalColor: { w:0, l:0, s:0 }, totalColor2: { w:0, l:0, s:0 }, totalColor1: { w:0, l:0, s:0 }, sum: { w:0, l:0, s:0 } };
+            let st = { u4: { w:0, l:0, s:0 }, color: { w:0, l:0, s:0 }, totalColor: { w:0, l:0, s:0 }, totalColor1: { w:0, l:0, s:0 }, sum: { w:0, l:0, s:0 } };
             slice.forEach(p => {
                 const r = p.result;
                 if (r.betzero === 'WIN') st.u4.w++; else if (r.betzero === 'LOSS') st.u4.l++; else st.u4.s++;
                 if (r.rainbow === 'WIN') st.color.w++; else if (r.rainbow === 'LOSS') st.color.l++; else st.color.s++;
                 if (r.totalColor === 'WIN') st.totalColor.w++; else if (r.totalColor === 'LOSS') st.totalColor.l++; else st.totalColor.s++;
                 if (r.totalColor1 === 'WIN') st.totalColor1.w++; else if (r.totalColor1 === 'LOSS') st.totalColor1.l++; else st.totalColor1.s++;
-                if (r.totalColor2 === 'WIN') st.totalColor2.w++; else if (r.totalColor2 === 'LOSS') st.totalColor2.l++; else st.totalColor2.s++;
                 if (r.hilo === 'WIN') st.sum.w++; else if (r.hilo === 'LOSS') st.sum.l++; else st.sum.s++;
             });
             return st;
@@ -4972,13 +4878,12 @@ async function handleHttpRequest(req, res) {
             return res.end('No calculations available');
         }
         
-        const headers = ['Draw ID', 'Date/Time', 'BetZero', 'Rainbow', 'TC (3W)', 'TC (2W)', 'Hi/Lo', 'BZ Step', 'RB Step', 'TC3 Step', 'TC2 Step', 'HL Step', 'Result Balls', 'Total', 'Range', 'BZ Res', 'RB Res', 'TC3 Res', 'TC2 Res', 'HL Res', 'BZ ML Rec', 'BZ ML %', 'RB ML Rec', 'RB ML %', 'HL ML Rec', 'HL ML %', 'TC ML Rec', 'TC ML %', 'Winning Color', 'Winning Color Step', 'Winning Color Result'].join(',');
+        const headers = ['Draw ID', 'Date/Time', 'BetZero', 'Rainbow', 'TC (3W)', 'Hi/Lo', 'BZ Step', 'RB Step', 'TC3 Step', 'HL Step', 'Result Balls', 'Total', 'Range', 'BZ Res', 'RB Res', 'TC3 Res', 'HL Res', 'BZ ML Rec', 'BZ ML %', 'RB ML Rec', 'RB ML %', 'HL ML Rec', 'HL ML %', 'TC ML Rec', 'TC ML %', 'Winning Color', 'Winning Color Step', 'Winning Color Result'].join(',');
         
         const rows = preds.map(p => {
             const tc1Fields = [p.predicted?.totalColor1?.status === 'ACTIVE' ? totalColorName(p.predicted.totalColor1.top1?.[0]) : 'SKIP', p.steps?.totalColor1 || '', p.result ? p.result.totalColor1 || 'SKIP' : 'PENDING'];
             const time = p.timestamp ? new Date(p.timestamp).toLocaleString() : '';
             const tcPredStr = p.predicted?.totalColor?.status === 'ACTIVE' ? getTotalColorTargets(p.predicted.totalColor).map(totalColorName).join(' & ') : 'SKIP';
-            const tc2PredStr = p.predicted?.totalColor2?.status === 'ACTIVE' ? p.predicted.totalColor2.top2.join(' & ') : 'SKIP';
             
             const bzMlRec = (p.mlScores?.betzero >= 0.50) ? 'ENTER' : 'HOLD';
             const bzMlPct = p.mlScores?.betzero ? `${(p.mlScores.betzero * 100).toFixed(0)}%` : '0%';
@@ -4989,10 +4894,10 @@ async function handleHttpRequest(req, res) {
             const tcMlRec = (p.mlScores?.totalColor >= 0.45) ? 'ENTER' : 'HOLD';
             const tcMlPct = p.mlScores?.totalColor ? `${(p.mlScores.totalColor * 100).toFixed(0)}%` : '0%';
 
-            if (!p.result) return [p.drawId, `"${time}"`, `"${(p.predicted?.betzero || []).join(' ')}"`, p.predicted?.rainbow || '', tcPredStr, tc2PredStr, p.predicted?.hilo || '', p.steps?.betzero || '', p.steps?.rainbow || '', p.steps?.totalColor || '', p.steps?.totalColor2 || '', p.steps?.hilo || '', '', '', '', 'PENDING', 'PENDING', 'PENDING', 'PENDING', 'PENDING', bzMlRec, bzMlPct, rbMlRec, rbMlPct, hlMlRec, hlMlPct, tcMlRec, tcMlPct, ...tc1Fields].join(',');
+            if (!p.result) return [p.drawId, `"${time}"`, `"${(p.predicted?.betzero || []).join(' ')}"`, p.predicted?.rainbow || '', tcPredStr, p.predicted?.hilo || '', p.steps?.betzero || '', p.steps?.rainbow || '', p.steps?.totalColor || '', p.steps?.hilo || '', '', '', '', 'PENDING', 'PENDING', 'PENDING', 'PENDING', bzMlRec, bzMlPct, rbMlRec, rbMlPct, hlMlRec, hlMlPct, tcMlRec, tcMlPct, ...tc1Fields].join(',');
             
             const r = p.result;
-            return [p.drawId, `"${time}"`, `"${(p.predicted?.betzero || []).join(' ')}"`, p.predicted?.rainbow || '', tcPredStr, tc2PredStr, p.predicted?.hilo || '', p.steps?.betzero || '', p.steps?.rainbow || '', p.steps?.totalColor || '', p.steps?.totalColor2 || '', p.steps?.hilo || '', `"${(r.balls || []).join(' ')}"`, r.total || '', r.range || '', r.betzero || '', r.rainbow || '', r.totalColor || '', r.totalColor2 || '', r.hilo || '', bzMlRec, bzMlPct, rbMlRec, rbMlPct, hlMlRec, hlMlPct, tcMlRec, tcMlPct, ...tc1Fields].join(',');
+            return [p.drawId, `"${time}"`, `"${(p.predicted?.betzero || []).join(' ')}"`, p.predicted?.rainbow || '', tcPredStr, p.predicted?.hilo || '', p.steps?.betzero || '', p.steps?.rainbow || '', p.steps?.totalColor || '', p.steps?.hilo || '', `"${(r.balls || []).join(' ')}"`, r.total || '', r.range || '', r.betzero || '', r.rainbow || '', r.totalColor || '', r.hilo || '', bzMlRec, bzMlPct, rbMlRec, rbMlPct, hlMlRec, hlMlPct, tcMlRec, tcMlPct, ...tc1Fields].join(',');
         });
         res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="balls49_ledger_${Date.now()}.csv"` });
         return res.end([headers, ...rows].join('\n'));
@@ -5072,9 +4977,7 @@ async function handleHttpRequest(req, res) {
                 bet49: getBet49HistoricalLossStreaks().maximum,
                 color: s.color?.worst || 9,
                 totalColor: s.totalColor?.worst || 6,
-                totalColor2: s.totalColor2?.worst || 12,
-                sum: s.sum?.worst || 13,
-                unified: s.unified?.worst || 6
+                sum: s.sum?.worst || 13
             }
         }));
     }
@@ -5105,23 +5008,14 @@ async function handleHttpRequest(req, res) {
         let activeCb = null;
         const currentExpectedDraw = lastGlobalDrawId ? Number(lastGlobalDrawId) + 1 : 0;
         
-        if (session.config.unifiedMode) {
-            if (session.masterState.inShadowMode) {
-                activeCb = { active: true, game: 'Unified Master', mode: 'SHADOW' };
-            } else if (session.cooldowns.unified >= currentExpectedDraw && currentExpectedDraw > 0) {
-                let drawsLeft = session.cooldowns.unified - currentExpectedDraw + 1;
-                activeCb = { active: true, game: 'Unified Master', drawsLeft };
-            }
-        } else {
-            for (let k of ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1']) {
-                if (session.martingaleState[k].inShadowMode) {
-                    activeCb = { active: true, game: k, mode: 'SHADOW' };
-                    break;
-                } else if (session.cooldowns[k] >= currentExpectedDraw && currentExpectedDraw > 0) {
-                    let drawsLeft = session.cooldowns[k] - currentExpectedDraw + 1;
-                    activeCb = { active: true, game: k, drawsLeft };
-                    break;
-                }
+        for (let k of ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1']) {
+            if (session.martingaleState[k].inShadowMode) {
+                activeCb = { active: true, game: k, mode: 'SHADOW' };
+                break;
+            } else if (session.cooldowns[k] >= currentExpectedDraw && currentExpectedDraw > 0) {
+                let drawsLeft = session.cooldowns[k] - currentExpectedDraw + 1;
+                activeCb = { active: true, game: k, drawsLeft };
+                break;
             }
         }
 
@@ -5131,7 +5025,7 @@ async function handleHttpRequest(req, res) {
         const retryStatus = session.pendingBetPayload && session.pendingBetPayload.action === "EXECUTE_BET" 
             ? { active: true, retries: session.failedBetRecovery?.retries || 0 } : null;
 
-        const decisionLabels = { u4: 'BetZero', bet49: 'Bet49', color: 'Rainbow', sum: 'Hi/Lo', totalColor: 'Total Color 3-Way', totalColor2: 'Total Color 2-Way', totalColor1: 'Winning Color' };
+        const decisionLabels = { u4: 'BetZero', bet49: 'Bet49', color: 'Rainbow', sum: 'Hi/Lo', totalColor: 'Total Color 3-Way', totalColor1: 'Winning Color' };
         let decisionReason = 'Waiting for the next draw decision.';
         if (session.stats.isHalted) {
             decisionReason = session.stats.haltReason || 'Automation is halted.';
@@ -5145,18 +5039,13 @@ async function handleHttpRequest(req, res) {
         } else if (session.pendingBetPayload) {
             decisionReason = `Bet queued for draw #${session.pendingBetPayload.drawId}.`;
         } else if (livePred) {
-            let enabledKeys = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor2', 'totalColor1'].filter(key => session.config.enabledGames[key]);
-            if (session.config.unifiedMode) {
-                const selected = livePred.unifiedPick?.key;
-                enabledKeys = enabledKeys.length && selected ? [selected] : [];
-            }
+            let enabledKeys = ['u4', 'bet49', 'color', 'sum', 'totalColor', 'totalColor1'].filter(key => session.config.enabledGames[key]);
             const predictionByKey = {
                 u4: livePred.betzeroStatus === 'ACTIVE' && livePred.unlikely4?.length !== 4 ? 'SKIP' : livePred.betzeroStatus,
                 bet49: bet49Numbers(livePred.bet49Pick).length > 0 ? 'ACTIVE' : 'SKIP',
                 color: livePred.rainbowStatus,
                 sum: livePred.hiloStatus,
                 totalColor: livePred.totalColorPred?.status,
-                totalColor2: livePred.totalColor2Pred?.status,
                 totalColor1: livePred.totalColor1Pred?.status
             };
             const skipReasons = { u4: livePred.betzeroStatus === 'ACTIVE' && livePred.unlikely4?.length !== 4 ? 'BetZero automation requires exactly four selected numbers' : livePred.bzSkipReason, color: livePred.rbSkipReason, sum: livePred.hlSkipReason };
@@ -5174,9 +5063,7 @@ async function handleHttpRequest(req, res) {
                 && !gapEntry.reason(session, key, lastPrediction?.drawId));
             const gapBlockedKey = enabledKeys.find(key => gapEntry.reason(session, key, lastPrediction?.drawId));
             if (!enabledKeys.length) {
-                decisionReason = session.config.unifiedMode && Object.values(session.config.enabledGames).some(Boolean)
-                    ? 'Unified is waiting for an eligible score-selected prediction.'
-                    : 'No prediction market is enabled.';
+                decisionReason = 'No prediction market is enabled.';
             } else if (missingStakeKey) {
                 decisionReason = `${decisionLabels[missingStakeKey]} has no saved stake. Enter a stake and Save Settings in the extension.`;
             } else if (blockedKey) {
@@ -5532,7 +5419,7 @@ async function handleHttpRequest(req, res) {
                     }
                     if (cfg.enabledGames.totalColor1 !== undefined) session.config.enabledGames.totalColor1 = Boolean(cfg.enabledGames.totalColor1);
                     if (cfg.enabledGames.totalColor2 !== undefined) {
-                        session.config.enabledGames.totalColor2 = Boolean(cfg.enabledGames.totalColor2);
+                        session.config.enabledGames.totalColor2 = false;
                     }
                 }
                 if (cfg.takeProfit !== undefined) {
@@ -5591,7 +5478,8 @@ async function handleHttpRequest(req, res) {
                         }
                     }
                 }
-                if (cfg.unifiedMode !== undefined) session.config.unifiedMode = Boolean(cfg.unifiedMode);
+                if (cfg.unifiedMode || cfg.enabledGames?.totalColor2) throw new Error('Removed market: reload the updated extension.');
+                session.config.unifiedMode = false;
                 if (cfg.bzRbRollover !== undefined) session.config.bzRbRollover = Boolean(cfg.bzRbRollover);
                 if (cfg.hiloRollover !== undefined) session.config.hiloRollover = Boolean(cfg.hiloRollover);
                 if (cfg.tc3Rollover !== undefined) session.config.tc3Rollover = Boolean(cfg.tc3Rollover);
@@ -5611,6 +5499,13 @@ async function handleHttpRequest(req, res) {
 }
 
 http.createServer((req, res) => {
+    const end = res.end.bind(res);
+    res.end = (chunk, ...args) => {
+        if (typeof chunk === 'string' && /^[\s]*[\[{]/.test(chunk)) {
+            try { chunk = JSON.stringify(retiredMarkets.clean(JSON.parse(chunk))); } catch {}
+        }
+        return end(chunk,...args);
+    };
     handleHttpRequest(req, res).catch(error => {
         console.error(`[HTTP] Request failed: ${error.message || error}`);
         if (!res.headersSent) sendJson(res, 500, { error: 'Internal server error.' });
@@ -5686,7 +5581,6 @@ function createPlanKeyboard() {
             [{ text: 'High/Low (2x)', callback_data: 'plan:hilo' }],
             [{ text: 'High/Low (1.40x)', callback_data: 'plan:hilo_140' }],
             [{ text: 'Total Color Break-Even (3W)', callback_data: 'plan:total_color' }],
-            [{ text: 'Total Color Profit (2W)', callback_data: 'plan:total_color_2way' }],
             [{ text: 'Custom Martingale', callback_data: 'plan:martingale' }]
         ]
     };
@@ -5694,7 +5588,7 @@ function createPlanKeyboard() {
 
 function telegramApiRequest(method, payload) {
     return new Promise((resolve) => {
-        const body = JSON.stringify(payload);
+        const body = JSON.stringify(retiredMarkets.clean(payload));
         const req = https.request({
             hostname: 'api.telegram.org', path: `/bot${TOKEN}/${method}`, method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
@@ -5743,6 +5637,7 @@ function formatTelegramPlan(chatId, state, capital) {
 }
 
 function handleTelegramPlanCallback(callbackQuery) {
+    if (callbackQuery.data === 'plan:total_color_2way') { answerTelegramCallback(callbackQuery.id); return; }
     const chatId = callbackQuery.message.chat.id;
     const selection = String(callbackQuery.data || '').replace(/^plan:/, '');
     const definitions = {
@@ -5860,7 +5755,7 @@ function handleTelegramCommand(chatId, text) {
         if (['color', 'rb', 'rainbow'].includes(k)) return 'color';
         if (['sum', 'hl', 'hilo'].includes(k)) return 'sum';
         if (['tc', 'tc3', 'totalcolor'].includes(k)) return 'totalColor';
-        if (['tc2', 'totalcolor2'].includes(k)) return 'totalColor2';
+
         return null;
     };
 
@@ -5883,14 +5778,13 @@ function handleTelegramCommand(chatId, text) {
             `• <code>/stake &lt;game&gt; &lt;amount&gt;</code> — Set base stake (e.g. <code>/stake tc 1000</code>)`,
             `• <code>/tp &lt;amount&gt;</code> — Set Take Profit target (e.g. <code>/tp 5000</code>)`,
             `• <code>/sl &lt;amount&gt;</code> — Set Stop Loss boundary (e.g. <code>/sl 10000</code>)`,
-            `• <code>/unified &lt;on|off&gt;</code> — Toggle Unified Master Mode`,
             `• <code>/enable &lt;game&gt;</code> — Activate market (e.g. <code>/enable bz</code>)`,
             `• <code>/disable &lt;game&gt;</code> — Deactivate market (e.g. <code>/disable color</code>)`,
             `• <code>/rollover &lt;tc3|bzrb&gt; &lt;on|off&gt;</code> — Toggle compounding rollovers`,
             `• <code>/shadow &lt;on|off&gt;</code> — Toggle Smart Virtual Circuit Breaker`,
             `• <code>/weighted &lt;on|off&gt;</code> — Toggle ML-Weighted Base Staking`,
             `<code>------------------------------------</code>`,
-            `<i>Supported game keys: bz, rb, hl, tc, tc2</i>`
+            `<i>Supported game keys: bz, rb, hl, tc</i>`
         ].join('\n');
         sendPersonalDM(chatId, helpText).catch(() => {});
     }
@@ -5904,7 +5798,6 @@ function handleTelegramCommand(chatId, text) {
             `⚙️ <b>CURRENT TELEMETRY & CONFIG</b>`,
             `<code>------------------------------------</code>`,
             `🔴 <b>Engine State:</b> ${stats.isHalted ? `PAUSED (${stats.haltReason || 'User'})` : '🟢 RUNNING'}`,
-            `👑 <b>Unified Mode:</b> ${config.unifiedMode ? 'ENABLED 🟢' : 'DISABLED 🔴'}`,
             `🎯 <b>Active Markets:</b> ${activeGames}`,
             ``,
             `💰 <b>Base Stakes:</b>`,
@@ -5912,7 +5805,6 @@ function handleTelegramCommand(chatId, text) {
             `  • Rainbow: ₦${(config.initialStakes.color || 0).toLocaleString()}`,
             `  • Hi/Lo: ₦${(config.initialStakes.sum || 0).toLocaleString()}`,
             `  • Total Color 3W: ₦${(config.initialStakes.totalColor || 0).toLocaleString()}`,
-            `  • Total Color 2W: ₦${(config.initialStakes.totalColor2 || 0).toLocaleString()}`,
             ``,
             `🛡️ <b>Advanced Execution & Risk:</b>`,
             `  • Take Profit: ${config.takeProfit > 0 ? `+₦${config.takeProfit.toLocaleString()}` : 'Disabled'}`,
@@ -5987,22 +5879,12 @@ function handleTelegramCommand(chatId, text) {
         config.stopLoss = amount > 0 ? -Math.abs(amount) : 0;
         sendPersonalDM(chatId, `✅ <b>Stop Loss Boundary Updated:</b> ${config.stopLoss < 0 ? `-₦${Math.abs(config.stopLoss).toLocaleString()}` : 'Disabled'}`).catch(() => {});
     }
-    else if (cmd === '/unified') {
-        const toggle = parts[1] ? parts[1].toLowerCase() : null;
-        if (toggle === 'on') {
-            config.unifiedMode = true;
-            sendPersonalDM(chatId, "✅ <b>Unified Master Mode ENABLED.</b> Bot will dynamically select highest ML confidence target.").catch(() => {});
-        } else if (toggle === 'off') {
-            config.unifiedMode = false;
-            sendPersonalDM(chatId, "✅ <b>Unified Master Mode DISABLED.</b> Bot returned to independent multi-market mode.").catch(() => {});
-        } else {
-            sendPersonalDM(chatId, "⚠️ <b>Invalid Usage.</b> Example: <code>/unified on</code> or <code>/unified off</code>").catch(() => {});
-        }
-    }
+    else if (cmd === '/unified') { sendPersonalDM(chatId, 'Unified has been removed. Choose a supported individual game.').catch(() => {}); }
+
     else if (cmd === '/enable' || cmd === '/disable') {
         const gameKey = parseGameKey(parts[1]);
         if (!gameKey) {
-            sendPersonalDM(chatId, `⚠️ <b>Invalid Game.</b> Use one of: <code>bz, rb, hl, tc, tc2</code>`).catch(() => {});
+            sendPersonalDM(chatId, `⚠️ <b>Invalid Game.</b> Use one of: <code>bz, rb, hl, tc</code>`).catch(() => {});
             return;
         }
         const enable = (cmd === '/enable');

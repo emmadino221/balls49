@@ -1,5 +1,7 @@
 # Move the public website from Render to the existing VPS
 
+> **Documentation status ? 15 November 2026:** This describes the original Render-to-VPS move. Do not rerun its installer or rollback steps as a routine update. Record current release/branch and backup evidence first. See [Current architecture](00-current-architecture.md).
+
 Users have agreed to register again. This procedure does not import Render
 accounts or reset the private bot's records or extension progression.
 

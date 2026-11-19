@@ -1,5 +1,7 @@
 # Stage 8 — final VPS deployment readiness verification
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Date: 2026-11-05. Snapshot captured at 11:19:06 UTC (12:19:06 Europe/Berlin).
 
 ## Decision

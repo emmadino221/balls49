@@ -1,5 +1,7 @@
 # BetZero Strategy Lab backend
 
+> **Documentation status ? 15 November 2026:** This foundational guide contains historical registry, isolation, API and worker-limit descriptions. Six tutorial placeholders were retired; more versioned strategies now exist. High/Low has an explicit Lab-state input. Use the current overview and later version reports before relying on these sections. See [Current architecture](00-current-architecture.md).
+
 The BetZero Strategy Lab is an isolated, owner-only research subsystem. It does
 not modify production picks, bet placement, staking, subscriber responses,
 Telegram broadcasts, or production streaks. All results are experimental and

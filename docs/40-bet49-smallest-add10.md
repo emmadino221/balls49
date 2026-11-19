@@ -1,5 +1,7 @@
 # Main Bet49: Smallest +10
 
+> **Documentation status ? 15 November 2026:** The Local change, not deployed statement records the original implementation stage. BetZero now independently uses Step-10 and High/Low follows MIN/MAX v2; only Rainbow retains the legacy internal number-pool dependency. See [Current architecture](00-current-architecture.md).
+
 Local change, not deployed.
 
 The issued Bet49 pick is one number: the minimum of the immediately preceding

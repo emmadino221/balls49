@@ -1,5 +1,7 @@
 # Website accounts, manual approvals, and plan previews
 
+> **Historical setup guide:** Read [Current architecture and operating boundaries](docs/00-current-architecture.md) first. Local-only/Render examples and old market rules below are not a current VPS release manifest. Confirm actual branches, revisions and backups before deployment.
+
 ## Start the site with owner access enabled
 
 The API reads `SITE_ADMIN_KEY` from the environment. Set it in the same PowerShell window that starts the bot:

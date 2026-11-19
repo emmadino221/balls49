@@ -17,10 +17,8 @@ const games = [
   { id: 'bet49', name: 'Bet49', detail: 'One number: previous draw’s smallest number +10. Wins when that number appears.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
-  { id: 'totalColor2', name: 'Total Color (2-way)', detail: 'Two selected colors.' },
-  { id: 'totalColor1', name: 'Winning Color', detail: 'The top-ranked color from the active Total Color 2-way prediction.' },
+  { id: 'totalColor1', name: 'Winning Color', detail: 'The top-ranked color from the shared color ranking.' },
   { id: 'hilo', name: 'High / Low', detail: 'A prediction on the draw total range.' },
-  { id: 'unified', name: 'Unified', detail: 'One selected pick from the available markets.' },
 ];
 
 
@@ -48,11 +46,7 @@ function formatStake(value) {
 }
 
 function getRecommendedStake(marketId, baseAmount, step, prediction, bet49ProfitMode = 'fixed') {
-  const aliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
-  const market = marketId === 'unified'
-    ? aliases[prediction?.predicted?.unified?.key] || prediction?.predicted?.unified?.key
-    : marketId;
-  if (!market) return null;
+  const market = marketId;
   if (market === 'betzero' && prediction?.predicted?.betzero?.length !== 4) return null;
 
   const marketStrategies = {
@@ -61,7 +55,6 @@ function getRecommendedStake(marketId, baseAmount, step, prediction, bet49Profit
     rainbow: { odds: 1.5 },
     hilo: { odds: 2, multiplier: 2 },
     totalColor: { odds: 3.8, costFactor: 3 },
-    totalColor2: { odds: 3.8, costFactor: 2 },
   };
   if (market === 'totalColor1') return globalThis.TC1Staking.stakeAtStep(Number(baseAmount), Math.max(1, Number(step) || 1), 'fixed');
   const strategy = marketStrategies[market];
@@ -82,11 +75,7 @@ function getRecommendedStake(marketId, baseAmount, step, prediction, bet49Profit
     } else if (strategy.multiplier) {
       nextStake = roundMoney(currentStep === 1 ? base : nextStake * strategy.multiplier);
     } else if (strategy.costFactor) {
-      nextStake = roundMoney(currentStep === 1
-        ? base
-        : strategy.costFactor === 2
-          ? (totalCost + base) / 1.8
-          : totalCost / 0.8);
+      nextStake = roundMoney(currentStep === 1 ? base : totalCost / 0.8);
     } else {
       const stepProfitTarget = strategy.bet49
         ? targetProfit + ((currentStep - 1) * base)
@@ -127,12 +116,6 @@ function LiveMarketPick({ record, marketId }) {
   if (marketId === 'totalColor') {
     return <TotalColorPick pick={predicted.totalColor} />;
   }
-  if (marketId === 'totalColor2') {
-    const colors = predicted.totalColor2?.top2 || [];
-    return predicted.totalColor2?.status === 'ACTIVE' && colors.length
-      ? <span className="pick-colors">{colors.map((color) => <span className={`color-name color-${String(color).toLowerCase()}`} key={color}><i aria-hidden="true" />{color}</span>)}</span>
-      : <span className="no-pick">Waiting</span>;
-  }
   if (marketId === 'totalColor1') {
     const colors = predicted.totalColor1?.top1 || [];
     return predicted.totalColor1?.status === 'ACTIVE' && colors.length
@@ -143,14 +126,6 @@ function LiveMarketPick({ record, marketId }) {
     return predicted.hilo && predicted.hilo !== 'SKIP'
       ? <span className={`range-tag range-${String(predicted.hilo).toLowerCase()}`}>{predicted.hilo}</span>
       : <span className="no-pick">Waiting</span>;
-  }
-  if (marketId === 'unified') {
-    const key = predicted.unified?.key;
-    if (!key) return <span className="no-pick">No market selected</span>;
-    const aliases = { u4: 'betzero', color: 'rainbow', sum: 'hilo' };
-    const selectedMarket = aliases[key] || key;
-    const selectedName = games.find((game) => game.id === selectedMarket)?.name || selectedMarket;
-    return <span className="live-unified-pick"><small>Selected market: {selectedName}</small><LiveMarketPick record={record} marketId={selectedMarket} /></span>;
   }
   return <span className="no-pick">Waiting</span>;
 }
@@ -366,7 +341,7 @@ export default function PredictionsPage() {
 
       <section className="prediction-access-state" aria-label="Current access status">
         <span className="access-state-icon" aria-hidden="true">◉</span>
-        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'All eight markets are available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
+        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'All six markets are available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
         <a className="btn btn-secondary" href="pricing.html">Compare plans</a>
       </section>
 

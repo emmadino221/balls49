@@ -1,5 +1,7 @@
 # Bet49 single-number profit modes
 
+> **Documentation status ? 15 November 2026:** Local-only and validation statements below are dated implementation evidence, not current deployment or test status. See [Current architecture](00-current-architecture.md).
+
 Local implementation. No commit, deployment, production settings change or
 live bets were performed for this work.
 

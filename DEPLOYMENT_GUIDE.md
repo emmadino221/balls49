@@ -1,5 +1,7 @@
 # Public Hosting Readiness
 
+> **Historical setup guide:** Read [Current architecture and operating boundaries](docs/00-current-architecture.md) first. Local-only/Render examples and old market rules below are not a current VPS release manifest. Confirm actual branches, revisions and backups before deployment.
+
 ## Current status
 
 The website can be built as a static Vite frontend (`cd web; npm ci; npm run build`). The API and prediction automation run from `bot.js` and use Node's built-in SQLite module. A production API needs Node 24.x, HTTPS at the host or trusted reverse proxy, and persistent storage for `SITE_DB_PATH`.

@@ -1,5 +1,7 @@
 # High/Low from six Bet49 picks
 
+> **Documentation status ? 15 November 2026:** Historical High/Low rule, replaced by 42-high-low-follows-minmax.md. See [Current architecture](00-current-architecture.md).
+
 > Superseded: the live High/Low prediction now follows Minimum/Maximum v2. See 42-high-low-follows-minmax.md.
 
 The live High/Low prediction now uses the issued Bet49 selection for the same

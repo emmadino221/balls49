@@ -19,7 +19,7 @@ function getTotalColorOutcome(numbers) {
 
 function totalColor3WayPrediction(twoWayPrediction) {
     const skipped = { status: 'SKIP', topColors: [], noWinColor: null, confidence: 0, gap: 0,
-        selectionRule: 'TOTAL_COLOR_2_WAY_PLUS_NO_WIN', skipReason: 'Total Color 2-way is not active' };
+        selectionRule: 'TOTAL_COLOR_2_WAY_PLUS_NO_WIN', skipReason: 'Shared color ranking is not active' };
     const top2 = twoWayPrediction?.top2;
     if (twoWayPrediction?.status !== 'ACTIVE' || !Array.isArray(top2) || top2.length !== 2
         || new Set(top2).size !== 2 || top2.some(color => !COLORS.includes(color))) return skipped;
@@ -57,7 +57,7 @@ function singleColorPrediction(twoWayPrediction) {
         || new Set(top2).size !== 2 || top2.some(color => !COLORS.includes(color))) {
         return { status: 'SKIP', top1: [] };
     }
-    // top2 retains the ranking issued by Total Color 2-way.
+    // top2 retains the internal shared color ranking.
     return { status: 'ACTIVE', top1: [top2[0]] };
 }
 

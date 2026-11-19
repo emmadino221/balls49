@@ -1,5 +1,7 @@
 # Stage 5 — read-only VPS pre-deployment safety audit
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Audit date: 2026-11-05, approximately 07:54–08:01 UTC. Access used the existing authorized SSH account. No deployment, installation, restart, service configuration change, backtest, database write, experimental activation, or Git push was performed. Only this local report was added.
 
 ## Decision

@@ -1,7 +1,7 @@
 'use strict';
 
 const { getRecordSummaryModel } = require('./summary-stats');
-const MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor2', 'totalColor1', 'unified'];
+const MARKETS = ['betzero', 'bet49', 'rainbow', 'hilo', 'totalColor', 'totalColor1'];
 
 function presetSessionBusy(session) {
     return Boolean(session.pendingBetPayload || session.betExecutionClaim || session.lastBetDetails

@@ -1,5 +1,5 @@
 'use strict';
-const MARKETS = { betzero: 'BetZero', bet49: 'Bet49', rainbow: 'Rainbow 2+', totalColor: 'Total Color 3-way', totalColor2: 'Total Color 2-way', totalColor1: 'Winning Color', hilo: 'High / Low', unified: 'Unified' };
+const MARKETS = { betzero: 'BetZero', bet49: 'Bet49', rainbow: 'Rainbow 2+', totalColor: 'Total Color 3-way', totalColor1: 'Winning Color', hilo: 'High / Low' };
 function replayEntryPolicy(records, key, waitLosses, pauseLosses) {
     let observedLosses = 0, active = false, waitingForWin = false, batchLosses = 0;
     let wins = 0, losses = 0, playedRun = 0, worstPlayedRun = 0, pauses = 0, previous = null;

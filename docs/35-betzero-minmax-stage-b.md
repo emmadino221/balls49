@@ -1,5 +1,7 @@
 # Minimum/Maximum Stage B — local implementation
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 ## Scope and identity
 
 `minimum_maximum_three` v1.0.0 is a separate, disabled-by-default, three-number

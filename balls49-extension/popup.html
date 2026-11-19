@@ -131,18 +131,18 @@
             <div class="preset-steps"><span>1. Choose</span><span>2. Preview</span><span>3. Apply &amp; save</span></div>
             <label class="preset-field" for="preset-game-select">Game
                 <select id="preset-game-select">
-                    <option value="all">All individual games</option><option value="unified">Unified (4 source games)</option>
+                    <option value="all">All individual games</option>
                     <option value="totalColor1">Winning Color</option><option value="betzero">BetZero</option>
                     <option value="bet49">Bet49</option><option value="rainbow">Rainbow</option><option value="hilo">High/Low</option>
-                    <option value="totalColor">Total Color 3-way</option><option value="totalColor2">Total Color 2-way</option>
+                    <option value="totalColor">Total Color 3-way</option>
                 </select>
             </label>
             <label class="preset-field" for="preset-profile-select">Play style
                 <select id="preset-profile-select" aria-describedby="preset-profile-help">
                     <option value="conservative">History recovery</option><option value="flat">Flat stakes</option>
                     <option value="summary">Summary + Sniper</option><option value="winning_accumulating">Winning Color: accumulating</option>
-                    <option value="unified_sniper">Unified + Sniper</option><option value="tc3_aggressive">3-way color: rollover</option>
-                    <option value="antivol_ghost">Unified: shadow mode</option><option value="highroller_scale">Unified: weighted stakes</option>
+                    <option value="tc3_aggressive">3-way color: rollover</option>
+
                 </select>
             </label>
             <p id="preset-profile-help" class="preset-help"></p>
@@ -181,7 +181,6 @@
             </div>
             <div class="grid-2">
                 <div id="btn-totalColor" class="game-btn">TC (3-Way)</div>
-                <div id="btn-totalColor2" class="game-btn">TC (2-Way)</div>
                 <div id="btn-totalColor1" class="game-btn">Winning Color</div>
                 <div id="btn-bet49" class="game-btn">Bet49</div>
             </div>
@@ -197,7 +196,6 @@
             </div>
             <div class="grid-2" style="margin-bottom: 10px;">
                 <input type="number" id="stake-totalColor" placeholder="TC 3-Way Stake">
-                <input type="number" id="stake-totalColor2" placeholder="TC 2-Way Stake">
                 <input type="number" id="stake-totalColor1" placeholder="Winning Color Stake">
                 <label for="bet49-profit-mode">Bet49 recovery target (7.80 odds)</label>
                 <select id="bet49-profit-mode"><option value="fixed">Same profit</option><option value="accumulating">Accumulating profit</option></select>
@@ -215,7 +213,6 @@
                 <input type="number" id="step-rainbow" placeholder="RB" title="Rainbow Max Step">
                 <input type="number" id="step-hilo" placeholder="HL" title="Hi/Lo Max Step">
                 <input type="number" id="step-totalColor" placeholder="TC3" title="Total Color (3W) Max Step">
-                <input type="number" id="step-totalColor2" placeholder="TC2" title="Total Color (2W) Max Step">
                 <input type="number" id="step-totalColor1" placeholder="Winning Color" title="Winning Color Max Step">
                 <input type="number" id="step-bet49" placeholder="B49" title="Bet49 Max Step">
             </div>
@@ -231,12 +228,10 @@
             
             <div class="grid-2" style="margin-bottom: 6px;">
                 <label class="check-wrap"><input type="checkbox" id="shadowMode"> 👻 Shadow Mode CB</label>
-                <label class="check-wrap"><input type="checkbox" id="weightedStaking"> ⚖️ Weighted Stakes</label>
             </div>
             
             <div class="grid-3" style="margin-bottom: 8px;">
                 <label class="check-wrap"><input type="checkbox" id="flat-betting-toggle"> Flat Betting</label>
-                <label class="check-wrap"><input type="checkbox" id="unified-mode-toggle"> Unified Master</label>
             </div>
             
             <div class="grid-3" style="margin-bottom: 8px;">
@@ -254,7 +249,7 @@
                 <label class="summary-market-select">High/Low<select id="summary-model-hilo"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
                 <label class="summary-market-select">Total Color (3-Way)<select id="summary-model-totalColor"><option value="OFF">Off</option><option value="ENTER">Summary ENTER</option><option value="HOLD">Summary HOLD</option></select></label>
             </div>
-            <p class="sniper-help">Choose which saved summary label permits each market to trade. Summary HOLD trades the prediction when its label is HOLD; Summary ENTER requires ENTER. LEARNING or missing summary data pauses either gate. Sniper, stake and stop rules still apply. Individual games do not require a confidence score to enter. Unified selects from eligible predictions using model scores and applies the chosen market's summary gate. Save settings to apply; a bet already queued is not recalled.</p>
+            <p class="sniper-help">Choose which saved summary label permits each market to trade. Summary HOLD trades the prediction when its label is HOLD; Summary ENTER requires ENTER. LEARNING or missing summary data pauses either gate. Sniper, stake and stop rules still apply. Individual games do not require a confidence score to enter. Save settings to apply; a bet already queued is not recalled.</p>
             
             <div class="grid-2" style="margin-bottom: 8px;">
                 <select id="hilo-multiplier" title="High/Low Multiplier">
@@ -274,9 +269,7 @@
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-rainbow"> Rainbow</label><input type="number" id="sniper-step-rainbow" min="1" max="10" placeholder="Step" title="Rainbow sniper target step"><input type="number" id="sniper-losses-rainbow" min="1" max="50" placeholder="Losses" title="Rainbow reset after losses"></div>
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-hilo"> High/Low</label><input type="number" id="sniper-step-hilo" min="1" max="10" placeholder="Step" title="High/Low sniper target step"><input type="number" id="sniper-losses-hilo" min="1" max="50" placeholder="Losses" title="High/Low reset after losses"></div>
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor"> TC (3-Way)</label><input type="number" id="sniper-step-totalColor" min="1" max="10" placeholder="Step" title="Total Color 3-way sniper target step"><input type="number" id="sniper-losses-totalColor" min="1" max="50" placeholder="Losses" title="Total Color 3-way reset after losses"></div>
-                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor2"> TC (2-Way)</label><input type="number" id="sniper-step-totalColor2" min="1" max="10" placeholder="Step" title="Total Color 2-way sniper target step"><input type="number" id="sniper-losses-totalColor2" min="1" max="50" placeholder="Losses" title="Total Color 2-way reset after losses"></div>
                 <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-totalColor1"> Winning Color</label><input type="number" id="sniper-step-totalColor1" min="1" max="10" placeholder="Step" title="Winning Color sniper target step"><input type="number" id="sniper-losses-totalColor1" min="1" max="50" placeholder="Losses" title="Winning Color reset after losses"></div>
-                <div class="sniper-config-row"><label class="sniper-market-toggle"><input type="checkbox" id="sniper-enabled-unified"> Unified</label><input type="number" id="sniper-step-unified" min="1" max="10" placeholder="Step" title="Unified sniper target step"><input type="number" id="sniper-losses-unified" min="1" max="50" placeholder="Losses" title="Unified reset after losses"></div>
             </div>
             <p class="sniper-help">Each market waits for its target global step. After the loss limit, it pauses until the global step reaches that target again. Its Martingale progress is kept.</p>
             <p id="sniper-settings-error" class="sniper-help" role="alert" style="display:none; color: var(--accent-red);"></p>

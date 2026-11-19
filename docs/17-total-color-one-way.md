@@ -1,10 +1,11 @@
 # Winning Color
 
-Market key: `totalColor1`. Winning Color directly predicts the first (top-ranked)
-color in the active Total Color 2-way selection (`top2[0]`). If Total Color
-2-way is skipped or has an invalid selection, Winning Color also skips. A
-settled six-ball draw wins only if its winning color outcome matches the issued
-one-way pick. Ties use No Winning Color, so they do not match a color pick.
+Market key: `totalColor1`. Winning Color predicts the first (top-ranked) color
+from the shared internal color ranking. The ranking is not published as a
+separate Total Color 2-way market. If it is skipped or invalid, Winning Color
+also skips. A settled six-ball draw wins only if its winning color outcome
+matches the issued one-way pick. Ties use No Winning Color, so they do not match
+a color pick.
 
 New predictions, results and independent streaks appear in Telegram and the
 website. History starts with actually issued one-way picks; old records are not
@@ -34,8 +35,8 @@ outcomes as requested; actual bookmaker payouts may differ.
 - The base and mode are pinned when the first bet is acknowledged; changing
   settings during a losing cycle takes effect after that cycle wins.
 - Winning Color uses its own recovery calculation, not the flat-betting or rollover modes.
-- Use individual mode. Unified selects its existing source markets; the settings
-  UI and API reject enabling Winning Color together with Unified mode.
+- Retired Unified prediction mode is not available; Winning Color uses its own
+  progression.
 
 The website calculator offers both modes. The prediction-card personal stake
 plan uses the fixed-profit calculation and follows published outcomes; it is

@@ -1,5 +1,7 @@
 # Adaptive live selection: BetZero and Rainbow
 
+> **Documentation status ? 15 November 2026:** The section titled Current BetZero rule is historical. Main BetZero now calls predictBetZeroStep10; the older rolling-frequency algorithm remains a separate legacy implementation. See [Current architecture](00-current-architecture.md).
+
 ## Current BetZero rule (supersedes BetZero selection below)
 
 BetZero now uses one strategy, implemented in `betzero.js`. It examines exactly
@@ -29,7 +31,7 @@ produce different results. No tests or live bets were run for this change.
 The private worker applies `adaptive-strategies.js` after generating the base
 picks and before saving or publishing the prediction. Telegram, the website and
 the extension receive the same selected pick. Other markets keep their existing
-selection logic. Unified may select one of these newly selected market picks.
+selection logic.
 
 ## Candidate strategies
 

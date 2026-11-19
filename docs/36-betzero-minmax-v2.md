@@ -1,5 +1,7 @@
 # Minimum/Maximum v2 — local implementation review
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 ## Scope
 
 `minimum_maximum_three` now registers two versions. v1 retains its calculation,

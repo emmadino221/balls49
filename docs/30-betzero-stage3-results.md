@@ -1,5 +1,7 @@
 # BetZero Stage 3: local historical research verification
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Completed 2026-11-05. Exploratory analysis only. Nothing was deployed, pushed, enabled for forward prediction, or changed on the VPS.
 
 ## Dataset and reproducibility

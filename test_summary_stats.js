@@ -7,7 +7,7 @@ const {
     calculateSummaryLossStats, formatTelegramSummaryStats
 } = require('./summary-stats');
 
-const markets = Object.fromEntries(['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor2', 'hilo', 'unified'].map(key => [key, key]));
+const markets = Object.fromEntries(['betzero', 'bet49', 'rainbow', 'totalColor', 'hilo'].map(key => [key, key]));
 const record = (drawId, label, outcome, extra = {}) => ({
     drawId, summaryModel: { betzero: label }, result: { betzero: outcome }, ...extra
 });
@@ -34,21 +34,19 @@ test('SKIP, pending, LEARNING, missing labels and unknown outcomes do not affect
     assert.deepEqual(calculateSummaryLossStats(draws, markets).betzero.ENTER, bucket(2, 2, 2));
 });
 
-test('legacy model metadata uses the correct market and Unified uses the selected market label', () => {
+test('legacy model metadata uses the correct market', () => {
     const draws = [{ drawId: 1,
         mlShadow: {
             u4: { recommendation: 'HOLD' }, color: { recommendation: 'ENTER' },
             sum: { status: 'INSUFFICIENT_BUCKET_DATA' }, totalColor: { recommendation: 'HOLD' }
         },
-        predicted: { unified: { key: 'color' } },
-        result: { betzero: 'LOSS', rainbow: 'WIN', hilo: 'LOSS', totalColor: 'LOSS', unified: 'WIN', bet49: 'LOSS', totalColor2: 'LOSS' }
+        result: { betzero: 'LOSS', rainbow: 'WIN', hilo: 'LOSS', totalColor: 'LOSS', bet49: 'LOSS' }
     }];
     const stats = calculateSummaryLossStats(draws, markets);
     assert.deepEqual(stats.betzero.HOLD, bucket(1, 1, 1));
     assert.deepEqual(stats.rainbow.ENTER, bucket(0, 0, 1));
     assert.deepEqual(stats.totalColor.HOLD, bucket(1, 1, 1));
-    assert.deepEqual(stats.unified.ENTER, bucket(0, 0, 1));
-    for (const market of ['hilo', 'bet49', 'totalColor2']) {
+    for (const market of ['hilo', 'bet49']) {
         assert.deepEqual(stats[market], { ENTER: bucket(0, 0, 0), HOLD: bucket(0, 0, 0) });
     }
 });
@@ -82,10 +80,8 @@ test('owner reset excludes earlier settlements, including the boundary, and acce
 });
 
 test('saved and published history reconstruct the same counters after a restart', () => {
-    const draws = [{ drawId: 2, mlShadow: { color: { recommendation: 'HOLD' } },
-        predicted: { unified: { key: 'color' } }, result: { rainbow: 'LOSS', unified: 'LOSS' } },
-    { drawId: 1, mlShadow: { color: { recommendation: 'ENTER' } },
-        predicted: { unified: { key: 'color' } }, result: { rainbow: 'LOSS', unified: 'LOSS' } }];
+    const draws = [{ drawId: 2, mlShadow: { color: { recommendation: 'HOLD' } }, result: { rainbow: 'LOSS' } },
+    { drawId: 1, mlShadow: { color: { recommendation: 'ENTER' } }, result: { rainbow: 'LOSS' } }];
     const published = JSON.parse(JSON.stringify(draws.map(({ mlShadow, ...draw }) => ({
         ...draw, summaryModel: getRecordSummaryModel({ ...draw, mlShadow })
     }))));

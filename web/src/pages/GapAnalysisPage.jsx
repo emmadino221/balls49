@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { losingStreakGaps } from '../losing-streak-gaps';
 import './gap-analysis.css';
 const API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
-const games = [['betzero','BetZero'],['bet49','Bet49'],['rainbow','Rainbow'],['hilo','High / Low'],['totalColor','Total Color 3-way'],['totalColor2','Total Color 2-way'],['totalColor1','Winning Color'],['unified','Unified']];
+const games = [['betzero','BetZero'],['bet49','Bet49'],['rainbow','Rainbow'],['hilo','High / Low'],['totalColor','Total Color 3-way'],['totalColor1','Winning Color'],];
 const colors = ['#267cce','#b56b19','#398361','#9658cc','#d34e6a','#53858f','#818590'];
 const fmt = n => n == null ? 'N/A' : Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1);
 function Bars({ rows, field, selected, onSelect, unit }) {

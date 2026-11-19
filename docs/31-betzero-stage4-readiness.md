@@ -1,5 +1,7 @@
 # Stage 4 — forward-testing readiness
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Date: 2026-11-05. Local preparation and verification only. No deployment, push, VPS access, saved strategy activation, or real forward-generation run was performed.
 
 ## Readiness assessment

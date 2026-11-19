@@ -1,5 +1,7 @@
 # Project Structure and Release Workflow
 
+> **Documentation status ? 15 November 2026:** Latest release and Render references below describe an older milestone, not the present release. Use the current overview for expanded components and release boundaries. See [Current architecture](00-current-architecture.md).
+
 ## Source layout
 
 ```text

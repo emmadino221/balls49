@@ -1,5 +1,7 @@
 # Streak-drop research v2.0.0
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Local implementation; not deployed or enabled automatically.
 
 Both existing streak-drop strategy IDs now have an independent v2.0.0.

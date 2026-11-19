@@ -1,5 +1,7 @@
 # Stage 7 — local safety corrections
 
+> **Historical implementation report:** Test results, approval gates and deployment statements describe this stage only. For current structure and later changes, see [Current architecture](00-current-architecture.md). Live settings require a separate check.
+
 Date: 2026-11-05. Local implementation only. No VPS connections, deployment, push, service restarts, production database writes or strategy activation were performed.
 
 ## Files changed in this stage

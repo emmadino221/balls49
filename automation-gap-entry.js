@@ -1,6 +1,6 @@
 "use strict";
-const markets = { u4:'betzero', bet49:'bet49', color:'rainbow', sum:'hilo', totalColor:'totalColor', totalColor2:'totalColor2', totalColor1:'totalColor1' };
-const fields = { u4:'stake', bet49:'bet49Stake', color:'colorStake', sum:'sumStake', totalColor:'tcStake', totalColor2:'tc2Stake', totalColor1:'tc1Stake' };
+const markets = { u4:'betzero', bet49:'bet49', color:'rainbow', sum:'hilo', totalColor:'totalColor', totalColor1:'totalColor1' };
+const fields = { u4:'stake', bet49:'bet49Stake', color:'colorStake', sum:'sumStake', totalColor:'tcStake', totalColor1:'tc1Stake' };
 const enabled = s => Object.values(s.config.gapEntry || {}).some(v => v?.enabled);
 function normalize(input = {}) {
   const output = {};
