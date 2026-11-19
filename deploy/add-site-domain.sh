@@ -89,8 +89,16 @@ if action == 'check':
     print('existing' if existing else 'new')
     raise SystemExit(0)
 
+def shared_listen(match):
+    # default_server and socket options (reuseport, backlog=, deferred, ...) may appear only once
+    # per address:port, and the IP block already has them; keep the address and per-block flags.
+    parts = match.group(1).split()
+    keep = [parts[0]] + [p for p in parts[1:] if p in ('ssl', 'http2', 'quic', 'proxy_protocol')]
+    return 'listen ' + ' '.join(keep) + ';'
+
 def copy_for_domain(cert, key):
-    block = re.sub(r'server_name\s+[^;]+;', f'server_name {domain};', ip_block, count=1)
+    block = re.sub(r'\blisten\s+([^;]+);', shared_listen, ip_block)
+    block = re.sub(r'server_name\s+[^;]+;', f'server_name {domain};', block, count=1)
     block = re.sub(r'ssl_certificate\s+[^;]+;', f'ssl_certificate {cert};', block, count=1)
     block = re.sub(r'ssl_certificate_key\s+[^;]+;', f'ssl_certificate_key {key};', block, count=1)
     # The virtual football installer refreshes the block between its markers; keep the markers
