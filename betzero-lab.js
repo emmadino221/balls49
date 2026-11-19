@@ -404,6 +404,14 @@ function createBetZeroLab(db, options = {}) {
         CREATE INDEX IF NOT EXISTS betzero_lab_forward_window_idx
             ON betzero_lab_forward_predictions(strategy_id, strategy_version, CAST(target_draw_id AS INTEGER) DESC)
             WHERE status IN ('WIN','LOSS','SKIP','INVALID');
+        -- Draw-ordered history per strategy version (summaries and prediction lists), and
+        -- per-status lookups (pending counts). Without these every overview sorts the whole table.
+        CREATE INDEX IF NOT EXISTS betzero_lab_forward_order_idx
+            ON betzero_lab_forward_predictions(strategy_id, strategy_version, CAST(target_draw_id AS INTEGER), prediction_id, status);
+        CREATE INDEX IF NOT EXISTS betzero_lab_forward_status_idx
+            ON betzero_lab_forward_predictions(strategy_id, strategy_version, status, CAST(target_draw_id AS INTEGER));
+        CREATE INDEX IF NOT EXISTS betzero_lab_forward_pending_idx
+            ON betzero_lab_forward_predictions(CAST(target_draw_id AS INTEGER), prediction_id) WHERE status = 'PENDING';
         CREATE TABLE IF NOT EXISTS betzero_lab_backtest_runs (
             run_id TEXT PRIMARY KEY,
             status TEXT NOT NULL CHECK(status IN ('COMPLETED', 'FAILED')),
@@ -467,6 +475,8 @@ function createBetZeroLab(db, options = {}) {
             created_at TEXT NOT NULL,
             UNIQUE(strategy_id, strategy_version, target_draw_id, alert_type)
         );
+        CREATE INDEX IF NOT EXISTS betzero_lab_alerts_recent_idx
+            ON betzero_lab_alerts(CAST(target_draw_id AS INTEGER) DESC, alert_id DESC);
         CREATE TABLE IF NOT EXISTS betzero_lab_result_revisions (
             revision_id INTEGER PRIMARY KEY,
             prediction_id TEXT NOT NULL,
@@ -531,13 +541,25 @@ function createBetZeroLab(db, options = {}) {
     const getState = db.prepare('SELECT state_value FROM betzero_lab_state WHERE state_key = ?');
     const setState = db.prepare(`INSERT INTO betzero_lab_state(state_key, state_value) VALUES (?, ?)
         ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value`);
-    const predictionRows = strategyId => db.prepare(`SELECT *,
+    // A strategy version's summary: only the newest 100 rows are read in full; the rest of the
+    // history (counts and streaks) comes from the covering draw-order index.
+    // The draw number as the index stores it keeps this an index-only read; these rows are only
+    // counted and ordered, and the displayed newest 100 come from summaryTail.
+    const summaryStatuses = db.prepare(`SELECT prediction_id AS predictionId, CAST(target_draw_id AS INTEGER) AS targetDrawId, status
+        FROM betzero_lab_forward_predictions WHERE strategy_id = ? AND strategy_version = ?
+        ORDER BY CAST(target_draw_id AS INTEGER), prediction_id`);
+    const summaryTail = db.prepare(`SELECT *,
         prediction_id AS predictionId, strategy_version AS strategyVersion,
         target_draw_id AS targetDrawId, predicted_at AS predictedAt,
         strategy_config_json AS strategyConfigJson,
         selections_json AS selectionsJson, validated_at AS validatedAt
-        FROM betzero_lab_forward_predictions
-        WHERE strategy_id = ? ORDER BY CAST(target_draw_id AS INTEGER), prediction_id`).all(strategyId);
+        FROM betzero_lab_forward_predictions WHERE strategy_id = ? AND strategy_version = ?
+        ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT 100`);
+    const versionSummary = (strategyId, version) => {
+        const statuses = summaryStatuses.all(strategyId, version);
+        const tail = summaryTail.all(strategyId, version).reverse();
+        return summarizePredictionRows(statuses.slice(0, Math.max(0, statuses.length - tail.length)).concat(tail));
+    };
     const updatePrediction = db.prepare(`UPDATE betzero_lab_forward_predictions
         SET status = ?, actual_balls_json = ?, validated_at = ?
         WHERE prediction_id = ?`);
@@ -1067,13 +1089,17 @@ function createBetZeroLab(db, options = {}) {
         if (strategyId && !STRATEGIES.some(strategy => strategy.id === strategyId)) throw new Error('Unknown lab strategy.');
         if (strategyVersion && !strategyId) throw new Error('A version requires a strategy ID.');
         const version = strategyVersion || '1.0.0';
+        // Newest rows per strategy version through the draw-order index, merged here: one OR query
+        // across versions makes SQLite sort the whole table on every refresh.
+        const newest = db.prepare(`SELECT * FROM betzero_lab_forward_predictions WHERE strategy_id = ? AND strategy_version = ?
+            ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`);
+        const drawNumber = row => Number.parseInt(row.target_draw_id, 10) || 0;   // as SQLite's CAST
+        const drawOrder = (a, b) => drawNumber(b) - drawNumber(a)
+            || (b.prediction_id > a.prediction_id ? 1 : b.prediction_id < a.prediction_id ? -1 : 0);
         const rows = strategyId
-            ? db.prepare(`SELECT * FROM betzero_lab_forward_predictions WHERE strategy_id = ? AND strategy_version = ?
-                ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`).all(strategyId, version, boundedLimit)
-            : db.prepare(`SELECT * FROM betzero_lab_forward_predictions
-                WHERE ${activeDefinitions().map(() => '(strategy_id=? AND strategy_version=?)').join(' OR ')}
-                ORDER BY CAST(target_draw_id AS INTEGER) DESC, prediction_id DESC LIMIT ?`)
-                .all(...activeDefinitions().flatMap(strategy => [strategy.id,strategy.version]),boundedLimit);
+            ? newest.all(strategyId, version, boundedLimit)
+            : activeDefinitions().flatMap(strategy => newest.all(strategy.id, strategy.version, boundedLimit))
+                .sort(drawOrder).slice(0, boundedLimit);
         return rows.map(row => ({
             predictionId: row.prediction_id,
             strategyId: row.strategy_id,
@@ -1102,8 +1128,7 @@ function createBetZeroLab(db, options = {}) {
                 ...strategy,
                 ...(strategy.id === minmax.ID ? { decisionState: minmaxState(strategy.version) } : {}),
                 ...require('./betzero-reconciliation').pendingQuality(db, strategy.id, strategy.version, now()),
-                ...summarizePredictionRows(predictionRows(strategy.id)
-                    .filter(row => row.strategy_version === strategy.version)),
+                ...versionSummary(strategy.id, strategy.version),
                 historyResetAt: historyResetAt(strategy.id, strategy.version),
                 ...inputQuality(strategy.id)
             }
@@ -1113,7 +1138,7 @@ function createBetZeroLab(db, options = {}) {
     function statsForVersion(strategyId, version) {
         const strategy = strategies().find(item => item.id === strategyId && item.version === version);
         if (!strategy) throw new Error('Unknown lab strategy version.');
-        return { ...strategy, ...(strategyId === minmax.ID ? {decisionState:minmaxState(version)} : {}), ...require('./betzero-reconciliation').pendingQuality(db, strategyId, version, now()), ...summarizePredictionRows(predictionRows(strategyId).filter(row => row.strategy_version === version)), historyResetAt: historyResetAt(strategyId, version), ...inputQuality(strategyId) };
+        return { ...strategy, ...(strategyId === minmax.ID ? {decisionState:minmaxState(version)} : {}), ...require('./betzero-reconciliation').pendingQuality(db, strategyId, version, now()), ...versionSummary(strategyId, version), historyResetAt: historyResetAt(strategyId, version), ...inputQuality(strategyId) };
     }
 
     function alerts(limit = 100) {
@@ -1382,11 +1407,14 @@ function createBetZeroLab(db, options = {}) {
     function overview() {
         const active = strategies().filter(strategy => !isRetired(strategy.id, strategy.version));
         const current = entries => Object.fromEntries(Object.entries(entries).filter(([, strategy]) => !isRetired(strategy.id, strategy.version)));
+        // stats() is the version-1.0.0 subset of stats(true): summarise every version once.
+        const versions = stats(true);
+        const firstVersions = Object.fromEntries(Object.values(versions).filter(strategy => strategy.version === '1.0.0').map(strategy => [strategy.id, strategy]));
         return {
             mode: 'EXPERIMENTAL_ONLY',
             warning: 'EXPERIMENTAL — NOT FOR REAL-MONEY BETTING. No bets or subscriber publishing are enabled.',
-            strategies: current(stats()),
-            strategyVersions: current(stats(true)),
+            strategies: current(firstVersions),
+            strategyVersions: current(versions),
             forwardVersionWindows: require('./betzero-forward-metrics').forwardWindows(db, active, now(), true),
             forwardWindows: require('./betzero-forward-metrics').forwardWindows(db, active, now()),
             predictions: listForwardPredictions({ limit: 100 }),
