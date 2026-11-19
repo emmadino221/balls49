@@ -118,7 +118,8 @@ it is at least 50%; otherwise the round has no Over 2.5 pick. It wins on three
 or more goals. Market key `over25`; the publisher adds `over25Confidence` and the
 receiver rejects an `over25` selection without a confidence of at least 50%.
 The predictions and results pages have an Over 2.5 tab, and Telegram has an
-"OVER 2.5 SINGLE" section. The extension has no Over 2.5 betting mode.
+"OVER 2.5 SINGLE" section. Extension 3.3 adds an "Over 2.5 Single" mode that bets
+the same pick on Bet9ja's `Over_Under_2_5` market (`/mode O25` in Telegram).
 
 The model (`over25_model.py` in the virtual repository) uses the 1X2 odds, the
 Over/Under 1.5 price where it was read, each team's last 10 finished matches
