@@ -1,7 +1,7 @@
 // Background service worker — handles Chrome notifications from content script
 
 const API_ROUTES = new Set([
-    'GET /stats', 'GET /stream', 'GET /backtest',
+    'GET /stats', 'GET /stream',
     'POST /config', 'POST /ack', 'POST /reset', 'POST /update-balance'
 ]);
 
