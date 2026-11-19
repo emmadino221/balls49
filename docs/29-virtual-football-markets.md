@@ -111,6 +111,29 @@ The collector must be restarted after an update for new code to take effect.
 The overall project layout and the list of open work are in `README.md` of the
 virtual repository.
 
+## Over 2.5 (added 19 November 2026)
+
+One match per round: the highest Over 2.5 model confidence, published only when
+it is at least 50%; otherwise the round has no Over 2.5 pick. It wins on three
+or more goals. Market key `over25`; the publisher adds `over25Confidence` and the
+receiver rejects an `over25` selection without a confidence of at least 50%.
+The predictions and results pages have an Over 2.5 tab, and Telegram has an
+"OVER 2.5 SINGLE" section. The extension has no Over 2.5 betting mode.
+
+The model (`over25_model.py` in the virtual repository) uses the 1X2 odds, the
+Over/Under 1.5 price where it was read, each team's last 10 finished matches
+(average total goals, share with 3+ goals) and the two teams' last 5 meetings.
+Missing inputs are left empty rather than guessed. Training builds each match's
+history only from matches that finished before it, the same view the live
+generator has. Run `python train_model_over25.py` on the VPS to create
+`ai_brain_over25.pkl` (it needs 2,000 settled matches). Without that file no
+Over 2.5 picks are published. The trainer prints the holdout rate of the top
+pick of each round next to the plain Over 2.5 rate: judge the market by that
+difference and by the results page, not by the confidence number.
+
+Deploy the website first: an older receiver rejects every snapshot that
+contains `over25`, which stops the whole feed.
+
 ## Dedicated Over 1.5 rollout
 
 Deploy the receiver/frontend before the updated collector and publisher. From

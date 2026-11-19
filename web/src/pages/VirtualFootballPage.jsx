@@ -34,18 +34,20 @@ function getPickLabel(pick, match) {
 const predictionMarkets = [
   { id: 'win', label: 'Win', description: 'One team to win' },
   { id: 'over', label: 'Over 1.5', description: 'Total goals' },
+  { id: 'over25', label: 'Over 2.5', description: '3+ goals' },
   { id: 'under', label: 'Under 1.5', description: '0 or 1 goal' },
   { id: 'ng', label: 'NG', description: 'BTTS: No' },
   { id: 'gg', label: 'GG', description: 'BTTS: Yes' },
 ];
 
-const resultMarkets = ['over', 'under', 'gg', 'ng', 'win'].map(id => predictionMarkets.find(market => market.id === id));
+const resultMarkets = ['over', 'over25', 'under', 'gg', 'ng', 'win'].map(id => predictionMarkets.find(market => market.id === id));
 const marketLabel = id => predictionMarkets.find(market => market.id === id)?.label || id;
 
 const FEED_REFRESH_INTERVAL_MS = 10000;
 const HISTORY_REFRESH_INTERVAL_MS = 30000;
 const EMPTY_MARKET = { wins: 0, losses: 0, current: 0, worst: 0, rounds: 0, picks: 0, groups: [] };
 const FORM_GAMES = 10;
+const MEETINGS_SHOWN = 5;
 
 function getMarketPrediction(match, market) {
   if (Array.isArray(match.selectedMarkets) && !match.selectedMarkets.includes(market)) return null;
@@ -54,6 +56,9 @@ function getMarketPrediction(match, market) {
   }
   if (market === 'over' && match.goals15 === 'OVER') {
     return { label: 'Total goals · 1.5 line', value: 'Over 1.5 goals' };
+  }
+  if (market === 'over25' && Array.isArray(match.selectedMarkets) && Number.isFinite(match.over25Confidence)) {
+    return { label: 'Total goals · 2.5 line', value: 'Over 2.5 goals' };
   }
   if (market === 'under' && match.goals15 === 'UNDER' && Array.isArray(match.selectedMarkets)) {
     return { label: 'Total goals · 1.5 line', value: 'Under 1.5 goals' };
@@ -87,6 +92,7 @@ function marketWon(match, market) {
   if (!score) return null;
   const [home, away] = score;
   if (market === 'over') return home + away >= 2;
+  if (market === 'over25') return home + away >= 3;
   if (market === 'under') return home + away < 2;
   if (market === 'gg') return home > 0 && away > 0;
   if (market === 'ng') return !(home > 0 && away > 0);
@@ -123,7 +129,22 @@ function summariseForm(games) {
     scored: recent.reduce((sum, game) => sum + game.goalsFor, 0) / count,
     conceded: recent.reduce((sum, game) => sum + game.goalsAgainst, 0) / count,
     over: recent.filter(game => game.goalsFor + game.goalsAgainst >= 2).length / count * 100,
+    over25: recent.filter(game => game.goalsFor + game.goalsAgainst >= 3).length / count * 100,
     gg: recent.filter(game => game.goalsFor > 0 && game.goalsAgainst > 0).length / count * 100,
+  };
+}
+
+// The two teams' finished meetings in the feed, either venue, newest first.
+function headToHead(reported, home, away) {
+  const games = reported.filter(match => (match.home === home && match.away === away) || (match.home === away && match.away === home))
+    .map(match => ({ match, score: parseScore(match.score) })).filter(game => game.score);
+  if (!games.length) return null;
+  const totals = games.map(game => game.score[0] + game.score[1]);
+  return {
+    count: games.length,
+    goals: totals.reduce((sum, total) => sum + total, 0) / games.length,
+    over25: totals.filter(total => total >= 3).length / games.length * 100,
+    recent: games.slice(0, MEETINGS_SHOWN).map(game => game.match),
   };
 }
 
@@ -152,7 +173,8 @@ function modelRead(match) {
   const gg = Number.isFinite(match.bttsConfidence) && (match.btts === 'GG' || match.btts === 'NG')
     ? (match.btts === 'GG' ? match.bttsConfidence : 100 - match.bttsConfidence) : null;
   const win = Number.isFinite(match.confidence) && match.pick ? match.confidence : null;
-  return { over, gg, win };
+  const over25 = Number.isFinite(match.over25Confidence) ? match.over25Confidence : null;
+  return { over, over25, gg, win };
 }
 
 const percent = value => `${Math.round(value)}%`;
@@ -189,9 +211,10 @@ function CompareRow({ label, home, away, format, lowerIsBetter }) {
   </div>;
 }
 
-function MatchCard({ match, market, form, record }) {
+function MatchCard({ match, market, form, record, reported: finished }) {
   // The Under 1.5 pick reuses the Over 1.5 model, so its confidence is the remainder.
   const marketConfidence = market === 'win' ? match.confidence
+    : market === 'over25' ? match.over25Confidence
     : market === 'under' ? (Number.isFinite(match.over15Confidence) ? 100 - match.over15Confidence : null)
       : market === 'over' && match.goals15 != null ? match.over15Confidence : match.bttsConfidence;
   const confidence = Number.isFinite(marketConfidence) ? marketConfidence : null;
@@ -208,10 +231,12 @@ function MatchCard({ match, market, form, record }) {
   const awayForm = summariseForm(awayGames);
   const read = modelRead(match);
   const played = record.wins + record.losses;
+  const meetings = headToHead(finished, match.home, match.away);
 
   const reported = !!match.score && match.status === 'REPORTED';
   const confidenceLabel = market === 'over'
     ? (match.goals15 != null ? 'Over 1.5 model confidence' : 'Historical BTTS confidence')
+    : market === 'over25' ? 'Over 2.5 model confidence'
     : market === 'under' ? 'Under 1.5 estimate from the Over 1.5 model' : 'Model confidence';
   const oneDecimal = value => value.toFixed(1);
 
@@ -264,6 +289,7 @@ function MatchCard({ match, market, form, record }) {
         <h3>Model read</h3>
         <Meter label="Match winner" note={pickLabel} value={read.win} active={market === 'win'} />
         <Meter label="Over 1.5 goals" value={read.over} active={market === 'over' || market === 'under'} />
+        <Meter label="Over 2.5 goals" value={read.over25} active={market === 'over25'} />
         <Meter label="Both teams to score" value={read.gg} active={market === 'gg' || market === 'ng'} />
       </section>
 
@@ -273,7 +299,20 @@ function MatchCard({ match, market, form, record }) {
         <CompareRow label="Goals scored per match" home={homeForm?.scored ?? null} away={awayForm?.scored ?? null} format={oneDecimal} />
         <CompareRow label="Goals conceded per match" home={homeForm?.conceded ?? null} away={awayForm?.conceded ?? null} format={oneDecimal} lowerIsBetter />
         <CompareRow label="Matches with 2+ goals" home={homeForm?.over ?? null} away={awayForm?.over ?? null} format={percent} />
+        <CompareRow label="Matches with 3+ goals" home={homeForm?.over25 ?? null} away={awayForm?.over25 ?? null} format={percent} />
         <CompareRow label="Matches where both scored" home={homeForm?.gg ?? null} away={awayForm?.gg ?? null} format={percent} />
+      </section>
+
+      <section className="vf-analysis-block">
+        <h3>Past meetings</h3>
+        {meetings
+          ? <>
+              <p className="vf-record-line"><strong>{meetings.goals.toFixed(1)}</strong> goals per match <i aria-hidden="true">·</i> <strong>{percent(meetings.over25)}</strong> with 3+ goals <span>{meetings.count} {meetings.count === 1 ? 'meeting' : 'meetings'} in the recent feed</span></p>
+              <ul className="vf-meetings">
+                {meetings.recent.map(game => <li key={game.id}><span>{game.home}</span><b>{game.score.replace('-', ' – ')}</b><span>{game.away}</span></li>)}
+              </ul>
+            </>
+          : <p className="vf-record-line"><span>These teams have not met in the recent feed. The Over 2.5 model also uses their longer saved history.</span></p>}
       </section>
 
       <section className="vf-analysis-block">
@@ -308,7 +347,7 @@ function PickChips({ match, settled }) {
 function RoundTable({ matches }) {
   return <div className="vf-round-scroll">
     <table className="vf-round-table">
-      <thead><tr><th scope="col">Fixture</th><th scope="col">Winner lean</th><th scope="col">Over 1.5</th><th scope="col">Both score</th><th scope="col">Our picks</th></tr></thead>
+      <thead><tr><th scope="col">Fixture</th><th scope="col">Winner lean</th><th scope="col">Over 1.5</th><th scope="col">Over 2.5</th><th scope="col">Both score</th><th scope="col">Our picks</th></tr></thead>
       <tbody>
         {matches.map(match => {
           const read = modelRead(match);
@@ -319,6 +358,7 @@ function RoundTable({ matches }) {
             </th>
             <td>{read.win === null ? '—' : <><strong>{match.pick === 'DRAW' ? 'Draw' : match.pick === 'HOME' ? match.home : match.away}</strong> <span>{percent(read.win)}</span>{Number.isFinite(match.winOdds) && <small>odds {match.winOdds.toFixed(2)}</small>}</>}</td>
             <td>{read.over === null ? '—' : <span className="vf-cell-meter"><strong>{percent(read.over)}</strong><i aria-hidden="true"><b style={{ width: `${read.over}%` }} /></i></span>}</td>
+            <td>{read.over25 === null ? '—' : <span className="vf-cell-meter"><strong>{percent(read.over25)}</strong><i aria-hidden="true"><b style={{ width: `${read.over25}%` }} /></i></span>}</td>
             <td>{read.gg === null ? (match.btts || '—') : <span className="vf-cell-meter"><strong>{percent(read.gg)}</strong><i aria-hidden="true"><b style={{ width: `${read.gg}%` }} /></i></span>}</td>
             <td><PickChips match={match} /></td>
           </tr>;
@@ -449,7 +489,7 @@ export default function VirtualFootballPage({ showResults = false }) {
         <h1>{showResults ? <>Virtual results.<br /><span>Reported scores.</span></> : <>Every match.<br /><span>One clear view.</span></>}</h1>
         <p>{showResults
           ? 'Review completed virtual fixtures and the scores reported by the match feed.'
-          : 'Each round: two qualifying Over 1.5 picks or skip, one Under 1.5, one GG, one NG and one winner with selection odds above 1.70.'}</p>
+          : 'Each round: two qualifying Over 1.5 picks or skip, one Over 2.5 at 50% confidence or more, one Under 1.5, one GG, one NG and one winner with selection odds above 1.70.'}</p>
         <a className="vf-hero-link" href={showResults ? 'virtual-football.html' : 'virtual-results.html'}>
           {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">→</span>
         </a>
@@ -506,9 +546,11 @@ export default function VirtualFootballPage({ showResults = false }) {
             <span className="vf-section-eyebrow">{showResults ? 'COMPLETED FIXTURES' : 'LATEST FROM THE FEED'}</span>
             <h2>{showResults ? 'Reported results' : 'Match predictions'}</h2>
             <p>{showResults
-              ? 'Only the picks selected before each round: up to two for Over 1.5 and one each for Under 1.5, GG, NG and Win. Older results without saved selections are excluded.'
+              ? 'Only the picks selected before each round: up to two for Over 1.5 and one each for Over 2.5, Under 1.5, GG, NG and Win. Older results without saved selections are excluded.'
               : activeMarket === 'over'
                 ? 'Exactly two picks from the dedicated Over 1.5 model, each with model confidence of at least 60%. If fewer than two qualify, we skip the round. Confidence is an estimate, not a guarantee.'
+                : activeMarket === 'over25'
+                  ? 'One match: the highest Over 2.5 model confidence of the round, only when it is at least 50%. The model reads the win and draw odds, the Over 1.5 price, both teams\' recent goals and their past meetings. Confidence is an estimate, not a guarantee.'
                 : activeMarket === 'under'
                   ? 'One match: the lowest Over 1.5 model confidence of the round, every round. Most matches finish with two or more goals, so this market loses more often than it wins; the track record is on the results page. Confidence is an estimate, not a guarantee.'
                 : activeMarket === 'win' ? 'The highest-confidence qualifying winner with selection odds strictly above 1.70.' : 'One match with the highest available model confidence for this market. No qualifying match means no pick.'}</p>
@@ -587,7 +629,7 @@ export default function VirtualFootballPage({ showResults = false }) {
               <p>{activeMarket === 'over'
                 ? 'This round is skipped for Over 1.5 because two qualifying matches are not available. Check again next round.'
                 : 'No current match meets the selection requirements. Check again next round.'}</p></div>
-            : <div className="vf-match-grid">{visibleMatches.map(match => <MatchCard key={match.id} match={match} market={activeMarket} form={form} record={record} />)}</div>}
+            : <div className="vf-match-grid">{visibleMatches.map(match => <MatchCard key={match.id} match={match} market={activeMarket} form={form} record={record} reported={reported} />)}</div>}
       </section>
 
       {!showResults && roundTable.length > 0 && <section className="vf-fixtures vf-round">

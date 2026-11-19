@@ -114,6 +114,8 @@ test('results archive keeps published picks beyond the live feed window', t => {
             if (slot === 2) { match.selectedMarkets = ['win']; if (lostRounds.has(round)) match.score = '0-2'; }
             // One Under 1.5 pick per round; it wins only in rounds 0 and 1.
             if (slot === 3) { Object.assign(match, { selectedMarkets: ['under'], goals15: 'UNDER', over15Confidence: 55 }); if (round < 2) match.score = '1-0'; }
+            // One Over 2.5 pick per round; 2-1 is three goals (a win), rounds 0-4 finish 1-1 (a loss).
+            if (slot === 4) { Object.assign(match, { selectedMarkets: ['over25'], over25Confidence: 62 }); if (round < 5) match.score = '1-1'; }
             matches.push(match);
         }
     }
@@ -144,6 +146,16 @@ test('results archive keeps published picks beyond the live feed window', t => {
     };
     reject(9002, { goals15: 'OVER' });
     reject(9003, { over15Confidence: null });
+
+    assert.equal(history.markets.over25.wins, 25);
+    assert.equal(history.markets.over25.losses, 5);
+    assert.equal(history.markets.over25.worst, 5);
+    assert.equal(history.markets.over25.current, 0);
+    assert.equal(history.markets.over25.groups[0].rows[0].prediction, 'Over 2.5 goals');
+    assert.equal(virtualFootball.view().matches.find(m => m.selectedMarkets?.includes('over25')).over25Confidence, 62);
+    // An Over 2.5 pick needs a model confidence of at least 50%.
+    reject(9004, { selectedMarkets: ['over25'], goals15: 'OVER', over25Confidence: 49.9 });
+    reject(9005, { selectedMarkets: ['over25'], goals15: 'OVER', over25Confidence: null });
     assert.equal(history.markets.win.groups[0].rows[0].result, 'LOSS');
     assert.equal(history.markets.win.groups[0].rows[0].prediction, 'Home · H2');
 

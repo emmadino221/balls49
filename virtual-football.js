@@ -12,7 +12,9 @@ function createVirtualFootball(db) {
     const RECENT_MATCHES = 5000;
     const HISTORY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
     const HISTORY_ROUNDS_SHOWN = 200;
-    const HISTORY_MARKETS = ['over', 'under', 'gg', 'ng', 'win'];
+    const HISTORY_MARKETS = ['over', 'over25', 'under', 'gg', 'ng', 'win'];
+    // Over 2.5 is one match per round, published only at this model confidence or higher.
+    const OVER25_MIN_CONFIDENCE = 50;
     // Under 1.5 has no model of its own: it is the round's lowest Over 1.5 confidence, and
     // only when that confidence is at most this.
     const SELECTED = "COALESCE(json_array_length(payload, '$.selectedMarkets'), 0) > 0";
@@ -44,6 +46,8 @@ function createVirtualFootball(db) {
             const roundId = m.roundId == null ? null : m.roundId;
             const bttsConfidence = m.bttsConfidence == null ? null : m.bttsConfidence;
             const over15Confidence = m.over15Confidence == null ? null : m.over15Confidence;
+            const over25Confidence = m.over25Confidence == null ? null : m.over25Confidence;
+            if (over25Confidence !== null && (typeof over25Confidence !== 'number' || !Number.isFinite(over25Confidence) || over25Confidence < 0 || over25Confidence > 100)) throw error('Invalid Over 2.5 confidence.');
             if (over15Confidence !== null && (typeof over15Confidence !== "number" || !Number.isFinite(over15Confidence) || over15Confidence < 0 || over15Confidence > 100)) throw error("Invalid Over 1.5 confidence.");
             const winOdds = m.winOdds == null ? null : m.winOdds;
             if (bttsConfidence !== null && (typeof bttsConfidence !== 'number' || !Number.isFinite(bttsConfidence) || bttsConfidence < 0 || bttsConfidence > 100)) throw error('Invalid BTTS confidence.');
@@ -58,9 +62,10 @@ function createVirtualFootball(db) {
                     const legacy = over15Confidence === null && m.goals15 == null && m.btts === 'GG' && bttsConfidence !== null && bttsConfidence >= 60;
                     if (!dedicated && !legacy) throw error('Over shortlist requires qualifying market confidence.');
                 }
+                if (selectedMarkets.includes('over25') && !(over25Confidence !== null && over25Confidence >= OVER25_MIN_CONFIDENCE)) throw error('Over 2.5 shortlist requires model confidence of at least 50%.');
                 if (selectedMarkets.includes('under') && (m.goals15 !== 'UNDER' || over15Confidence === null)) throw error('Under shortlist requires an UNDER call with a market confidence.');
             }
-            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, bttsConfidence, over15Confidence, winOdds, selectedMarkets, roundId, status: m.status, score: m.status === 'REPORTED' ? score : null };
+            return { id, home: m.home.trim(), away: m.away.trim(), week: m.week.trim(), createdAt: m.createdAt, pick: m.pick, goals15: m.goals15 ?? null, btts: m.btts, confidence, bttsConfidence, over15Confidence, over25Confidence, winOdds, selectedMarkets, roundId, status: m.status, score: m.status === 'REPORTED' ? score : null };
         });
         db.exec('BEGIN IMMEDIATE');
         try {
@@ -117,12 +122,14 @@ function createVirtualFootball(db) {
         const home = Number(score[1]), away = Number(score[2]);
         if (market === 'win') return match.pick === (home > away ? 'HOME' : home < away ? 'AWAY' : 'DRAW') ? 'WIN' : 'LOSS';
         if (market === 'over') return home + away >= 2 ? 'WIN' : 'LOSS';
+        if (market === 'over25') return home + away >= 3 ? 'WIN' : 'LOSS';
         if (market === 'under') return home + away <= 1 ? 'WIN' : 'LOSS';
         return match.btts === (home > 0 && away > 0 ? 'GG' : 'NG') ? 'WIN' : 'LOSS';
     }
     function pickText(match, market) {
         if (market === 'win') return match.pick === 'HOME' ? `Home · ${match.home}` : match.pick === 'AWAY' ? `Away · ${match.away}` : null;
         if (market === 'over') return match.goals15 === 'OVER' ? 'Over 1.5 goals' : match.goals15 == null && match.btts === 'GG' ? 'Over 1.5 goals · GG signal' : null;
+        if (market === 'over25') return 'Over 2.5 goals';
         if (market === 'under') return match.goals15 === 'UNDER' ? 'Under 1.5 goals' : null;
         if (market === 'gg') return match.btts === 'GG' ? 'Yes · GG' : null;
         return match.btts === 'NG' ? 'No · NG' : null;
