@@ -493,6 +493,7 @@ export default function VirtualFootballPage({ showResults = false }) {
         <a className="vf-hero-link" href={showResults ? 'virtual-football.html' : 'virtual-results.html'}>
           {showResults ? 'Back to match predictions' : 'View reported results'} <span aria-hidden="true">→</span>
         </a>
+        <a className="vf-hero-link" href="virtual-automation.html">Control your virtual bot <span aria-hidden="true">→</span></a>
       </div>
       <aside className="vf-board" aria-label={showResults ? 'Round record by market' : 'Current round by market'}>
         <div className="vf-board-head">

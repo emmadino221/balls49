@@ -5,6 +5,7 @@ import TermsPage from './pages/TermsPage.jsx';
 import VerifyEmailPage from './pages/VerifyEmailPage.jsx';
 import FootballPage from './pages/FootballPage.jsx';
 import VirtualFootballPage from './pages/VirtualFootballPage.jsx';
+import VirtualAutomationPage from './pages/VirtualAutomationPage.jsx';
 import React from 'react';
 import HomePage from './pages/HomePage.jsx';
 import AboutPage from './pages/AboutPage.jsx';
@@ -32,6 +33,7 @@ export function getPageName() {
   if (route === 'football.html') return 'football';
   if (route === 'virtual-football.html') return 'virtual-football';
   if (route === 'virtual-results.html') return 'virtual-results';
+  if (route === 'virtual-automation.html') return 'virtual-automation';
   if (route === 'about.html') return 'about';
   if (route === 'pricing.html') return 'pricing';
   if (route === 'testimonials.html' || route === 'suggestions.html') return 'suggestions';
@@ -59,6 +61,7 @@ export function PageRenderer({ page, session }) {
   if (page === 'football') return <FootballPage />;
   if (page === 'virtual-football') return <VirtualFootballPage />;
   if (page === 'virtual-results') return <VirtualFootballPage showResults />;
+  if (page === 'virtual-automation') return <VirtualAutomationPage />;
   if (page === 'analysis') return <AnalysisPage />;
   if (page === 'betzero-lab') return <React.Suspense fallback={<main className="page-wrap"><section className="content-card" role="status">Loading the strategy lab…</section></main>}><BetZeroLabPage session={session} /></React.Suspense>;
   if (page === 'account') return <AccountPage />;

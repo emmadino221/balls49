@@ -156,3 +156,19 @@ Without a readable trained model, no Over picks qualify. The publisher sends
 `goals15` and `over15Confidence`; the receiver validates them and keeps picks
 immutable. Historical GG-derived picks remain readable. No GG fallback is used
 for new Over predictions.
+
+## Virtual automation dashboard (added 19 November 2026)
+
+`/virtual-automation.html` lets each signed-in member link their virtual football licence
+key and see their own extension session: running or stopped, online, mode, profit, loss
+and win streaks, losses to recover, a bet awaiting its result, this round's pick for their
+mode and recent results. It sends Start, Stop, mode, base stake, take profit, stop loss and
+reset; the extension applies them on its next check. Start clears the extension's current
+loss streak, as it always has from Telegram. Reset is disabled while a bet awaits its result.
+
+Website: `virtual-automation.js` (encrypted key links, table
+`site_virtual_automation_links`), routes `/account/virtual-automation[/link|/command|/unlink]`.
+It calls the virtual service at `VIRTUAL_API_URL` (default `http://127.0.0.1:5000`) with
+`VIRTUAL_FEED_SECRET`. Virtual repository: `ext_sessions.py` and the `/dashboard/*` routes in
+`new.py`. Extension 3.4 reports the extra fields; 3.3 still works with fewer details shown.
+

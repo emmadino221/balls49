@@ -109,6 +109,7 @@ siteDb.exec(`
 `);
 const footballService = createFootballService(siteDb);
 const virtualFootball = createVirtualFootball(siteDb);
+const { createVirtualAutomation } = require('./virtual-automation');
 let betzeroLab = null;
 let betzeroJobs = null;
 try {
@@ -120,6 +121,7 @@ try {
     console.error('[BetZeroLab] Lab storage could not be initialized; the lab API is unavailable.', error);
 }
 const siteVault = require('./site-vault').createSiteVault(process.env.SITE_VAULT_KEY_FILE || `${SITE_DATABASE_FILE}.security-key`);
+const virtualAutomation = createVirtualAutomation(siteDb, siteVault);
 const automationBridge = createAutomationBridge(siteDb, SITE_ADMIN_KEY, siteVault);
 const ownerSecurity = require('./owner-security').createOwnerSecurity(siteDb, siteVault, SITE_ADMIN_KEY);
 
@@ -247,6 +249,7 @@ if (SITE_PUBLIC_MODE && SITE_ALLOWED_ORIGINS.size === 0) {
 }
 const PUBLIC_SITE_ROUTES = new Set([
     'GET /account/automation', 'POST /account/automation/link', 'POST /account/automation/command', 'POST /account/automation/key',
+    'GET /account/virtual-automation', 'POST /account/virtual-automation/link', 'POST /account/virtual-automation/command', 'POST /account/virtual-automation/unlink',
     'GET /public-suggestions-status', 'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'GET /admin/betzero-lab', 'GET /admin/betzero-lab/predictions', 'GET /admin/betzero-lab/backtests',
@@ -3820,6 +3823,23 @@ async function handleHttpRequest(req, res) {
             }
             return sendJson(res, 404, { error: 'Not found.' });
         } catch (error) { return sendJson(res, error.status || 503, { error: error.status ? error.message : 'Automation service unavailable.' }); }
+    }
+
+    if (parsedUrl.pathname.startsWith('/account/virtual-automation')) {
+        const login = siteSession(req);
+        if (!login) return sendJson(res, 401, { error: 'Sign in to use the virtual football dashboard.' });
+        const account = login.admin ? '__owner__' : login.email;
+        try {
+            if (req.method === 'GET' && parsedUrl.pathname === '/account/virtual-automation') return sendJson(res, 200, await virtualAutomation.status(account));
+            if (req.method === 'POST') {
+                if (!allowSiteAuthAttempt(req, res, [{ scope: 'virtual-automation', identity: account, limit: 60, windowMs: 60000 }])) return;
+                const data = await readRequestJson(req);
+                if (parsedUrl.pathname === '/account/virtual-automation/link') return sendJson(res, 200, await virtualAutomation.link(account, data.key));
+                if (parsedUrl.pathname === '/account/virtual-automation/unlink') return sendJson(res, 200, virtualAutomation.unlink(account));
+                if (parsedUrl.pathname === '/account/virtual-automation/command') return sendJson(res, 200, await virtualAutomation.command(account, data));
+            }
+            return sendJson(res, 404, { error: 'Not found.' });
+        } catch (error) { return sendJson(res, error.status || 503, { error: error.status ? error.message : 'Virtual automation is unavailable.' }); }
     }
 
     if (isVirtualFootballIngest && SITE_PUBLIC_MODE) {

@@ -32,6 +32,7 @@ export default function SiteFooter({ session, onSignOut }) {
           ? <button className="footer-logout" type="button" onClick={onSignOut}>{session.admin ? 'Exit owner session' : 'Sign out'}</button>
           : <a href="login.html">Log in</a>}
         <a href="automation.html">Automation dashboard</a>
+        <a href="virtual-automation.html">Virtual automation</a>
         <a href="contact.html">Contact support</a>
         <a href="privacy.html">Privacy policy</a>
         <a href="terms.html">Terms of service</a>
