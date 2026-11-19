@@ -49,6 +49,7 @@ function reserve(key, base, steps, bet49ProfitMode = 'fixed') {
 function preview(input, records) {
     if (!Array.isArray(input.games)) throw fail('Select at least one game.');
     const keys = [...new Set(input.games || [])];
+    if (keys.some(k => ['totalColor2', 'unified'].includes(k))) throw fail('This prediction market has been removed. Choose another game.');
     if (!keys.length || keys.length > 7 || keys.some(k => !Object.hasOwn(games, k) && k !== 'unified') || (keys.includes('unified') && keys.length !== 1)) throw fail('Choose individual games, or Unified on its own.');
     const window = Number(input.window);
     if (![50, 100, 200, 500, 1000].includes(window)) throw fail('Choose a supported draw window.');

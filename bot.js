@@ -2313,44 +2313,12 @@ async function sendPrediction(drawId, drawDate, pred) {
     const bet49Format = pickBlock('🎯 BET49', 'bet49', 'bet49', bet49Numbers(pred.bet49Pick).map(n => `${getBallEmoji(n)} <b>${n}</b>`).join(' '));
     const rainbowFormat = pickBlock('🌈 RAINBOW', 'rainbow', 'color', rainbowPickText);
     const tcFormat = pickBlock('🎨 TOTAL COLOR · 3-WAY', 'totalColor', 'totalColor', tcPickText);
-    const tc2Format = pickBlock('🎨 TOTAL COLOR · 2-WAY', 'totalColor2', 'totalColor2', pred.totalColor2Pred.status === 'ACTIVE'
-        ? pred.totalColor2Pred.top2.map(color => `${cEm[color] || '⚪'} <b>${color.toUpperCase()}</b>`).join(' + ') : '');
     const tc1Format = pickBlock('🎨 WINNING COLOR', 'totalColor1', 'totalColor1', pred.totalColor1Pred?.status === 'ACTIVE'
         ? pred.totalColor1Pred.top1.map(color => `${cEm[color] || '⚪'} <b>${totalColorName(color)}</b>`).join(' + ') : '');
     const hlFormat = pickBlock('📊 HIGH / LOW', 'hilo', 'sum', hlPickText);
 
-    let candidateGames = [];
-    if (pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 && mlBz.recommendation === 'ENTER') {
-        candidateGames.push({ key: 'u4', score: mlBz.score });
-    }
-    if (pred.rainbowStatus === 'ACTIVE') {
-        candidateGames.push({ key: 'color', score: mlRb.score });
-    }
-    if (pred.hiloStatus === 'ACTIVE' && mlHl.recommendation === 'ENTER') {
-        candidateGames.push({ key: 'sum', score: mlHl.score });
-    }
-    if (pred.totalColorPred.status === 'ACTIVE' && mlTc.recommendation === 'ENTER') {
-        candidateGames.push({ key: 'totalColor', score: mlTc.score });
-    }
-
-    var unifiedFormat = '';
-    if (candidateGames.length > 0) {
-        candidateGames.sort((a, b) => {
-            if (b.score !== a.score) {
-                return b.score - a.score;
-            }
-            return Math.random() - 0.5;
-        });
-        
-        let best = candidateGames[0];
-        pred.unifiedPick = best;
-        const unifiedNames = { u4: 'BetZero', color: 'Rainbow', sum: 'High / Low', totalColor: 'Total Color 3-way' };
-        const unifiedPicks = { u4: betzeroPickText, color: rainbowPickText, sum: hlPickText, totalColor: tcPickText };
-        unifiedFormat = pickBlock(`🔗 UNIFIED · ${unifiedNames[best.key]}`, 'unified', 'unified', unifiedPicks[best.key], best.key, best.key);
-    } else {
-        pred.unifiedPick = null;
-        unifiedFormat = pickBlock('🔗 UNIFIED', 'unified', 'unified', '');
-    }
+    // Unified prediction is retired: never select a Unified pick.
+    pred.unifiedPick = null;
 
     const publicSummaryModel = buildPublicSummaryModel(mlShadow, pred.unifiedPick?.key);
     if (lastPrediction && String(lastPrediction.drawId) === String(drawId)) {
@@ -2362,7 +2330,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         `🎯 <b>PICKS · DRAW #${drawId}</b>`,
         `<i>${String(drawDate).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</i>`,
         '', u4Format, '', bet49Format, '', rainbowFormat, '', tcFormat,
-        '', tc2Format, '', tc1Format, '', hlFormat, '', unifiedFormat
+        '', tc1Format, '', hlFormat
     ];
 
     const predictionRecord = {
@@ -2925,13 +2893,9 @@ function processUpdates(pred, actualDraw) {
         '',
         resultLine('🎨 Total Color · 3-way', pred.totalColorPred.status === 'ACTIVE', tcWin, tcPick, 'totalColor'),
         '',
-        resultLine('🎨 Total Color · 2-way', pred.totalColor2Pred.status === 'ACTIVE', tc2Win, tc2Pick, 'totalColor2'),
-        '',
         resultLine('🎨 Winning Color', pred.totalColor1Pred?.status === 'ACTIVE', tc1Win, tc1Pick, 'totalColor1'),
         '',
-        resultLine('📊 High / Low', pred.hiloStatus === 'ACTIVE', sumWin, hiloPick, 'sum'),
-        '',
-        resultLine(`🔗 Unified${unifiedName ? ` · ${unifiedName}` : ''}`, unifiedStatus === 'ACTIVE', unifiedWin, unifiedPickText, 'unified')
+        resultLine('📊 High / Low', pred.hiloStatus === 'ACTIVE', sumWin, hiloPick, 'sum')
     ];
     const strategyMarkets = ['betzero', 'rainbow'].filter(market =>
         getSelectedStrategy(targetItem?.adaptiveStrategies, market));
@@ -3560,6 +3524,16 @@ async function tick() {
 
                 if (isTimeUp(session.config.schedule)) continue;
 
+                // Retired markets: pause instead of switching legacy settings to other games.
+                if (session.config.unifiedMode || session.config.enabledGames?.totalColor2) {
+                    if (!session.stats.isHalted) {
+                        session.stats.isHalted = true;
+                        session.stats.haltReason = 'A saved market has been removed. Review supported games and save settings before restarting.';
+                        sendSessionDM(session, '⏸ <b>Automation paused.</b>\nTotal Color 2-way and Unified have been removed. Choose supported games and save your settings to restart.').catch(() => {});
+                    }
+                    continue;
+                }
+
                 if (gapEntry.enabled(session) && (session.config.unifiedMode || automationControl.state(session).controller !== "website")) continue;
                 if (session.config.unifiedMode) {
                     if (session.masterState.inShadowMode) continue;
@@ -3713,7 +3687,7 @@ async function tick() {
                         const hasRainbow = session.config.enabledGames.color && pred.rainbowStatus === 'ACTIVE' && rbStake > 0;
                         const hasHiLo = session.config.enabledGames.sum && pred.hiloStatus === 'ACTIVE' && hlStake > 0;
                         const hasTotalColor = session.config.enabledGames.totalColor && pred.totalColorPred.status === 'ACTIVE' && tcStake > 0;
-                        const hasTotalColor2 = session.config.enabledGames.totalColor2 && pred.totalColor2Pred.status === 'ACTIVE' && tc2Stake > 0;
+                        const hasTotalColor2 = false; // Total Color 2-way is retired.
                         const hasTotalColor1 = session.config.enabledGames.totalColor1 && pred.totalColor1Pred?.status === 'ACTIVE' && tc1Stake > 0;
 
                         session.pendingBetPayload = {
@@ -5381,6 +5355,9 @@ async function handleHttpRequest(req, res) {
                     return num;
                 };
 
+                if (cfg.unifiedMode === true || cfg.enabledGames?.totalColor2 === true) {
+                    return sendJson(res, 400, { error: 'Total Color 2-way and Unified have been removed. Reload the updated extension and choose a supported game.' });
+                }
                 if ((cfg.unifiedMode ?? session.config.unifiedMode)
                     && (cfg.enabledGames?.totalColor1 ?? session.config.enabledGames.totalColor1)) {
                     return sendJson(res, 400, { error: 'Use individual mode for Winning Color.' });
@@ -5777,7 +5754,6 @@ function handleTelegramCommand(chatId, text) {
         if (['color', 'rb', 'rainbow'].includes(k)) return 'color';
         if (['sum', 'hl', 'hilo'].includes(k)) return 'sum';
         if (['tc', 'tc3', 'totalcolor'].includes(k)) return 'totalColor';
-        if (['tc2', 'totalcolor2'].includes(k)) return 'totalColor2';
         return null;
     };
 
@@ -5800,14 +5776,13 @@ function handleTelegramCommand(chatId, text) {
             `• <code>/stake &lt;game&gt; &lt;amount&gt;</code> — Set base stake (e.g. <code>/stake tc 1000</code>)`,
             `• <code>/tp &lt;amount&gt;</code> — Set Take Profit target (e.g. <code>/tp 5000</code>)`,
             `• <code>/sl &lt;amount&gt;</code> — Set Stop Loss boundary (e.g. <code>/sl 10000</code>)`,
-            `• <code>/unified &lt;on|off&gt;</code> — Toggle Unified Master Mode`,
             `• <code>/enable &lt;game&gt;</code> — Activate market (e.g. <code>/enable bz</code>)`,
             `• <code>/disable &lt;game&gt;</code> — Deactivate market (e.g. <code>/disable color</code>)`,
             `• <code>/rollover &lt;tc3|bzrb&gt; &lt;on|off&gt;</code> — Toggle compounding rollovers`,
             `• <code>/shadow &lt;on|off&gt;</code> — Toggle Smart Virtual Circuit Breaker`,
             `• <code>/weighted &lt;on|off&gt;</code> — Toggle ML-Weighted Base Staking`,
             `<code>------------------------------------</code>`,
-            `<i>Supported game keys: bz, rb, hl, tc, tc2</i>`
+            `<i>Supported game keys: bz, rb, hl, tc</i>`
         ].join('\n');
         sendPersonalDM(chatId, helpText).catch(() => {});
     }
@@ -5821,7 +5796,6 @@ function handleTelegramCommand(chatId, text) {
             `⚙️ <b>CURRENT TELEMETRY & CONFIG</b>`,
             `<code>------------------------------------</code>`,
             `🔴 <b>Engine State:</b> ${stats.isHalted ? `PAUSED (${stats.haltReason || 'User'})` : '🟢 RUNNING'}`,
-            `👑 <b>Unified Mode:</b> ${config.unifiedMode ? 'ENABLED 🟢' : 'DISABLED 🔴'}`,
             `🎯 <b>Active Markets:</b> ${activeGames}`,
             ``,
             `💰 <b>Base Stakes:</b>`,
@@ -5829,7 +5803,6 @@ function handleTelegramCommand(chatId, text) {
             `  • Rainbow: ₦${(config.initialStakes.color || 0).toLocaleString()}`,
             `  • Hi/Lo: ₦${(config.initialStakes.sum || 0).toLocaleString()}`,
             `  • Total Color 3W: ₦${(config.initialStakes.totalColor || 0).toLocaleString()}`,
-            `  • Total Color 2W: ₦${(config.initialStakes.totalColor2 || 0).toLocaleString()}`,
             ``,
             `🛡️ <b>Advanced Execution & Risk:</b>`,
             `  • Take Profit: ${config.takeProfit > 0 ? `+₦${config.takeProfit.toLocaleString()}` : 'Disabled'}`,
@@ -5905,21 +5878,12 @@ function handleTelegramCommand(chatId, text) {
         sendPersonalDM(chatId, `✅ <b>Stop Loss Boundary Updated:</b> ${config.stopLoss < 0 ? `-₦${Math.abs(config.stopLoss).toLocaleString()}` : 'Disabled'}`).catch(() => {});
     }
     else if (cmd === '/unified') {
-        const toggle = parts[1] ? parts[1].toLowerCase() : null;
-        if (toggle === 'on') {
-            config.unifiedMode = true;
-            sendPersonalDM(chatId, "✅ <b>Unified Master Mode ENABLED.</b> Bot will dynamically select highest ML confidence target.").catch(() => {});
-        } else if (toggle === 'off') {
-            config.unifiedMode = false;
-            sendPersonalDM(chatId, "✅ <b>Unified Master Mode DISABLED.</b> Bot returned to independent multi-market mode.").catch(() => {});
-        } else {
-            sendPersonalDM(chatId, "⚠️ <b>Invalid Usage.</b> Example: <code>/unified on</code> or <code>/unified off</code>").catch(() => {});
-        }
+        sendPersonalDM(chatId, 'Unified has been removed. Choose a supported individual game.').catch(() => {});
     }
     else if (cmd === '/enable' || cmd === '/disable') {
         const gameKey = parseGameKey(parts[1]);
         if (!gameKey) {
-            sendPersonalDM(chatId, `⚠️ <b>Invalid Game.</b> Use one of: <code>bz, rb, hl, tc, tc2</code>`).catch(() => {});
+            sendPersonalDM(chatId, `⚠️ <b>Invalid Game.</b> Use one of: <code>bz, rb, hl, tc</code>`).catch(() => {});
             return;
         }
         const enable = (cmd === '/enable');
