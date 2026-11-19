@@ -172,3 +172,12 @@ It calls the virtual service at `VIRTUAL_API_URL` (default `http://127.0.0.1:500
 `VIRTUAL_FEED_SECRET`. Virtual repository: `ext_sessions.py` and the `/dashboard/*` routes in
 `new.py`. Extension 3.4 reports the extra fields; 3.3 still works with fewer details shown.
 
+### Licence keys from the owner section
+
+Owner workspace → Virtual football issues a licence key to a registered account for 1 to 12
+months of 30 days, starting today. Renewing keeps the same key; revoking stops the extension on
+its next check. The key is stored encrypted in `site_virtual_licences`, linked to the member's
+virtual dashboard automatically, and shown to the member on `virtual-automation.html`
+("Your licence"). The virtual service stores only its hash and enforces the expiry. Deleting a
+website account revokes its licence first.
+

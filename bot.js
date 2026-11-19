@@ -249,7 +249,8 @@ if (SITE_PUBLIC_MODE && SITE_ALLOWED_ORIGINS.size === 0) {
 }
 const PUBLIC_SITE_ROUTES = new Set([
     'GET /account/automation', 'POST /account/automation/link', 'POST /account/automation/command', 'POST /account/automation/key',
-    'GET /account/virtual-automation', 'POST /account/virtual-automation/link', 'POST /account/virtual-automation/command', 'POST /account/virtual-automation/unlink',
+    'GET /account/virtual-automation', 'POST /account/virtual-automation/link', 'POST /account/virtual-automation/command', 'POST /account/virtual-automation/unlink', 'POST /account/virtual-automation/key',
+    'GET /admin/virtual-licences', 'POST /admin/virtual-licence',
     'GET /public-suggestions-status', 'GET /public-suggestions', 'GET /public-videos', 'POST /admin/videos',
     'GET /public-daily-streaks', 'GET /public-history', 'GET /public-current-prediction', 'GET /public-clock',
     'GET /admin/betzero-lab', 'GET /admin/betzero-lab/predictions', 'GET /admin/betzero-lab/backtests',
@@ -3830,12 +3831,16 @@ async function handleHttpRequest(req, res) {
         if (!login) return sendJson(res, 401, { error: 'Sign in to use the virtual football dashboard.' });
         const account = login.admin ? '__owner__' : login.email;
         try {
-            if (req.method === 'GET' && parsedUrl.pathname === '/account/virtual-automation') return sendJson(res, 200, await virtualAutomation.status(account));
+            if (req.method === 'GET' && parsedUrl.pathname === '/account/virtual-automation') return sendJson(res, 200, { ...await virtualAutomation.status(account), licence: virtualAutomation.licenceSummary(account) });
             if (req.method === 'POST') {
                 if (!allowSiteAuthAttempt(req, res, [{ scope: 'virtual-automation', identity: account, limit: 60, windowMs: 60000 }])) return;
                 const data = await readRequestJson(req);
                 if (parsedUrl.pathname === '/account/virtual-automation/link') return sendJson(res, 200, await virtualAutomation.link(account, data.key));
                 if (parsedUrl.pathname === '/account/virtual-automation/unlink') return sendJson(res, 200, virtualAutomation.unlink(account));
+                if (parsedUrl.pathname === '/account/virtual-automation/key') {
+                    const issued = virtualAutomation.memberKey(account);
+                    return issued ? sendJson(res, 200, issued) : sendJson(res, 404, { error: 'No active virtual football licence. Contact the owner to get one.' });
+                }
                 if (parsedUrl.pathname === '/account/virtual-automation/command') return sendJson(res, 200, await virtualAutomation.command(account, data));
             }
             return sendJson(res, 404, { error: 'Not found.' });
@@ -4417,18 +4422,42 @@ async function handleHttpRequest(req, res) {
             if (!user) return sendJson(res, 404, { error: 'Account not found.' });
             // Revoke first. If the worker is unavailable, retain the account for retry.
             await automationBridge.revokeAccount(email, !!user.extensionExpiresAt);
+            await virtualAutomation.revokeLicence(email);
             siteDb.exec('BEGIN IMMEDIATE');
             try {
                 siteDb.prepare("DELETE FROM site_sessions WHERE json_extract(session_json, '$.email') = ? AND COALESCE(json_extract(session_json, '$.admin'), 0) = 0").run(email);
                 deleteEmailVerificationStatement.run(email);
                 siteDb.prepare('DELETE FROM site_automation_reports WHERE account = ?').run(email);
                 siteDb.prepare('DELETE FROM site_automation_links WHERE account = ?').run(email);
+                siteDb.prepare('DELETE FROM site_virtual_automation_links WHERE account = ?').run(email);
+                siteDb.prepare('DELETE FROM site_virtual_licences WHERE account = ?').run(email);
                 siteDb.prepare('DELETE FROM site_users WHERE email = ?').run(email);
                 setSiteSettingStatement.run('legacy_users_migrated', 'true');
                 siteDb.exec('COMMIT');
             } catch (error) { siteDb.exec('ROLLBACK'); throw error; }
             return sendJson(res, 200, { ok: true, email });
         } catch { return sendJson(res, 503, { error: 'Deletion could not finish. Check the worker connection and retry. Extension access may already be revoked.' }); }
+    }
+
+    if (parsedUrl.pathname === '/admin/virtual-licences' && req.method === 'GET') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        return sendJson(res, 200, { licences: virtualAutomation.licences() });
+    }
+
+    if (parsedUrl.pathname === '/admin/virtual-licence' && req.method === 'POST') {
+        if (!siteSession(req)?.admin) return sendJson(res, 401, { error: 'Admin sign-in required.' });
+        try {
+            const data = await readRequestJson(req);
+            const email = String(data.email || '').trim().toLowerCase();
+            const user = getSiteUser(email);
+            if (data.action === 'revoke') return sendJson(res, 200, await virtualAutomation.revokeLicence(email));
+            if (data.action !== 'issue') return sendJson(res, 400, { error: 'Choose issue or revoke.' });
+            if (!user) return sendJson(res, 404, { error: 'Create the user account before issuing a licence.' });
+            if (user.emailVerified !== true && data.identityConfirmed !== true) {
+                return sendJson(res, 400, { error: 'Confirm this person through a known contact method before issuing a licence.' });
+            }
+            return sendJson(res, 200, { email, ...await virtualAutomation.issueLicence(email, data.months) });
+        } catch (error) { return sendJson(res, error.status || 400, { error: error.status ? error.message : 'Invalid licence request.' }); }
     }
 
     if (parsedUrl.pathname === '/admin/approve' && req.method === 'POST') {

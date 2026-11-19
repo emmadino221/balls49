@@ -19,6 +19,7 @@ export default function VirtualAutomationPage() {
   const [data, setData] = useState(null), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false), [key, setKey] = useState(''), [updated, setUpdated] = useState(null);
   const [form, setForm] = useState(null);
+  const [licenceKey, setLicenceKey] = useState('');
   const polling = useRef(false), alive = useRef(true);
 
   const load = useCallback(async () => {
@@ -48,6 +49,19 @@ export default function VirtualAutomationPage() {
     await post('/account/virtual-automation/link', { key }, 'Licence key linked.');
     setKey('');
   }
+  async function revealKey() {
+    if (licenceKey) { setLicenceKey(''); return; }
+    try { setLicenceKey((await apiRequest('/account/virtual-automation/key', { method: 'POST', body: '{}' })).key); }
+    catch (e) { setNotice(e.message); }
+  }
+  const licence = data?.licence;
+  const licencePanel = <details className="content-card automation-account"><summary>Your licence <span>{licence?.status === 'active' ? `Active until ${new Date(licence.expiresAt).toLocaleDateString()}` : licence?.status === 'expired' ? 'Expired' : licence?.status === 'revoked' ? 'Revoked' : 'Not issued'}</span></summary>
+    {licence?.status === 'active'
+      ? <><p>Enter this key in the virtual football extension popup. Keep it private.</p><button type="button" className="btn btn-secondary" onClick={revealKey}>{licenceKey ? 'Hide my licence key' : 'Show my licence key'}</button>
+        {licenceKey && <label>Licence key<input type="text" readOnly value={licenceKey} onFocus={e => e.target.select()} /></label>}</>
+      : <p>{licence ? 'Your virtual football licence is no longer active. Contact the owner to renew it.' : 'Contact the owner to get a virtual football licence.'}</p>}
+  </details>;
+
   function start() {
     if (!window.confirm('Start placing real virtual football bets in your connected Bet9ja tab? Starting clears the current loss streak, so the next bet uses your base stake.')) return;
     send('START', undefined, 'Start sent. It reaches your extension within a few seconds.');
@@ -87,6 +101,7 @@ export default function VirtualAutomationPage() {
     {notice && <p className="automation-notice" role="status">{notice}</p>}
     {!data && !error && <p role="status">Connecting to your account...</p>}
 
+    {data && licencePanel}
     {data && !data.linked && <section className="content-card automation-connect"><span className="overline">ONE-TIME CONNECTION</span><h2>Link your virtual football extension</h2>
       <p>Enter the licence key you use in the virtual football extension popup. It is stored encrypted and links only your own extension session.</p>
       <form onSubmit={link}><label>Licence key<input type="password" value={key} onChange={e => setKey(e.target.value)} autoComplete="off" minLength="8" maxLength="200" required /></label>

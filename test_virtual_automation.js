@@ -17,13 +17,19 @@ function setup(t) {
     const db = new DatabaseSync(path.join(directory, 'site.sqlite'));
     const vault = createSiteVault(path.join(directory, 'vault.key'));
     const calls = [];
+    const granted = new Map();   // key -> expiresAt, as the virtual service's licence store
     // A stand-in for the virtual service's dashboard routes.
     const fakeFetch = async (url, init) => {
         const body = JSON.parse(init.body);
         calls.push({ url, body, secret: init.headers['X-Dashboard-Secret'] });
         const reply = (status, json) => ({ status, json: async () => json });
         if (init.headers['X-Dashboard-Secret'] !== SECRET) return reply(403, { error: 'Forbidden' });
-        if (![KEY_A, KEY_B].includes(body.key)) return reply(404, { valid: false });
+        if (url.endsWith('/dashboard/licence')) {
+            if (body.action === 'grant') granted.set(body.key, body.expiresAt);
+            else granted.delete(body.key);
+            return reply(200, { ok: true });
+        }
+        if (![KEY_A, KEY_B].includes(body.key) && !(granted.get(body.key) > Date.now())) return reply(404, { valid: false });
         if (url.endsWith('/dashboard/status')) return reply(200, { valid: true, session: { state: { botEnabled: true }, online: true }, results: [] });
         if (body.type === 'STAKE' && !(body.value >= 1)) return reply(400, { error: 'Enter an amount from 1 to 1,000,000.' });
         return reply(200, { ok: true, command: { type: body.type, value: body.value } });
@@ -71,4 +77,49 @@ test('bad commands and a wrong secret are reported clearly', async t => {
     t.after(() => { db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
     const unconfigured = createVirtualAutomation(db, createSiteVault(path.join(directory, 'vault.key')), { secret: '' });
     await assert.rejects(unconfigured.link('a@example.test', KEY_A), { status: 503 });
+});
+
+test('the owner issues, renews and revokes licences; members see only their own key', async t => {
+    const { db, automation, calls } = setup(t);
+    await assert.rejects(automation.issueLicence('m@example.test', 0), /1 to 12 months/);
+    const first = await automation.issueLicence('m@example.test', 1);
+    assert.match(first.key, /^vf_[A-Za-z0-9_-]{32}$/);
+    assert.ok(Math.abs(first.expiresAt - (Date.now() + 30 * 86400000)) < 5000);
+    assert.equal(calls.at(-1).body.action, 'grant');
+    assert.ok(!db.prepare('SELECT encrypted_key FROM site_virtual_licences').get().encrypted_key.includes(first.key), 'stored encrypted');
+
+    // Linked automatically: the member's dashboard works without pasting the key.
+    const status = await automation.status('m@example.test');
+    assert.equal(status.keyValid, true);
+    assert.equal(automation.memberKey('m@example.test').key, first.key);
+    assert.equal(automation.memberKey('other@example.test'), null);
+
+    // Renewal keeps the same key and moves the expiry.
+    const renewed = await automation.issueLicence('m@example.test', 3);
+    assert.equal(renewed.key, first.key);
+    assert.ok(renewed.expiresAt > first.expiresAt);
+    assert.deepEqual(automation.licences().map(l => [l.email, l.status, l.keyHint]), [['m@example.test', 'active', first.key.slice(-4)]]);
+
+    // Revocation reaches the service, unlinks the dashboard and hides the key.
+    assert.deepEqual(await automation.revokeLicence('m@example.test'), { revoked: true });
+    assert.equal(calls.at(-1).body.action, 'revoke');
+    assert.equal(automation.memberKey('m@example.test'), null);
+    assert.deepEqual(await automation.status('m@example.test'), { linked: false });
+    assert.equal(automation.licences()[0].status, 'revoked');
+    assert.equal(automation.licenceSummary('m@example.test').status, 'revoked');
+
+    // Issuing again after a revocation creates a new key.
+    const fresh = await automation.issueLicence('m@example.test', 1);
+    assert.notEqual(fresh.key, first.key);
+    assert.deepEqual(await automation.revokeLicence('nobody@example.test'), { revoked: false });
+});
+
+test('a licence is not saved when the virtual service is unreachable', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'virtual-automation-'));
+    const db = new DatabaseSync(path.join(directory, 'site.sqlite'));
+    t.after(() => { db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+    const down = createVirtualAutomation(db, createSiteVault(path.join(directory, 'vault.key')),
+        { secret: SECRET, fetch: async () => { throw new TypeError('connect ECONNREFUSED'); } });
+    await assert.rejects(down.issueLicence('m@example.test', 1), { status: 503 });
+    assert.deepEqual(down.licences(), []);
 });

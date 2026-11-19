@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../auth.js';
 import OwnerSecurity from './OwnerSecurity';
 import OwnerVideos from './OwnerVideos';
+import OwnerVirtualLicences from './OwnerVirtualLicences';
 import './OwnerTools.css';
 
 export default function OwnerTools({ onSession, games }) {
@@ -97,6 +98,7 @@ export default function OwnerTools({ onSession, games }) {
   const sections = [
     ['approvals', 'Approvals', 'Give users access'],
     ['accounts', 'Accounts', 'Find and manage users'],
+    ['virtual', 'Virtual football', 'Licence keys'],
     ['predictions', 'Predictions', 'Preview and statistics'],
     ['security', 'Security', 'Authenticator and sessions'],
     ['videos', 'Videos', 'Manage your public library'],
@@ -153,6 +155,7 @@ export default function OwnerTools({ onSession, games }) {
             <div className="owner-account-grid">{visibleUsers.map(user=><article key={user.email} className="owner-account-card"><div className="owner-account-heading"><span className="owner-avatar" aria-hidden="true">{user.email[0].toUpperCase()}</span><div><h4>{user.email}</h4><span className={`owner-badge ${user.approvalStatus==='approved'?'':'owner-badge-muted'}`}>{user.approvalStatus==='approved'?'Approved':user.approvalStatus==='expired'?'Plan expired':'Pending approval'}</span></div></div><dl><div><dt>Prediction plan</dt><dd>{user.plan?.tier||'trial'}{user.plan?.period==='week'?' · weekly':''}</dd></div><div><dt>Prediction expiry</dt><dd>{date(user.expiresAt)}</dd></div><div><dt>Extension expiry</dt><dd>{date(user.extensionExpiresAt)}</dd></div></dl><div className="owner-account-actions"><button type="button" className="btn btn-secondary" onClick={()=>{setEmail(user.email);setIssuedKey('');setSection('approvals');}}>Manage access</button><button type="button" className="owner-danger-button" disabled={!!deletingUser} onClick={()=>deleteUser(user.email)}>{deletingUser===user.email?'Deleting...':'Delete user'}</button></div></article>)}</div>
           </>}
         </section>
+        <section id="owner-panel-virtual" hidden={section!=='virtual'} aria-label="Virtual football licences">{section==='virtual'&&<OwnerVirtualLicences users={users} />}</section>
         <section id="owner-panel-predictions" hidden={section!=='predictions'} aria-label="Prediction controls">
           <div className="owner-section-title"><span className="overline">PREDICTION CONTROLS</span><h3>Preview the member experience</h3><p>View the feed with a selected plan. This applies only to your owner session.</p></div>
           <div className="owner-preview-actions">{[['trial','Free Trial'],['premium','Premium'],['elite','Elite']].map(([id,label])=><button key={id} className="btn btn-secondary" type="button" aria-pressed={activePreview===id} onClick={()=>preview(id)}>{label}</button>)}</div>
