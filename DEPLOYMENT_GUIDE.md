@@ -99,6 +99,22 @@ If `git status --short` shows unexpected changes, preserve them and resolve that
 before pulling. The worker and website are separate services; restart the worker
 only when its code needs updating.
 
+### Website domain (prediction.emmyfxchart.com)
+
+The site, the Balls49 extension routes and the virtual football API can also be served on a
+domain. First add a DNS A record for the domain pointing to `159.65.25.30` at the DNS
+provider, and wait until it resolves. Then, as the `balls49` user in the site checkout:
+
+```bash
+bash deploy/add-site-domain.sh prediction.emmyfxchart.com
+```
+
+The script checks DNS, gets a Let's Encrypt certificate (renewed automatically), adds an
+HTTPS block for the domain copied from the live IP block, adds the domain to
+`SITE_ALLOWED_ORIGINS`, sets `SITE_PUBLIC_URL` to it and restarts the website. The IP keeps
+working. Run it again after anything changes the IP block, such as the virtual football
+installer. Visitors signed in on the IP address sign in again on the domain.
+
 ### Streak reset synchronization
 
 Both worker and hosted API must include the reset update. The signed snapshot
