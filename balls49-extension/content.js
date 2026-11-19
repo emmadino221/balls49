@@ -1659,12 +1659,15 @@ async function startApp() {
         chrome.storage.sync.get([
             'stakes', 'gameSteps', 'takeProfit', 'stopLoss', 
             'enabledGames', 'schedule', 'telegramChatId', 'step1Only', 
-            'hiloStrategy', 'flatBetting', 'sniperMode', 'sniperStep', 'sniperResetLosses',
+            'hiloStrategy', 'flatBetting', 'sniperSettings', 'sniperMode', 'sniperStep', 'sniperResetLosses',
             'dynamicStakePercent', 'cbMaxLosses', 'cbCooldown',
             'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
         ], (data) => {
             if (data) {
                 data.unifiedMode = false;
+                // Per-game sniper settings replace the old shared fields. Sending the old fields
+                // made the bot copy one shared profile over every game on each page load.
+                if (data.sniperSettings) { delete data.sniperMode; delete data.sniperStep; delete data.sniperResetLosses; }
                 if(data.enabledGames) data.enabledGames.totalColor2 = false;
                 if(data.stakes) data.stakes.totalColor2 = 0;
                 // Strategy selection is automatic; retire any saved specific-strategy gate.

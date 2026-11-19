@@ -257,8 +257,8 @@ function renderPresetPreview(gameKey, baseStake, steps, odds, hiloMultiplier, ro
         `<br>Total exposure: <strong>₦${Math.round(totalExposure).toLocaleString()}</strong>`;
     previewEl.style.display = 'block';
     previewEl.insertAdjacentHTML('beforeend',
-        `<br>Risk capital: <strong>â‚¦${Math.round(riskCapital).toLocaleString()}</strong> | Stop loss: <strong>â‚¦${Math.round(stopLossTolerance).toLocaleString()}</strong>` +
-        `<br>Risk used: <strong>${riskUsedPercent.toFixed(2)}%</strong> | Safety margin: <strong>â‚¦${Math.round(safetyMargin).toLocaleString()}</strong>` +
+        `<br>Risk capital: <strong>₦${Math.round(riskCapital).toLocaleString()}</strong> | Stop loss: <strong>₦${Math.round(stopLossTolerance).toLocaleString()}</strong>` +
+        `<br>Risk used: <strong>${riskUsedPercent.toFixed(2)}%</strong> | Safety margin: <strong>₦${Math.round(safetyMargin).toLocaleString()}</strong>` +
         `${baseStakeWasCapped ? '<br><span style="color: var(--accent-red);">Base stake reduced to stay within the exposure limit.</span>' : ''}` +
         `${stepsWereReduced ? '<br><span style="color: var(--accent-red);">Steps reduced to stay within stop-loss tolerance.</span>' : ''}`
     );
