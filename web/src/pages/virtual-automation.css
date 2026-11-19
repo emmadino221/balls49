@@ -1,0 +1,220 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap');
+
+/* Virtual automation: a floodlit night match. The stadium is the one bold element;
+   panels below stay flat and quiet. */
+.va-page {
+  --va-night: #0c1a2b;
+  --va-night-2: #11243a;
+  --va-line: rgba(238, 243, 234, .12);
+  --va-chalk: #eef3ea;
+  --va-dim: #a9b8c6;
+  --va-pitch: #14573b;
+  --va-flood: #ffc857;
+  --va-win: #3cc47c;
+  --va-loss: #ef6461;
+  --va-board: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  width: min(1180px, calc(100% - 32px));
+  padding: 24px 0 56px;
+  color: var(--va-chalk);
+  font-family: Manrope, 'Segoe UI', sans-serif;
+}
+.va-page :is(a, button, input, summary, label):focus-visible,
+.va-page .va-mode:focus-within { outline: 3px solid var(--va-flood); outline-offset: 3px; }
+.va-page h1, .va-page h2, .va-page h3 { font-family: var(--va-board); font-weight: 700; letter-spacing: .01em; margin: 0; }
+.va-page p { margin: 0; line-height: 1.55; }
+
+/* ---------- Stadium ---------- */
+.va-stadium {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'copy board' 'controls controls';
+  min-width: 0;
+  align-items: end;
+  gap: 22px 28px;
+  min-height: 360px;
+  padding: clamp(24px, 4vw, 44px);
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 22px;
+  background: radial-gradient(ellipse 70% 55% at 50% -10%, #20405f 0%, var(--va-night) 62%);
+}
+.va-pitch { position: absolute; inset: auto 0 0 0; width: 100%; height: 72%; z-index: -2; }
+.va-beam {
+  position: absolute; top: -18%; z-index: -1; width: 62%; height: 135%;
+  background: radial-gradient(ellipse 34% 62% at 50% 0%, rgba(255, 236, 184, .5), rgba(255, 236, 184, .12) 45%, rgba(255, 236, 184, 0) 72%);
+  filter: blur(6px);
+  opacity: .25; transition: opacity .9s ease;
+  pointer-events: none;
+}
+.va-beam.is-left { left: -14%; transform: rotate(-28deg); transform-origin: 50% 0; }
+.va-beam.is-right { right: -14%; transform: rotate(28deg); transform-origin: 50% 0; }
+.va-stadium.is-live .va-beam { opacity: 1; animation: va-floodlights 1.4s steps(1, end) 1; }
+@keyframes va-floodlights { 0% { opacity: .2; } 12% { opacity: .9; } 20% { opacity: .3; } 32% { opacity: 1; } }
+
+.va-stadium-copy { grid-area: copy; max-width: 34rem; text-shadow: 0 2px 18px rgba(0, 0, 0, .55); }
+.va-stadium-copy h1 { font-size: clamp(44px, 7vw, 84px); line-height: .9; font-weight: 800; }
+.va-stadium-copy p { margin-top: 12px; color: #dbe5ec; font-size: 16px; }
+
+/* Broadcast scoreboard */
+.va-scoreboard {
+  grid-area: board;
+  display: flex;
+  align-items: stretch;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(7, 15, 25, .9);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+  font-family: var(--va-board);
+}
+.va-onair, .va-board-cell { display: flex; flex-direction: column; justify-content: center; padding: 8px 16px; }
+.va-onair { flex-direction: row; align-items: center; gap: 8px; background: #2a3a4d; font-size: 18px; font-weight: 700; }
+.va-onair i { width: 10px; height: 10px; border-radius: 50%; background: var(--va-dim); }
+.va-onair.is-on { background: var(--va-flood); color: #241a00; }
+.va-onair.is-on i { background: #c0261b; box-shadow: 0 0 0 3px rgba(192, 38, 27, .25); }
+.va-board-cell { border-left: 1px solid rgba(255, 255, 255, .08); }
+.va-board-cell small { color: var(--va-dim); font-size: 13px; font-weight: 600; }
+.va-board-cell b { font-size: 22px; line-height: 1.1; font-weight: 700; white-space: nowrap; }
+.va-board-cell.is-score b { font-size: 28px; color: var(--va-flood); font-variant-numeric: tabular-nums; }
+.va-controls { grid-area: controls; display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* ---------- Buttons and fields ---------- */
+.va-button {
+  min-height: 46px; padding: 10px 20px; border-radius: 8px; border: 1px solid transparent;
+  font: 700 16px/1.1 Manrope, sans-serif; cursor: pointer;
+}
+.va-button:disabled { opacity: .45; cursor: not-allowed; }
+.va-button.is-go { background: var(--va-flood); color: #241a00; }
+.va-button.is-go:not(:disabled):hover { background: #ffd57d; }
+.va-button.is-stop { background: rgba(239, 100, 97, .14); color: #ffd2d0; border-color: rgba(239, 100, 97, .55); }
+.va-button.is-quiet { background: transparent; color: var(--va-chalk); border-color: var(--va-line); }
+.va-button.is-quiet:not(:disabled):hover { border-color: var(--va-dim); }
+.va-link-button { margin-top: 16px; padding: 0; background: none; border: 0; color: var(--va-dim); text-decoration: underline; cursor: pointer; font: inherit; }
+.va-field { display: grid; gap: 6px; color: var(--va-dim); font-size: 14px; font-weight: 600; }
+.va-field input {
+  min-height: 46px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--va-line);
+  background: var(--va-night); color: var(--va-chalk); font: 600 16px Manrope, sans-serif;
+}
+
+.va-alert, .va-note { margin-top: 16px; padding: 12px 16px; border-radius: 10px; }
+.va-alert { background: rgba(239, 100, 97, .12); border: 1px solid rgba(239, 100, 97, .4); }
+.va-alert a { color: var(--va-flood); }
+.va-note { background: var(--va-night-2); border-left: 3px solid var(--va-flood); }
+
+/* ---------- Tabs: a broadcast lower third ---------- */
+.va-tabs { display: flex; gap: 4px; margin-top: 22px; overflow-x: auto; border-bottom: 1px solid var(--va-line); }
+.va-tabs [role='tab'] {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 18px;
+  border: 0; border-bottom: 3px solid transparent; background: none; color: var(--va-dim);
+  font: 700 19px var(--va-board); cursor: pointer; white-space: nowrap;
+}
+.va-tabs [role='tab'][aria-selected='true'] { color: var(--va-chalk); border-bottom-color: var(--va-flood); }
+.va-count { padding: 1px 7px; border-radius: 99px; background: var(--va-night-2); font: 700 13px Manrope, sans-serif; color: var(--va-chalk); }
+.va-tabpanel { padding-top: 18px; }
+
+/* ---------- Panels ---------- */
+.va-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.va-tabpanel > .va-grid { margin-top: 0; }
+.va-stack { display: grid; gap: 18px; align-content: start; }
+.va-panel { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 14px; align-content: start; padding: clamp(18px, 2.4vw, 26px); border: 1px solid var(--va-line); border-radius: 14px; background: var(--va-night); }
+.va-panel h2 { font-size: 28px; line-height: 1.05; }
+.va-panel h3 { font-size: 20px; color: var(--va-dim); }
+.va-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.va-help, .va-footnote { color: var(--va-dim); font-size: 13.5px; }
+.va-footnote { margin-top: 26px; max-width: 70ch; }
+.va-empty { color: var(--va-dim); }
+.va-connect form { display: grid; gap: 12px; max-width: 26rem; }
+.va-licence-state { font: 700 22px var(--va-board); color: var(--va-flood); }
+
+/* Crests and fixtures */
+.va-crest { display: inline-grid; place-items: center; flex: none; border-radius: 50%; background: rgba(238, 243, 234, .06); }
+.va-crest img { width: 100%; height: 100%; object-fit: contain; }
+.va-crest b { font: 700 14px var(--va-board); color: var(--va-dim); }
+.va-crest-md { width: 30px; height: 30px; }
+.va-crest-lg { width: 64px; height: 64px; padding: 6px; }
+.va-fixture { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; }
+.va-side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.va-side.is-away { justify-content: flex-end; text-align: right; }
+.va-team { display: grid; min-width: 0; }
+.va-team b { font: 700 20px var(--va-board); }
+.va-team small { color: var(--va-dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.va-score { min-width: 64px; padding: 4px 10px; border-radius: 6px; background: #07101b; text-align: center; font: 800 24px var(--va-board); font-variant-numeric: tabular-nums; }
+.va-score.is-pending { color: var(--va-dim); font-size: 18px; }
+.va-fixture.is-large .va-team b { font-size: 30px; }
+.va-fixture.is-large .va-score { min-width: 84px; font-size: 32px; }
+.va-round-pick { display: grid; gap: 10px; padding: 18px 0; border-bottom: 1px solid var(--va-line); }
+.va-pick-label { text-align: center; font: 700 20px var(--va-board); color: var(--va-flood); }
+.va-inplay { display: grid; gap: 10px; padding: 14px; border-radius: 10px; background: var(--va-night-2); }
+
+/* Session numbers */
+.va-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; overflow: hidden; border-radius: 10px; background: var(--va-line); }
+.va-stats > div { padding: 12px 14px; background: var(--va-night); }
+.va-stats dt { color: var(--va-dim); font-size: 13px; }
+.va-stats dd { margin: 2px 0 0; font: 700 26px var(--va-board); font-variant-numeric: tabular-nums; }
+.va-stats.is-compact { grid-template-columns: 1fr; }
+.va-stats.is-compact dd { font-size: 20px; }
+.va-pos { color: var(--va-win); }
+.va-neg { color: var(--va-loss); }
+.va-form { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.va-form li { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 5px; font: 700 15px var(--va-board); color: #06120b; }
+.va-form li.va-w { background: var(--va-win); }
+.va-form li.va-l { background: var(--va-loss); color: #2a0806; }
+
+/* Game setup */
+.va-settings fieldset { display: grid; gap: 18px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.va-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.va-mode { position: relative; display: flex; align-items: center; min-height: 48px; padding: 0 14px; border: 1px solid var(--va-line); border-radius: 8px; font: 700 18px var(--va-board); cursor: pointer; }
+.va-mode input { position: absolute; opacity: 0; }
+.va-mode.is-selected { border-color: var(--va-flood); background: rgba(255, 200, 87, .1); color: var(--va-flood); }
+.va-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.va-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Activity log: a results ticker */
+.va-filter { display: inline-flex; gap: 4px; padding: 3px; border-radius: 8px; background: var(--va-night-2); }
+.va-filter button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: none; color: var(--va-dim); font: 700 15px Manrope, sans-serif; cursor: pointer; }
+.va-filter button[aria-pressed='true'] { background: var(--va-chalk); color: var(--va-night); }
+.va-summary { color: var(--va-dim); }
+.va-summary strong { font-size: 17px; }
+.va-log { display: grid; grid-template-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; }
+.va-log-row {
+  display: grid; grid-template-columns: 120px minmax(0, 1fr) 170px; gap: 18px; align-items: center;
+  padding: 14px 0 14px 14px; border-bottom: 1px solid var(--va-line); border-left: 4px solid var(--va-dim);
+}
+.va-log-row.is-win { border-left-color: var(--va-win); }
+.va-log-row.is-loss { border-left-color: var(--va-loss); }
+.va-log-meta { display: grid; }
+.va-log-meta b { font: 700 20px var(--va-board); }
+.va-log-meta span { color: var(--va-dim); font-size: 13px; }
+.va-log-games { display: grid; gap: 10px; }
+.va-log-game { display: grid; gap: 2px; }
+.va-log-game small { color: var(--va-dim); font-size: 12.5px; text-align: center; }
+.va-log-money { display: grid; justify-items: end; text-align: right; }
+.va-log-money span { color: var(--va-dim); font-size: 13.5px; }
+.va-log-money b { font: 700 21px var(--va-board); }
+.va-log-row.is-win .va-log-money b, .va-log-row.is-win .va-score { color: var(--va-win); }
+.va-log-row.is-loss .va-log-money b, .va-log-row.is-loss .va-score { color: var(--va-loss); }
+.va-delivered { margin: 0; padding-left: 18px; color: var(--va-dim); font-size: 14px; }
+
+/* ---------- Small screens ---------- */
+@media (max-width: 860px) {
+  .va-stadium { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'copy' 'board' 'controls'; min-height: 0; }
+  .va-board-cell b { white-space: normal; }
+  .va-scoreboard { flex-wrap: wrap; }
+  .va-grid { grid-template-columns: minmax(0, 1fr); }
+  .va-log-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .va-log-money { justify-items: start; text-align: left; }
+}
+@media (max-width: 480px) {
+  .va-page { width: calc(100% - 20px); }
+  .va-board-cell { padding: 6px 12px; }
+  .va-fixture.is-large .va-team b { font-size: 24px; }
+  .va-crest-lg { width: 48px; height: 48px; }
+  .va-stats { grid-template-columns: minmax(0, 1fr); }
+  .va-fixture { gap: 6px; }
+  .va-score { min-width: 52px; padding: 4px 6px; }
+  .va-side { gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .va-beam { transition: none; }
+  .va-stadium.is-live .va-beam { animation: none; }
+}
