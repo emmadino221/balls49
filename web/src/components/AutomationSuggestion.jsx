@@ -9,12 +9,17 @@ function RiskBudgetSummary({ plan }) {
   if (!plan.request.capitalMode || !level || plan.request.riskLevel === 'off' || !plan.request.riskLevel) return null;
   return <p><strong>Suggested risk budget: {level.label} ({level.percent}%) — {money(plan.sizingBudget)}</strong><br />This sizes the complete sequence across your selected games. The base stake is shown separately. {plan.request.riskWarningOnly ? 'Reaching this amount triggers a warning; automation continues.' : 'Your existing stop settings still apply.'}</p>;
 }
-export default function AutomationSuggestion({ control, disabled, onSaved }) {
+export default function AutomationSuggestion({ control, disabled, onSaved, onUseWebsite }) {
   const query = new URLSearchParams(window.location.search);
   const saved = control.suggestionStrategy;
   const [input,setInput] = useState(() => saved?.request || { games: [markets.some(([id]) => id === query.get('suggestion')) ? query.get('suggestion') : 'betzero'], window: Number(query.get('window')) || 100, base: Math.max(50, Number(query.get('base')) || 50), capitalMode: true, capital: '', autoUpdate: false, bet49ProfitMode: query.get('bet49ProfitMode') === 'accumulating' ? 'accumulating' : 'fixed' });
   const [preview,setPreview] = useState(null), [error,setError] = useState(''), [loading,setLoading] = useState(false);
   const locked = disabled || loading || control.controller !== 'website' || control.running || control.busy;
+  // Say exactly what blocks editing; resetting the session does not change who is in control.
+  const lockReason = control.controller !== 'website' ? 'The extension controls this session, so plans can only be edited from the extension. Switch to website control to edit them here.'
+    : control.running ? 'Automation is running. Stop it to edit plans; your progression is kept.'
+    : control.busy ? 'A placed bet or a recovery sequence is still in progress. Plans can be edited once it settles.'
+    : disabled ? 'Waiting for a fresh connection to your extension.' : '';
   function change(key,value) { setInput(s => ({...s,[key]:value,...(key === 'capitalMode' && !value ? {riskLevel:'off'} : {})})); setPreview(null); setError(''); }
   function select(id,checked) {
     change('games', checked ? [...input.games, id] : input.games.filter(g => g !== id));
@@ -31,6 +36,7 @@ export default function AutomationSuggestion({ control, disabled, onSaved }) {
   return <section className="content-card automation-suggestion">
     <span className="overline">FOR AUTOMATION MEMBERS</span><h2>Suggested strategies</h2>
     <p>Choose one or more games. Preview the complete entry, pause and recovery plan before saving.</p>
+    {locked && lockReason && <div className="automation-warning" role="status"><p>{lockReason}</p>{control.controller !== 'website' && onUseWebsite && <button type="button" className="btn btn-primary" disabled={disabled} onClick={onUseWebsite}>Use website control</button>}</div>}
     {saved && <div className="automation-notice" role="status"><strong>{saved.request.autoUpdate?'Auto strategy: ON':'Auto strategy: OFF'}</strong><p>{saved.message}</p>{saved.capital !== null && <p>Allocated capital: {money(saved.capital)} · Available after settled bets: {money(saved.available)}</p>}<p>{saved.plans.map(p => `${p.name}: ${money(p.base)} per selection${p.key === 'bet49' ? ` (${saved.request.bet49ProfitMode === 'accumulating' ? 'accumulating' : 'same'} profit)` : ''}`).join(' · ')}</p>{saved.needsReview && <p>Review and reapply a plan before starting.</p>}</div>}
     {saved && <RiskBudgetSummary plan={saved} />}
     {saved?.request.riskWarningOnly && saved.risk && <p className="automation-warning" role="status">{saved.risk.warnedAt ? 'Risk threshold reached. Automation continues. ' : 'Warning-only risk tracking. '}Net settled loss since this suggestion: {money(saved.risk.loss)} / {money(saved.risk.threshold)}. The counter resets only when a different setup is applied.</p>}
@@ -59,7 +65,6 @@ export default function AutomationSuggestion({ control, disabled, onSaved }) {
       <p className="automation-help">Capital sizing recalculates after recovery completes, using net results including earlier losses. New rules apply only within your selected games, after every active recovery finishes. Existing limits stay in force unless warning-only mode is selected. A different setup applies after a settled recovery win, with no execution awaiting acknowledgement.</p>
       <button type="button" className="btn btn-secondary" onClick={()=>submit(false)}>Preview latest plans</button>
     </fieldset>
-    {locked && <p className="automation-help">Switch to website control, stop automation and finish recovery to edit plans.</p>}
     {error && <p role="alert" className="automation-warning">{error}</p>}
     {preview && <div className="strategy-preview"><h3>Your proposed setup</h3><RiskBudgetSummary plan={preview} /><p>{preview.draws} draws reviewed · Combined planned reserve: <strong>{money(preview.reserve)}</strong></p><div className="automation-game-grid">{preview.plans.map(p=><article className="content-card" key={p.key}><h3>{p.name}</h3>{p.key === 'bet49' && <p>One number at 7.80 odds; {preview.request.bet49ProfitMode === 'accumulating' ? 'accumulating' : 'same'} profit.</p>}<dl className="resource-facts"><div><dt>Base per selection</dt><dd>{money(p.base)}</dd></div><div><dt>Entry</dt><dd>{p.waitLosses ? `After ${p.waitLosses} observed losses` : 'After a win'}</dd></div><div><dt>Pause</dt><dd>After {p.pauseLosses} played losses</dd></div><div><dt>Recovery attempts</dt><dd>{p.steps}</dd></div><div><dt>Planned reserve</dt><dd>{money(p.reserve)}</dd></div></dl><p>After a pause, wait for a win and repeat entry. Unplayed wins do not erase recovery losses.</p></article>)}</div><p>This entire reserve can be lost. Warning-only mode allows losses beyond this reserve. Otherwise existing stop loss and take profit limits remain in force. Circuit breaker pauses still apply. Saving turns off rollover, weighted stakes, flat betting and separate sniper filters so this complete plan controls entry and stakes.</p><button type="button" className="btn btn-primary" disabled={locked} onClick={()=>submit(true)}>Save these plans · keep paused</button></div>}
     <p className="automation-help">Keep Bet9ja and the extension connected. Plans continue with the dashboard closed. In warning-only mode, an unavailable new suggestion keeps the current plan running; updates are retried after a settled recovery win. Other modes pause for review.</p>

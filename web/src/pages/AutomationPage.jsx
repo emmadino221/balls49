@@ -123,7 +123,7 @@ export default function AutomationPage() {
    {data.emailReports && <AutomationEmailReports settings={data.emailReports} onSaved={emailReports=>setData(d=>({...d,emailReports}))} />}
    </section>
    <section id="automation-strategies" role="tabpanel" aria-labelledby="automation-tab-strategies" hidden={section!=='strategies'}>
-   <AutomationSuggestion control={c} disabled={busy||stale} onSaved={async()=>{const next=await apiRequest('/account/automation');setData(next);setDraft(copy(next.control.settings));setDraftRevision(next.control.revision);setNotice('Suggested plans saved. Review the setup and press Start when ready.');}} />
+   <AutomationSuggestion control={c} disabled={busy||stale} onUseWebsite={()=>command('website')} onSaved={async()=>{const next=await apiRequest('/account/automation');setData(next);setDraft(copy(next.control.settings));setDraftRevision(next.control.revision);setNotice('Suggested plans saved. Review the setup and press Start when ready.');}} />
    </section>
    <section id="automation-settings" role="tabpanel" aria-labelledby="automation-tab-settings" hidden={section!=='settings'}>
    <div className="automation-section-title"><div><span className="overline">CONFIGURE YOUR SESSION</span><h2>Settings &amp; access</h2></div></div>
