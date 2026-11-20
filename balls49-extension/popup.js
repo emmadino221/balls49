@@ -123,6 +123,8 @@ GAMES.forEach(g => {
     btn.addEventListener('click', () => { btn.classList.toggle('active'); });
 });
 
+document.getElementById('btn-rollover')?.addEventListener('click', () => { document.getElementById('btn-rollover').classList.toggle('active'); });
+
 document.getElementById('toggle-btn')?.addEventListener('click', async () => {
     const button = document.getElementById('toggle-btn'); button.disabled = true;
     try {
@@ -263,12 +265,22 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     }
     if (sniperError) sniperError.style.display = 'none';
     const cbMaxLosses = parseInt(document.getElementById('cb-max-losses')?.value) || 0;
+    const rollover = {
+        enabled: !!document.getElementById('btn-rollover')?.classList.contains('active'),
+        baseStake: Math.min(50000, Math.max(0, parseInt(document.getElementById('stake-rollover')?.value, 10) || 0)),
+        maxDoublings: Math.min(10, Math.max(0, parseInt(document.getElementById('rollover-doublings')?.value, 10) || 0))
+    };
+    if (rollover.enabled && rollover.baseStake < 1) {
+        btn.textContent = originalText;
+        alert('Enter a BZ Single Rollover base stake, or turn the rollover off.');
+        return;
+    }
 
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
         unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, bet49ProfitMode, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
-        shadowMode, weightedStaking 
+        shadowMode, weightedStaking, rollover
     };
 
     chrome.storage.sync.set(payload, async () => {
@@ -360,8 +372,13 @@ function loadParameters() {
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
         'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode',
-        'tc3Rollover', 'tc3RolloverTarget', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking'
+        'tc3Rollover', 'tc3RolloverTarget', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking', 'rollover'
     ], (data) => {
+        const rollover = data.rollover || {};
+        document.getElementById('btn-rollover')?.classList.toggle('active', rollover.enabled === true);
+        if (document.getElementById('stake-rollover')) document.getElementById('stake-rollover').value = rollover.baseStake || '';
+        if (document.getElementById('rollover-doublings')) document.getElementById('rollover-doublings').value = rollover.maxDoublings ?? 3;
+        showRolloverStatus();
         let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
         const stakes = data.stakes || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
         const gameSteps = data.gameSteps || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };
@@ -507,3 +524,17 @@ function updateMLBox(id, data) {
 }
 
 initializePopup();
+
+// BZ Single Rollover: the bot's current phase and next window, shown under its settings.
+async function showRolloverStatus() {
+    const line = document.getElementById('rollover-status');
+    if (!line) return;
+    try {
+        const response = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboard=1`);
+        if (!response.ok) return;
+        const r = (await response.json()).control?.rollover;
+        if (!r) return;
+        const windowText = r.run ? `draw ${Math.min(r.run.played + 1, r.run.length)} of ${r.run.length}` : r.estimate ? `next window ${r.estimate.length} draws (Bet49 average gap ${r.estimate.average.toFixed(1)})` : 'needs two Bet49 gaps';
+        line.textContent = r.settings.enabled ? `${r.reason} · ${windowText} · profit ₦${Number(r.profit || 0).toLocaleString()}` : `Off · ${windowText}`;
+    } catch { /* status is optional */ }
+}

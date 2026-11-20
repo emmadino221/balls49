@@ -116,6 +116,7 @@
                 <div id="btn-totalColor1" class="game-btn">Winning Color</div>
                 <div id="btn-bet49" class="game-btn">Bet49</div>
             </div>
+            <div id="btn-rollover" class="game-btn" style="margin-top: 6px;" title="The Bet49 number on BetZero at 1.10, rolled over until the Bet49 gap window ends">BZ Single Rollover</div>
         </div>
 
         <div class="section">
@@ -136,6 +137,12 @@
                 <select id="tc1-profit-mode"><option value="fixed">Same profit as base bet</option><option value="accumulating">Accumulating profit</option></select>
                 <small>3.80 odds, including No Winning Color. Mode/base changes apply after the current sequence wins. Use individual mode; Winning Color has its own progression.</small>
             </div>
+            <div class="section-label">🔁 BZ Single Rollover (BetZero 1.10)</div>
+            <div class="grid-2" style="margin-bottom: 4px;">
+                <input type="number" id="stake-rollover" min="0" max="50000" step="1" placeholder="Rollover base stake" title="Starting stake of each rollover run">
+                <input type="number" id="rollover-doublings" min="0" max="10" step="1" placeholder="Doublings (0-10)" title="Each lost run doubles the next starting stake; after this many doublings a loss pauses the rollover">
+            </div>
+            <small id="rollover-status" style="display:block;margin-bottom:10px;color:var(--text-muted);">Starts after a Bet49 win and rolls each return over for the Bet49 average gap. Change it only while stopped.</small>
             
             <div class="section-label" style="color: var(--accent-red);">🛡️ Risk Limits</div>
             <div style="margin-bottom: 4px; font-size: 9px; color: var(--text-muted);">Max Step Constraints:</div>
