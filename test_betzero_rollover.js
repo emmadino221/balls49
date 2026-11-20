@@ -58,13 +58,16 @@ test('a loss restarts at once with double the stake, then back to base after a c
 });
 
 test('losses in a row keep doubling up to the cap, then pause', () => {
-    const { play, st } = setup({ enabled: true, baseStake: 100, maxDoublings: 2 });
+    const { s, play, st } = setup({ enabled: true, baseStake: 100, maxDoublings: 2 });
     assert.equal(play(41, { drawn: true }).stake, 100);
     assert.equal(play(42, { drawn: true }).stake, 200);
     assert.equal(play(43, { drawn: true }).stake, 400);
     assert.equal(st().phase, 'PAUSED');
     assert.equal(play(44), null);
     assert.equal(st().profit, -700);
+    // Saving the same settings again clears the pause; it then waits for a Bet49 win at the base stake.
+    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 100, maxDoublings: 2 }));
+    assert.equal(st().phase, 'WAITING'); assert.equal(st().doublings, 0);
 });
 
 test('draws without a Bet49 number are not bet but count toward the window', () => {
