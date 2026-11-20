@@ -5404,6 +5404,20 @@ async function handleHttpRequest(req, res) {
                 if (requestedChatId !== undefined && !/^-?\d+$/.test(requestedChatId) && requestedChatId !== '' && requestedChatId !== 'null') {
                     return sendJson(res, 400, { error: 'Invalid Telegram Chat ID format' });
                 }
+                // BZ Single Rollover from the extension popup (the dashboard applies it in its own save).
+                if (cfg.rollover !== undefined) {
+                    let rolloverSettings;
+                    try { rolloverSettings = betzeroRollover.normalize(cfg.rollover); }
+                    catch (error) { return sendJson(res, 400, { error: error.message }); }
+                    const current = betzeroRollover.config(session);
+                    const changed = ['enabled', 'baseStake', 'maxDoublings'].some(key => current[key] !== rolloverSettings[key]);
+                    // A change restarts the rollover, so not mid-run while it is playing or a bet is unsettled.
+                    const midRun = betzeroRollover.state(session).phase === 'PLAYING' && !session.stats.isHalted && cfg.running !== false;
+                    if (changed && (midRun || session.betExecutionClaim || session.lastBetDetails)) {
+                        return sendJson(res, 409, { error: 'A rollover run is in progress. Stop automation and let the last bet settle before changing the BZ Single Rollover.' });
+                    }
+                    betzeroRollover.configure(session, rolloverSettings);
+                }
                 // Only an explicit start or stop changes the running state. Saving settings from the
                 // popup and the settings sync on every Bet9ja page load send no "running" field;
                 // treating that as "run" restarted a stopped session and cleared a limit stop.
