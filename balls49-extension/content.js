@@ -297,7 +297,7 @@ function matchingNewBetZeroReceipt(expected, before) {
         const receipt = readBetZeroReceipt(item);
         if (!receipt || !receipt.id || before.ids.has(receipt.id) || receipt.status !== 'Pending') continue;
         if (receipt.drawId !== expected.drawId || receipt.stake !== expected.stake) continue;
-        if (receipt.numbers.length !== 4 || new Set(receipt.numbers).size !== 4 || receipt.numbers.some(n => !Number.isInteger(n) || n < 1 || n > 49)) continue;
+        if (receipt.numbers.length !== expected.numbers.length || new Set(receipt.numbers).size !== receipt.numbers.length || receipt.numbers.some(n => !Number.isInteger(n) || n < 1 || n > 49)) continue;
         if (receipt.numbers.slice().sort((a, b) => a - b).join(',') === expected.numbers.slice().sort((a, b) => a - b).join(',')) return receipt;
     }
     return null;
@@ -350,7 +350,9 @@ async function placeBet(expectedBetZero = null) {
 
         const beforeReceipts = { ids: new Set(), items: new Set(), unreadable: new Set() };
         if (expectedBetZero) {
-            if (expectedBetZero.numbers.length !== 4 || new Set(expectedBetZero.numbers).size !== 4 || expectedBetZero.numbers.some(n => !Number.isInteger(n) || n < 1 || n > 49) || !Number.isFinite(expectedBetZero.stake) || expectedBetZero.stake <= 0)
+            // BetZero takes 1-4 numbers: the main prediction places 4, the BZ Single Rollover 1.
+            const count = expectedBetZero.numbers.length;
+            if (count < 1 || count > 4 || new Set(expectedBetZero.numbers).size !== count || expectedBetZero.numbers.some(n => !Number.isInteger(n) || n < 1 || n > 49) || !Number.isFinite(expectedBetZero.stake) || expectedBetZero.stake <= 0)
                 throw new Error('Invalid BetZero receipt expectations');
             expectedBetZero = { ...expectedBetZero, drawId: String(instruction.drawId) };
             for (const item of document.querySelectorAll('.bets__item')) {

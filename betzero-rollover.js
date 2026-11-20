@@ -59,6 +59,14 @@ function observe(s, records) {
     const st = state(s), cfg = config(s);
     const settled = records.filter(r => r?.result && Array.isArray(r.result.balls) && Number(r.drawId) > st.lastObserved)
         .sort((a, b) => Number(a.drawId) - Number(b.drawId));
+    // First look at the history: start from its newest draw. A Bet49 win from before the rollover
+    // was watching must not start a run; it waits for the next one.
+    if (!st.lastObserved && settled.length) {
+        st.lastObserved = Number(settled.at(-1).drawId);
+        const size = windowLength(records, st.lastObserved);
+        st.estimate = size ? { ...size, through: st.lastObserved } : null;
+        return;
+    }
     for (const r of settled) {
         const id = Number(r.drawId), balls = r.result.balls.map(Number);
         if (st.plan && Number(st.plan.drawId) === id && st.run) {
@@ -91,7 +99,8 @@ function observe(s, records) {
             }
             if (st.plan && Number(st.plan.drawId) === id) { st.plan = null; st.placed = null; }
         }
-        if (st.phase === 'WAITING' && r.result.bet49 === 'WIN') st.armedAt = id;
+        // Only while switched on: a win seen while off (or before a settings change) never starts a run.
+        if (st.phase === 'WAITING' && enabled(s) && r.result.bet49 === 'WIN') st.armedAt = id;
         st.lastObserved = id;
     }
     // The window the next run would get, from the same Bet49 history, so it can be shown while waiting.
