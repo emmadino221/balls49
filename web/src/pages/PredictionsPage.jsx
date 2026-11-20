@@ -14,7 +14,8 @@ const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/p
 const LIVE_PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const games = [
   { id: 'betzero', name: 'BetZero', detail: 'Uses the Lab Streak 1 prediction for this draw. Requires four numbers; wins when none appear.' },
-  { id: 'bet49', name: 'Bet49', detail: 'One number: previous draw’s smallest number +10. Wins when that number appears.' },
+  { id: 'bet49', name: 'Bet49', detail: 'One number: the longest-missing number in the last 100 draws, kept until it appears. Wins when that number appears.' },
+  { id: 'betzeroSingle', name: 'BetZero Single', detail: 'The Bet49 number played on BetZero at 1.10 odds. Wins when that number does not appear.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor1', name: 'Winning Color', detail: 'The top-ranked color from the shared color ranking.' },
@@ -106,6 +107,12 @@ function LiveMarketPick({ record, marketId }) {
       : <span className="no-pick">Waiting</span>;
   }
   if (marketId === 'bet49') return <Bet49Pick value={predicted.bet49} />;
+  if (marketId === 'betzeroSingle') {
+    const number = Number(predicted.betzeroSingle);
+    return Number.isInteger(number) && number >= 1 && number <= 49
+      ? <span className="pick-balls"><span className={`ball-number ball-${getBallColor(number)}`}>{number}</span><small className="pick-note">must not appear</small></span>
+      : <span className="no-pick">Waiting</span>;
+  }
   if (marketId === 'rainbow') {
     return predicted.rainbow && predicted.rainbow !== 'SKIP'
       ? <span className={`color-name color-${String(predicted.rainbow).toLowerCase()}`}><i aria-hidden="true" />{predicted.rainbow}</span>
@@ -238,7 +245,8 @@ export default function PredictionsPage() {
     let controller;
     async function refreshPrediction() {
       const plan = previewPlan || accountPlan;
-      const markets = plan?.tier === 'elite' ? games.map(game => game.id) : plan?.tier === 'premium' ? [...new Set(plan.games || [])] : [activeMarketId];
+      const premium = [...new Set(plan?.games || [])];
+      const markets = plan?.tier === 'elite' ? games.map(game => game.id) : plan?.tier === 'premium' ? (premium.includes('bet49') ? [...premium, 'betzeroSingle'] : premium) : [activeMarketId];
       controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 8000);
       try {
@@ -316,7 +324,8 @@ export default function PredictionsPage() {
   const activeGame = games.find(game => game.id === activeMarketId) || games[0];
   const activeDetailTab = activeDetailTabs[activeGame.id] || 'prediction';
   const activeMarketPrediction = clockIsCurrent && clock.drawId === marketPredictions[activeGame.id]?.drawId ? marketPredictions[activeGame.id] : null;
-  const activeMarketHasAccess = previewPlan?.tier === 'elite' || accountPlan?.tier === 'elite' || (previewPlan?.tier === 'premium' && previewPlan.games.includes(activeGame.id)) || (accountPlan?.tier === 'premium' && accountPlan.games.includes(activeGame.id));
+  const activePlanId = activeGame.id === 'betzeroSingle' ? 'bet49' : activeGame.id;
+  const activeMarketHasAccess = previewPlan?.tier === 'elite' || accountPlan?.tier === 'elite' || (previewPlan?.tier === 'premium' && previewPlan.games.includes(activePlanId)) || (accountPlan?.tier === 'premium' && accountPlan.games.includes(activePlanId));
   const activeMarketReveal = Boolean(activeMarketPrediction && activeMarketHasAccess);
   const activePredictionKey = activeMarketPrediction
     ? `${activeMarketPrediction.drawId}:${JSON.stringify(activeMarketPrediction.predicted || {})}`
@@ -339,7 +348,7 @@ export default function PredictionsPage() {
 
       <section className="prediction-access-state" aria-label="Current access status">
         <span className="access-state-icon" aria-hidden="true">◉</span>
-        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'All six markets are available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
+        <div><strong>{previewPlan?.tier ? `Owner preview: ${previewPlan.tier}` : accountPlan?.tier ? `${accountPlan.tier} plan` : 'Plan access'}</strong><p>{(previewPlan?.tier || accountPlan?.tier) === 'elite' ? 'Every market is available in this plan.' : (previewPlan?.tier || accountPlan?.tier) === 'premium' ? `Approved markets: ${(previewPlan?.games || accountPlan?.games || []).map(id => games.find(game => game.id === id)?.name || id).join(', ') || 'none'}.` : 'Your Free Trial is on its own page, with one selected market revealed in the final 10 seconds.'}</p></div>
         <a className="btn btn-secondary" href="pricing.html">Compare plans</a>
       </section>
 
@@ -362,7 +371,8 @@ export default function PredictionsPage() {
             event.currentTarget.querySelectorAll('[role="tab"]')[nextIndex]?.focus();
           }}>
             {games.map((game, index) => {
-              const hasAccess = previewPlan?.tier === 'elite' || accountPlan?.tier === 'elite' || (previewPlan?.tier === 'premium' && previewPlan.games.includes(game.id)) || (accountPlan?.tier === 'premium' && accountPlan.games.includes(game.id));
+              const planId = game.id === 'betzeroSingle' ? 'bet49' : game.id;
+              const hasAccess = previewPlan?.tier === 'elite' || accountPlan?.tier === 'elite' || (previewPlan?.tier === 'premium' && previewPlan.games.includes(planId)) || (accountPlan?.tier === 'premium' && accountPlan.games.includes(planId));
               const selected = game.id === activeGame.id;
               return <button className={`prediction-market-tab${selected ? ' is-active' : ''}`} id={`market-tab-${game.id}`} type="button" role="tab" aria-selected={selected} aria-controls="prediction-market-panel" tabIndex={selected ? 0 : -1} key={game.id} onClick={() => setActiveMarketId(game.id)}><span className="market-tab-index">{String(index + 1).padStart(2, '0')}</span><span className="market-tab-copy"><strong>{game.name}</strong><small>{hasAccess ? 'Included in your plan' : `Premium market`}</small></span><span className={`market-tab-state${hasAccess ? ' is-unlocked' : ''}`} aria-label={hasAccess ? 'Included' : 'Locked'}>{hasAccess ? '✓' : '›'}</span></button>;
             })}
@@ -386,7 +396,9 @@ export default function PredictionsPage() {
             </div>
             <div id={`prediction-detail-panel-${activeGame.id}`} className="prediction-detail-panel" role="tabpanel" aria-labelledby={`${activeDetailTab === 'analysis' ? 'analysis' : 'prediction'}-detail-tab-${activeGame.id}`}>
             {activeDetailTab === 'analysis'
-              ? <PredictionAnalysisPanel market={activeGame.id} hasAccess={activeMarketHasAccess} signedIn={sessionKind === 'account' || sessionKind === 'admin'} />
+              ? activeGame.id === 'betzeroSingle'
+                ? <p className="prediction-market-description">BetZero Single uses the Bet49 number, so its analysis is on the Bet49 tab.</p>
+                : <PredictionAnalysisPanel market={activeGame.id} hasAccess={activeMarketHasAccess} signedIn={sessionKind === 'account' || sessionKind === 'admin'} />
               : <>
             <div className="prediction-card-draw"><span>{activeMarketReveal ? `Draw #${activeMarketPrediction.drawId}` : 'Waiting for prediction'}</span><span>{formatCountdown(secondsLeft)}</span></div>
             {predictionRefreshError && <p className="stake-plan-error" role="status">{predictionRefreshError}</p>}
@@ -396,7 +408,9 @@ export default function PredictionsPage() {
                 ? <LiveMarketPick key={activePredictionKey} record={activeMarketPrediction} marketId={activeGame.id} />
                 : <span className="trial-pick-message">{activeMarketHasAccess ? 'No prediction is available for this market yet. It will appear here when the bot publishes one.' : previewPlan?.tier === 'trial' || accountPlan?.tier === 'trial' ? 'Your trial pick is on the Free Trial page' : 'Unlock this market with Premium or Elite'}</span>}
             </div>
-            <section className="prediction-stake-plan" aria-label={`${activeGame.name} personal stake plan`}>
+            {activeGame.id === 'betzeroSingle'
+              ? <p className="prediction-market-description">BetZero Single is played with rollover stakes, not a stake plan. Set it up on the <a href="automation.html#rollover">Automation page, Rollover tab</a>.</p>
+              : <section className="prediction-stake-plan" aria-label={`${activeGame.name} personal stake plan`}>
               <div className="prediction-stake-plan-heading"><div><span className="overline">YOUR STAKE</span><strong>Personal stake plan</strong></div>{stakePlans[activeGame.id]?.locked && <span className="stake-plan-lock-state">LOCKED</span>}</div>
               {sessionKind !== 'account'
                 ? <p className="stake-plan-message">Sign in to save a personal base stake and track this market’s steps.</p>
@@ -424,7 +438,7 @@ export default function PredictionsPage() {
               {stakePlanNotice && <p className="stake-plan-notice" role="status">{stakePlanNotice}</p>}
               {activeGame.id === 'bet49' && <label>Estimate profit mode<select value={bet49ProfitMode} onChange={e=>setBet49ProfitMode(e.target.value)}><option value="fixed">Same profit</option><option value="accumulating">Accumulating profit</option></select><small>Preview only. Choose the execution mode separately in Automation or the extension. Accumulating mode applies to single-number predictions.</small></label>}
               <p className="stake-plan-disclaimer">A loss advances this market’s step; a win returns it to Step 1. Skips do not change the step. Stakes are estimates only and do not place bets. Bet49 estimates assume the current number count at every step; actual recovery costs can differ when that count changes.</p>
-            </section>
+            </section>}
             <div className="prediction-card-meta">
             {activeMarketReveal && <SummaryModelBadge label={activeMarketPrediction.summaryLabel} />}
             

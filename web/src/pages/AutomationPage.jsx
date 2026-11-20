@@ -4,11 +4,13 @@ import { apiRequest } from '../auth.js';
 import './automation.css';
 import './balls49-automation.css';
 import AutomationSuggestion from '../components/AutomationSuggestion';
+import AutomationRollover from '../components/AutomationRollover';
 const games = [['betzero','BetZero','u4'],['bet49','Bet49','bet49'],['rainbow','Rainbow','color'],['hilo','High / Low','sum'],['totalColor','Total Color 3-way','totalColor'],['totalColor1','Winning Color','totalColor1']];
 const money = n => n == null ? '--' : new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN',maximumFractionDigits:2}).format(n);
 const copy = value => JSON.parse(JSON.stringify(value));
 const ballColor = n => Number(n) === 49 ? 'yellow' : Number(n) % 3 === 1 ? 'red' : Number(n) % 3 === 2 ? 'blue' : 'green';
 const COLOR_NAMES = { red: 'Red', blue: 'Blue', green: 'Green', black: 'No winning colour', yellow: 'Gold' };
+const gameName = id => games.find(g => g[0] === id)?.[1] || (id === 'betzeroSingle' ? 'BetZero Single' : id);
 const isBallNumber = v => /^\d{1,2}$/.test(String(v).trim()) && Number(v) >= 1 && Number(v) <= 49;
 function Ball({ n, color, size }) {
   const shade = color || ballColor(n);
@@ -43,7 +45,7 @@ export default function AutomationPage() {
  const [error,setError]=useState(''), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false), [updated,setUpdated]=useState(null);
  const [accessKey,setAccessKey]=useState('');
  const [setupOpen,setSetupOpen]=useState(false);
- const [section,setSection]=useState(()=>new URLSearchParams(window.location.search).has('suggestion')?'strategies':'overview');
+ const [section,setSection]=useState(()=>new URLSearchParams(window.location.search).has('suggestion')?'strategies':window.location.hash==='#rollover'?'rollover':'overview');
  const [historyQuery,setHistoryQuery]=useState(''), [historyOutcome,setHistoryOutcome]=useState('ALL');
  async function revealKey() {
   try { const result=await apiRequest('/account/automation/key',{method:'POST'}); setAccessKey(result.key||''); if(!result.key) setNotice('Contact the owner to issue your extension access.'); }
@@ -73,10 +75,12 @@ export default function AutomationPage() {
  function sniper(id,name,value){setDraft(d=>({...d,sniperSettings:{...d.sniperSettings,[id]:{...d.sniperSettings?.[id],[name]:value}}}));}
  const c=data?.control, web=c?.controller==='website', stale=!!error || !updated || Date.now()-updated>12000;
  const selectedGames=games.filter(([id])=>c?.settings?.enabledGames?.[id]);
- const historyRows=(c?.history||[]).flatMap(row=>row.games.map((game,index)=>({...game,drawId:row.drawId,index}))).filter(row=>(historyOutcome==='ALL'||row.result===historyOutcome)&&`${row.drawId} ${games.find(g=>g[0]===row.game)?.[1]||row.game}`.toLowerCase().includes(historyQuery.toLowerCase().trim()));
+ const rolloverOn=!!c?.settings?.rollover?.enabled;
+ const canStart=selectedGames.length>0||rolloverOn;
+ const historyRows=(c?.history||[]).flatMap(row=>row.games.map((game,index)=>({...game,drawId:row.drawId,index}))).filter(row=>(historyOutcome==='ALL'||row.result===historyOutcome)&&`${row.drawId} ${gameName(row.game)}`.toLowerCase().includes(historyQuery.toLowerCase().trim()));
  const gapStatuses=Object.entries(c?.gapEntry||{});
- const nextStep=stale?'Waiting for a fresh connection.':!web?'Choose Use website control to manage this session here.':!c?.online?'Open Bet9ja with the extension connected.':c?.suggestionStrategy?.needsReview?'Review and reapply your strategy before starting.':!selectedGames.length?'Choose a strategy or enable a game in Settings.':c?.running?'Your saved setup is running.':c?.busy?'An execution or recovery sequence is in progress.':'Your saved setup is ready. Press Start when you want to begin.';
- const sections=[['overview','Overview'],['strategies','Strategies'],['activity','Activity'],['reports','Email reports'],['settings','Settings']];
+ const nextStep=stale?'Waiting for a fresh connection.':!web?'Choose Use website control to manage this session here.':!c?.online?'Open Bet9ja with the extension connected.':c?.suggestionStrategy?.needsReview?'Review and reapply your strategy before starting.':!canStart?'Choose a strategy, enable a game in Settings or turn on the Rollover.':c?.running?'Your saved setup is running.':c?.busy?'An execution or recovery sequence is in progress.':'Your saved setup is ready. Press Start when you want to begin.';
+ const sections=[['overview','Overview'],['strategies','Strategies'],['rollover','Rollover'],['activity','Activity'],['reports','Email reports'],['settings','Settings']];
  const tabRefs=useRef([]);
  function tabKey(event,index){const moves={ArrowRight:1,ArrowLeft:-1};const next=event.key==='Home'?0:event.key==='End'?sections.length-1:moves[event.key]!=null?(index+moves[event.key]+sections.length)%sections.length:null;if(next==null)return;event.preventDefault();setSection(sections[next][0]);tabRefs.current[next]?.focus();}
 
@@ -94,7 +98,7 @@ export default function AutomationPage() {
      <span className="ba-board-cell"><small>Losing streak</small><b>{c.currentLossStreak || 0}</b></span>
      <span className="ba-board-cell"><small>Control</small><b>{web?'Website':'Extension'}</b></span>
     </div>}
-    {c && <div className="ba-controls"><button className="btn btn-primary" disabled={busy||stale||!web||!c.online||c.running||!selectedGames.length||!!c.suggestionStrategy?.needsReview} onClick={()=>command('start')}>Start automation</button><button className="btn automation-stop" disabled={busy} onClick={()=>command('stop')}>Stop automation</button><button className="btn btn-secondary" disabled={busy||stale} onClick={()=>command(web?'extension':'website')}>{web?'Use extension control':'Use website control'}</button></div>}
+    {c && <div className="ba-controls"><button className="btn btn-primary" disabled={busy||stale||!web||!c.online||c.running||!canStart||!!c.suggestionStrategy?.needsReview} onClick={()=>command('start')}>Start automation</button><button className="btn automation-stop" disabled={busy} onClick={()=>command('stop')}>Stop automation</button><button className="btn btn-secondary" disabled={busy||stale} onClick={()=>command(web?'extension':'website')}>{web?'Use extension control':'Use website control'}</button></div>}
    </section>
   {error && <div className="automation-warning" role="alert">{error} <a href="login.html">Sign in</a></div>}
   {notice && <p className="automation-notice" role="status">{notice}</p>}
@@ -125,6 +129,10 @@ export default function AutomationPage() {
    <section id="automation-strategies" role="tabpanel" aria-labelledby="automation-tab-strategies" hidden={section!=='strategies'}>
    <AutomationSuggestion control={c} disabled={busy||stale} onUseWebsite={()=>command('website')} onSaved={async()=>{const next=await apiRequest('/account/automation');setData(next);setDraft(copy(next.control.settings));setDraftRevision(next.control.revision);setNotice('Suggested plans saved. Review the setup and press Start when ready.');}} />
    </section>
+   <section id="automation-rollover" role="tabpanel" aria-labelledby="automation-tab-rollover" hidden={section!=='rollover'}>
+   <AutomationRollover control={c} draft={draft} onChange={value=>field('rollover',value)} onSave={()=>command('save')} disabled={busy||!web||c.running||stale||!draft} draftStale={draftRevision!==c.revision} />
+   {!web&&<p className="automation-help">Choose Use website control to change the rollover here.</p>}
+   </section>
    <section id="automation-settings" role="tabpanel" aria-labelledby="automation-tab-settings" hidden={section!=='settings'}>
    <div className="automation-section-title"><div><span className="overline">CONFIGURE YOUR SESSION</span><h2>Settings &amp; access</h2></div></div>
   <details className="content-card automation-account"><summary>Extension access <span>Membership &amp; private access key</span></summary><h2>Extension membership</h2><p>The Elite + Extension bundle is NGN 120,000 for 30 days and includes all prediction markets. After the owner approves extension access, retrieve your key here to unlock the extension.</p><button className="btn btn-secondary" onClick={()=>accessKey?setAccessKey(''):revealKey()}>{accessKey?'Hide my access key':'Show my extension access key'}</button>{accessKey&&<label>Keep this key private<input type="text" readOnly value={accessKey} onFocus={e=>e.target.select()} /></label>}</details>
@@ -145,7 +153,7 @@ export default function AutomationPage() {
    </section>
    <section id="automation-activity" role="tabpanel" aria-labelledby="automation-tab-activity" hidden={section!=='activity'}>
    <section className="content-card automation-history"><div className="automation-section-title"><div><span className="overline">YOUR PLAYED GAMES</span><h2>Session activity</h2></div><span className="automation-caption">Latest {c.history.length} draws &middot; newest first</span></div><div className="automation-history-filters"><label>Find a draw or game<input type="search" value={historyQuery} placeholder="Draw ID or game name" onChange={e=>setHistoryQuery(e.target.value)} /></label><label>Result<select value={historyOutcome} onChange={e=>setHistoryOutcome(e.target.value)}><option value="ALL">All results</option><option value="WIN">Wins</option><option value="LOSS">Losses</option><option value="PENDING">Pending</option><option value="UNKNOWN">Unknown</option></select></label></div>
-   {!historyRows.length?<div className="automation-empty"><h3>{c.history.length?'No matching activity':'Your activity will appear here'}</h3><p>{c.history.length?'Try another game, draw ID or result filter.':'Placed bets appear once reported by your extension.'}</p></div>:<div className="automation-table" tabIndex="0" role="region" aria-label="Recent played games"><table><thead><tr><th>Draw</th><th>Game</th><th>Selections</th><th>Total stake</th><th>Result</th></tr></thead><tbody>{historyRows.map(row=><tr key={`${row.drawId}-${row.index}`}><td data-label="Draw">#{row.drawId}</td><td data-label="Game">{games.find(g=>g[0]===row.game)?.[1]||row.game}</td><td data-label="Selections"><Selection value={row.selections} /></td><td data-label="Total stake">{money(row.stake)}</td><td data-label="Result"><span className={`outcome-badge ${row.result.toLowerCase()}`}>{row.result}</span></td></tr>)}</tbody></table></div>}<p className="automation-help">Up to 100 draws. Check pending and partial submissions against your Bet9ja slip.</p></section>
+   {!historyRows.length?<div className="automation-empty"><h3>{c.history.length?'No matching activity':'Your activity will appear here'}</h3><p>{c.history.length?'Try another game, draw ID or result filter.':'Placed bets appear once reported by your extension.'}</p></div>:<div className="automation-table" tabIndex="0" role="region" aria-label="Recent played games"><table><thead><tr><th>Draw</th><th>Game</th><th>Selections</th><th>Total stake</th><th>Result</th></tr></thead><tbody>{historyRows.map(row=><tr key={`${row.drawId}-${row.index}`}><td data-label="Draw">#{row.drawId}</td><td data-label="Game">{gameName(row.game)}</td><td data-label="Selections"><Selection value={row.selections} /></td><td data-label="Total stake">{money(row.stake)}</td><td data-label="Result"><span className={`outcome-badge ${row.result.toLowerCase()}`}>{row.result}</span></td></tr>)}</tbody></table></div>}<p className="automation-help">Up to 100 draws. Check pending and partial submissions against your Bet9ja slip.</p></section>
    </section>
   </>}
  </main>;

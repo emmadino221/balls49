@@ -150,3 +150,57 @@
 @media (prefers-reduced-motion: reduce) {
   .ba-tube-slot { animation: none; }
 }
+
+/* ---------- BetZero Single Number Rollover ---------- */
+.ro-panel { display: grid; gap: 18px; }
+.ro-stage {
+  position: relative; display: grid; gap: 18px; padding: clamp(20px, 3.5vw, 36px); overflow: hidden;
+  border-radius: 22px; border: 1px solid rgba(245, 197, 66, .28);
+  background: radial-gradient(ellipse 55% 80% at 100% 0%, rgba(245, 197, 66, .16), transparent 60%),
+              linear-gradient(165deg, var(--ba-stage), var(--ba-studio) 75%);
+}
+.ro-head { display: flex; flex-wrap: wrap; gap: 14px 24px; justify-content: space-between; align-items: flex-start; }
+.ro-head h2 { margin: 4px 0 8px; font-size: clamp(24px, 3.4vw, 36px); line-height: 1.05; }
+.ro-head p { margin: 0; max-width: 40rem; color: #dcdbf2; line-height: 1.55; }
+.ro-phase { display: inline-flex; align-items: center; gap: 9px; padding: 8px 16px; border-radius: 99px; background: rgba(255, 255, 255, .08); font: 700 15px Sora, sans-serif; white-space: nowrap; }
+.ro-phase i { width: 10px; height: 10px; border-radius: 50%; background: var(--ba-dim); }
+.ro-phase.is-playing { background: var(--ba-gold); color: #2b2100; }
+.ro-phase.is-playing i { background: var(--ba-green); box-shadow: 0 0 0 4px rgba(47, 179, 110, .3); }
+.ro-phase.is-paused i { background: var(--ba-red); }
+.ro-reason { margin: 0; color: var(--ba-dim); }
+
+/* The stake ladder: each rung is 10% taller than the last; the run ends at Collect. */
+.ro-ladder { display: flex; align-items: flex-end; gap: 8px; min-height: 230px; padding: 12px 4px 0; overflow-x: auto; }
+.ro-rung { flex: 1 0 64px; display: grid; grid-template-rows: 170px auto auto; justify-items: center; gap: 4px; text-align: center; }
+.ro-rung-bar {
+  position: relative; align-self: end; width: 100%; height: var(--h); border-radius: 10px 10px 4px 4px;
+  background: rgba(255, 255, 255, .07); border: 1px dashed rgba(255, 255, 255, .22);
+  display: flex; justify-content: center;
+}
+.ro-rung-bar .ba-ball { position: absolute; top: -36px; }
+.ro-rung b { font: 800 13.5px Sora, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ro-rung small { color: var(--ba-dim); font-size: 12px; }
+.ro-rung.is-done .ro-rung-bar { border: 0; background: linear-gradient(180deg, #5fdc98, #1f7d4c); }
+.ro-rung.is-next .ro-rung-bar { border: 2px solid var(--ba-gold); background: rgba(245, 197, 66, .18); box-shadow: 0 0 26px rgba(245, 197, 66, .35); }
+.ro-rung.is-next b { color: var(--ba-gold); }
+.ro-rung.is-collect .ro-rung-bar { border: 0; background: linear-gradient(180deg, #ffe08a, var(--ba-gold) 45%, #b5861a); }
+.ro-rung.is-collect b { color: var(--ba-gold); font-size: 15px; }
+.ro-idle { padding: 22px; border-radius: 14px; border: 1px dashed rgba(255, 255, 255, .2); }
+.ro-idle p { margin: 0; font-size: 16px; }
+.ro-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 0; border-radius: 14px; overflow: hidden; background: rgba(10, 9, 28, .7); border: 1px solid rgba(255, 255, 255, .1); }
+.ro-facts div { padding: 12px 16px; border-left: 1px solid rgba(255, 255, 255, .08); }
+.ro-facts div:first-child { border-left: 0; }
+.ro-facts dt { color: var(--ba-dim); font-size: 12.5px; }
+.ro-facts dd { margin: 2px 0 0; font: 800 20px Sora, sans-serif; font-variant-numeric: tabular-nums; }
+.ro-facts dd small { display: block; margin-top: 2px; font: 500 12px Manrope, sans-serif; color: var(--ba-dim); }
+.ro-settings fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 14px; }
+@media (max-width: 860px) {
+  .ro-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ro-facts div:nth-child(3) { border-left: 0; }
+  .ro-facts div:nth-child(n+3) { border-top: 1px solid rgba(255, 255, 255, .08); }
+}
+@media (max-width: 480px) {
+  .ro-rung { flex-basis: 56px; grid-template-rows: 130px auto auto; }
+  .ro-ladder { min-height: 190px; }
+  .ro-facts dd { font-size: 17px; }
+}

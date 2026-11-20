@@ -1464,6 +1464,16 @@ async function listen() {
                         if (!res) failed();
                         playedAny = true;
                     }
+                    // BetZero Single Number Rollover: the Bet49 number on BetZero (1.10), its own stake.
+                    if (m.rollover && Number(m.rolloverStake) > 0) {
+                        const rolloverNumber = Number(m.rollover);
+                        if (!Number.isInteger(rolloverNumber) || rolloverNumber < 1 || rolloverNumber > 49) throw new Error('Invalid rollover number');
+                        SELECTED_GAME = 'betzero';
+                        const res = await runBetZero([rolloverNumber], Math.round(Number(m.rolloverStake)));
+                        if (res) executionReport.games.push('rollover');
+                        if (!res) failed();
+                        playedAny = true;
+                    }
                     if (batchBet49.length && bet49Stake > 0) {
                         SELECTED_GAME = 'bet49';
                         if (batchBet49.length > 6 || new Set(batchBet49).size !== batchBet49.length

@@ -4,6 +4,7 @@ const { createAutomationReports } = require('./automation-reports');
 const automationStrategy = require('./automation-strategy');
 const automationControl = require('./automation-control');
 const { createAutomationBridge } = require('./automation-bridge');
+const betzeroSingle = require('./betzero-single');
 const { createSiteEmail } = require('./site-email');
 const { createFootballService } = require('./football-service');
 const { createVirtualFootball } = require('./virtual-football');
@@ -831,7 +832,7 @@ function getBallEmoji(n) {
 
 let dailyPendingSettlements = SITE_PUBLIC_MODE ? [] : loadJSON(DAILY_PENDING_FILE, []);
 if (!Array.isArray(dailyPendingSettlements)) throw new Error('Invalid daily settlement checkpoint; refusing to discard pending bets.');
-let predictionLog = SITE_PUBLIC_MODE ? [] : loadJSON(PREDICTIONS_FILE, []);
+let predictionLog = SITE_PUBLIC_MODE ? [] : loadJSON(PREDICTIONS_FILE, []).map(betzeroSingle.enrich);
 if (!Array.isArray(predictionLog)) {
     throw new Error(`[Persistence] Prediction history "${PREDICTIONS_FILE}" must contain a JSON array.`);
 }
@@ -847,7 +848,7 @@ if (SITE_PUBLIC_MODE) {
         try {
             lastPrediction = feed.current_json ? JSON.parse(feed.current_json) : null;
             publicClock = JSON.parse(feed.clock_json);
-            predictionLog = listPublicPredictionHistoryStatement.all().map(row => JSON.parse(row.record_json));
+            predictionLog = listPublicPredictionHistoryStatement.all().map(row => betzeroSingle.enrich(JSON.parse(row.record_json)));
         } catch (error) {
             throw new Error('Stored public prediction feed is invalid; refusing to serve corrupted feed data.');
         }
@@ -937,7 +938,8 @@ const PUBLIC_MARKET_RESULT_KEYS = {
     rainbow: 'rainbow',
     totalColor: 'totalColor',
     totalColor1: 'totalColor1',
-    hilo: 'hilo'
+    hilo: 'hilo',
+    betzeroSingle: 'betzeroSingle'
 };
 
 const dailyStreakArchive = createDailyStreakArchive(siteDb, Object.keys(PUBLIC_MARKET_RESULT_KEYS));
@@ -3970,7 +3972,7 @@ async function handleHttpRequest(req, res) {
             publicClock = snapshot.clock;
             if (normalizedHistoryUpdates.length) {
                 const historyByDrawId = new Map(predictionLog.map(record => [String(record.drawId), record]));
-                for (const item of normalizedHistoryUpdates) historyByDrawId.set(item.drawId, item.record);
+                for (const item of normalizedHistoryUpdates) historyByDrawId.set(item.drawId, betzeroSingle.enrich(item.record));
                 predictionLog = [...historyByDrawId.values()].sort((left, right) => Number(right.drawId) - Number(left.drawId));
             }
             if (betzeroLab) {
@@ -4675,6 +4677,7 @@ async function handleHttpRequest(req, res) {
             predicted: {
                 betzero: Array.isArray(p.predicted?.betzero) ? p.predicted.betzero : [],
                 bet49: bet49Numbers(p.predicted?.bet49),
+                betzeroSingle: betzeroSingle.pick(p.predicted?.bet49),
                 rainbow: p.result?.rainbow === 'SKIP' ? 'SKIP' : (p.predicted?.rainbow || 'SKIP'),
                 totalColor: p.predicted?.totalColor ? {
                     status: p.predicted.totalColor.status || 'SKIP',
@@ -4694,6 +4697,7 @@ async function handleHttpRequest(req, res) {
                 range: p.result?.range || null,
                 betzero: p.result?.betzero || (p.result ? 'SKIP' : 'PENDING'),
                 bet49: p.result?.bet49 || (p.result ? 'SKIP' : 'PENDING'),
+                betzeroSingle: betzeroSingle.outcome(p.predicted?.bet49, p.result),
                 rainbow: p.result?.rainbow || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor: p.result?.totalColor || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor1: p.result?.totalColor1 || (p.result ? 'SKIP' : 'PENDING'),
@@ -4759,6 +4763,7 @@ async function handleHttpRequest(req, res) {
                     ? live.unlikely4.map(item => Number(item.number)).filter(number => Number.isInteger(number) && number >= 1 && number <= 49)
                     : [],
                 bet49: bet49Numbers(live.bet49Pick),
+                betzeroSingle: betzeroSingle.pick(live.bet49Pick),
                 rainbow: live.rainbowStatus === 'ACTIVE' ? live.topColor?.name || 'SKIP' : 'SKIP',
                 totalColor: {
                     status: live.totalColorPred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
@@ -4778,6 +4783,7 @@ async function handleHttpRequest(req, res) {
             predicted: {
                 betzero: previousRecord.result?.betzero === 'SKIP' ? [] : (Array.isArray(previousRecord.predicted?.betzero) ? previousRecord.predicted.betzero : []),
                 bet49: bet49Numbers(previousRecord.predicted?.bet49),
+                betzeroSingle: betzeroSingle.pick(previousRecord.predicted?.bet49),
                 rainbow: previousRecord.result?.rainbow === 'SKIP' ? 'SKIP' : (previousRecord.predicted?.rainbow || 'SKIP'),
                 totalColor: previousRecord.predicted?.totalColor ? {
                     status: previousRecord.predicted.totalColor.status || 'SKIP',
@@ -4797,6 +4803,7 @@ async function handleHttpRequest(req, res) {
                 range: previousRecord.result.range || null,
                 betzero: previousRecord.result.betzero || 'SKIP',
                 bet49: previousRecord.result.bet49 || 'SKIP',
+                betzeroSingle: betzeroSingle.outcome(previousRecord.predicted?.bet49, previousRecord.result),
                 rainbow: previousRecord.result.rainbow || 'SKIP',
                 totalColor: previousRecord.result.totalColor || 'SKIP',
                 totalColor1: previousRecord.result.totalColor1 || 'SKIP',
@@ -4804,7 +4811,7 @@ async function handleHttpRequest(req, res) {
             }
         } : null;
         const selectedMarket = parsedUrl.searchParams.get('market');
-        const allowedMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor1', 'hilo'];
+        const allowedMarkets = ['betzero', 'bet49', 'rainbow', 'totalColor', 'totalColor1', 'hilo', 'betzeroSingle'];
         const market = allowedMarkets.includes(selectedMarket) ? selectedMarket : 'betzero';
         const currentSummaryModel = logged ? getRecordSummaryModel(logged)
             : buildPublicSummaryModel(lastPrediction.summaryModel);
@@ -4819,7 +4826,9 @@ async function handleHttpRequest(req, res) {
         const activePlan = account?.plan;
         const planTier = session?.admin ? session.previewTier : activePlan?.tier;
         const planGames = session?.admin ? session.previewGames : activePlan?.games;
-        const fullAccess = (planTier === 'elite' || (planTier === 'premium' && planGames?.includes(market)))
+        // BetZero Single is the Bet49 number, so it is included wherever Bet49 is.
+        const planMarket = market === 'betzeroSingle' ? 'bet49' : market;
+        const fullAccess = (planTier === 'elite' || (planTier === 'premium' && planGames?.includes(planMarket)))
             && (session?.admin || (activePlan?.expiresAt && activePlan.expiresAt > Date.now()));
         if (!clockFresh || !predictionMatchesClock || (!fullAccess && (secondsRemaining === null || secondsRemaining > 10 || secondsRemaining === 0))) {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });

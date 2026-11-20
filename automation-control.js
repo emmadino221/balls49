@@ -1,6 +1,7 @@
 "use strict";
 const strategy = require('./automation-strategy');
 const gapEntry = require('./automation-gap-entry');
+const rollover = require('./betzero-rollover');
 const { getTotalColorOutcome } = require('./total-color');
 const { presetSessionBusy } = require('./preset-history');
 const aliases = { u4: 'betzero', bet49: 'bet49', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor1: 'totalColor1' };
@@ -13,9 +14,10 @@ function settings(s) {
  const out = { stakes: {}, gameSteps: {}, enabledGames: {} };
  for (const [key, name] of Object.entries(aliases)) { out.stakes[name] = s.config.initialStakes[key]; out.gameSteps[name] = s.config.maxSteps[key]; out.enabledGames[name] = !!s.config.enabledGames[key]; }
  for (const key of ['takeProfit','stopLoss','hiloMultiplier','tc1ProfitMode','bet49ProfitMode','flatBetting','unifiedMode','gapEntry','sniperSettings','summaryModelMarkets','summaryModelTargets','bzRbRollover','hiloRollover','tc3Rollover','tc3RolloverTarget','cbMaxLosses','cbCooldown','shadowMode','weightedStaking']) out[key] = s.config[key];
+ out.rollover = { ...rollover.config(s) };
  return out;
 }
-function view(s) { guard(s); const c = state(s); return { gapEntry: gapEntry.view(s), suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, settledDraws: s.stats.settledDraws || 0, currentLossStreak: s.stats.currentLossStreak || 0, maxLossStreak: s.stats.maxLossStreak || 0, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
+function view(s) { guard(s); const c = state(s); return { rollover: rollover.view(s), gapEntry: gapEntry.view(s), suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, settledDraws: s.stats.settledDraws || 0, currentLossStreak: s.stats.currentLossStreak || 0, maxLossStreak: s.stats.maxLossStreak || 0, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
 function normalize(input) {
  // Total Color 2-way and Unified are retired. The dashboard sends back whatever settings()
  // returned, including an old enabled flag the page has no control for, so a save switches
@@ -34,6 +36,7 @@ function normalize(input) {
  out.gapEntry = gapEntry.normalize(input.gapEntry);
  if (Object.values(out.gapEntry).some(v => v.enabled && v.policy !== 'CONTINUOUS_GAP_WINDOWS_V2')) throw fail('Review and confirm continuous gap windows on the updated website before saving.');
  if (Object.values(out.gapEntry).some(v => v.enabled) && (out.unifiedMode || out.shadowMode || out.bzRbRollover || out.hiloRollover || out.tc3Rollover)) throw fail('Gap entry requires individual mode without shadow or rollover modes.');
+ out.rollover = rollover.normalize(input.rollover || {});
  out.summaryModelMarkets = {}; out.summaryModelTargets = {};
  for (const key of ['u4','color','sum','totalColor']) { out.summaryModelMarkets[key] = input.summaryModelMarkets?.[key] === true; out.summaryModelTargets[key] = input.summaryModelTargets?.[key] === 'HOLD' ? 'HOLD' : 'ENTER'; }
  return out;
@@ -55,8 +58,8 @@ function command(s, cfg, busy, records = []) {
   strategy.install(s, plan); c.revision++;
   return { done: true };
  }
- if (action === 'start') { if (s.config.suggestionStrategy?.needsReview) throw fail('Review and reapply the strategy after resetting execution.'); if (Date.now() - c.executorAt > 10000) throw fail('Open Bet9ja with the updated extension connected first.'); if (s.betExecutionClaim || s.lastBetDetails) throw fail('Wait for the placed bet to settle.'); if (!Object.keys(aliases).some(k => s.config.enabledGames[k] && s.config.initialStakes[k] > 0)) throw fail('Enable a game and save a stake first.'); c.revision++; return { config: { running: true } }; }
- if (action === 'save') { if (!s.stats.isHalted || busy) throw fail('Stop and finish the active recovery sequence before changing settings. Progression is preserved.'); const config = normalize(cfg.settings || {}); if (strategy.recovery(s)) throw fail('Finish the suggested recovery before changing settings.'); gapEntry.configure(s, config.gapEntry, records); delete s.config.suggestionStrategy; c.revision++; return { config: { ...config, running: false } }; }
+ if (action === 'start') { if (s.config.suggestionStrategy?.needsReview) throw fail('Review and reapply the strategy after resetting execution.'); if (Date.now() - c.executorAt > 10000) throw fail('Open Bet9ja with the updated extension connected first.'); if (s.betExecutionClaim || s.lastBetDetails) throw fail('Wait for the placed bet to settle.'); if (!rollover.enabled(s) && !Object.keys(aliases).some(k => s.config.enabledGames[k] && s.config.initialStakes[k] > 0)) throw fail('Enable a game or the rollover and save a stake first.'); c.revision++; return { config: { running: true } }; }
+ if (action === 'save') { if (!s.stats.isHalted || busy) throw fail('Stop and finish the active recovery sequence before changing settings. Progression is preserved.'); const config = normalize(cfg.settings || {}); if (strategy.recovery(s)) throw fail('Finish the suggested recovery before changing settings.'); gapEntry.configure(s, config.gapEntry, records); rollover.configure(s, config.rollover); delete config.rollover; delete s.config.suggestionStrategy; c.revision++; return { config: { ...config, running: false } }; }
  throw fail('Unknown dashboard action.');
 }
 function record(s, drawId, details, prediction) {
@@ -65,12 +68,14 @@ function record(s, drawId, details, prediction) {
   const count = key === 'bet49' ? selections.length : key === 'totalColor' ? details.colorSelections?.totalColor.length ?? 3 : key === 'totalColor2' ? details.colorSelections?.totalColor2.length ?? 2 : 1;
   return { game: aliases[key] || key, unitStake: details.stakes[key], stake: details.stakes[key] * count, selections, result: 'PENDING' };
  });
+ if (details.rollover) rows.push({ game: 'betzeroSingle', unitStake: details.rollover.stake, stake: details.rollover.stake, selections: [details.rollover.number], result: 'PENDING' });
  s.automationHistory ||= []; s.automationHistory = [{ drawId: String(drawId), at: Date.now(), games: rows }, ...s.automationHistory.filter(r => r.drawId !== String(drawId))].slice(0,100);
 }
 function settle(s, record) {
  const row = s.automationHistory?.find(r => r.drawId === String(record.drawId)); if (!row) return;
  for (const game of row.games) {
-  if (game.game === 'bet49') game.result = (game.selections || []).some(n => record.result.balls?.includes(n)) ? 'WIN' : 'LOSS';
+  if (game.game === 'betzeroSingle') game.result = (game.selections || []).some(n => record.result.balls?.includes(n)) ? 'LOSS' : 'WIN';
+  else if (game.game === 'bet49') game.result = (game.selections || []).some(n => record.result.balls?.includes(n)) ? 'WIN' : 'LOSS';
   else if (['totalColor','totalColor2'].includes(game.game) && Array.isArray(game.selections)) game.result = game.selections.includes(getTotalColorOutcome(record.result.balls)) ? 'WIN' : 'LOSS';
   else game.result = record.result[game.game] || 'UNKNOWN';
  }
