@@ -29,7 +29,7 @@ function reset(s) { s.rollover = fresh(); }
 function configure(s, next) {
     const before = config(s), st = state(s);
     s.config.rollover = next;
-    if (before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.maxDoublings !== next.maxDoublings) {
+    if (st.phase === 'PAUSED' || before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.maxDoublings !== next.maxDoublings) {
         Object.assign(st, { phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, reason: 'Waiting for a Bet49 win' });
     }
 }
