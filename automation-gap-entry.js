@@ -184,4 +184,4 @@ function view(s) {
       phase: st?.policy !== POLICY ? 'Review and save settings to use continuous windows' : st.paused ? 'Paused: history needs review' : st.reserved && !st.reservedSettled ? 'Waiting for settlement' : !w ? 'Waiting for two historical gaps' : 'Playing window: every eligible draw' }];
   }));
 }
-module.exports = { normalize, configure, observe, reason, claim, enabled, view };
+module.exports = { normalize, configure, observe, reason, claim, enabled, view, seed };

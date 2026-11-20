@@ -2,6 +2,7 @@ const gapEntry = require('./automation-gap-entry');
 const { createAutomationReports } = require('./automation-reports');
 const automationStrategy = require('./automation-strategy');
 const automationControl = require('./automation-control');
+const betzeroRollover = require('./betzero-rollover');
 const { createAutomationBridge } = require('./automation-bridge');
 const { createSiteEmail } = require('./site-email');
 const { createFootballService } = require('./football-service');
@@ -1638,7 +1639,8 @@ function getBetPayloadExposure(payload) {
         Math.max(0, Number(payload.colorStake) || 0) +
         Math.max(0, Number(payload.sumStake) || 0) +
         (Math.max(0, Number(payload.tcStake) || 0) * 3) +
-        (Math.max(0, Number(payload.tc2Stake) || 0) * 2) + Math.max(0, Number(payload.tc1Stake) || 0);
+        (Math.max(0, Number(payload.tc2Stake) || 0) * 2) + Math.max(0, Number(payload.tc1Stake) || 0) +
+        Math.max(0, Number(payload.rolloverStake) || 0);
 }
 
 function exceedsStopLossWithPayload(session, payload) {
@@ -2968,7 +2970,9 @@ function evaluateSessionBets(clientId, session, pLogItem) {
         session.stats.virtualBalance = Math.round(session.stats.virtualBalance + payout);
     };
 
-    if (details.games && details.games.length > 0) {
+    const rolloverWin = !!details.rollover && !(r.balls || []).map(Number).includes(details.rollover.number);
+    if ((details.games && details.games.length > 0) || details.rollover) {
+        if (rolloverWin) { creditVirtual('rollover', details.rollover.stake, betzeroRollover.ODDS); userHadWin = true; }
         if (details.games.includes('u4') && u4Win) { creditVirtual('u4', details.stakes.u4, details.odds.u4 || 1.65); userHadWin = true; }
         if (details.games.includes('bet49') && bet49Win) { creditVirtual('bet49', details.stakes.bet49 * bet49Hits, details.odds.bet49 || 7.8); userHadWin = true; }
         if (details.games.includes('color') && colorWin) { creditVirtual('color', details.stakes.color, details.odds.color || 1.50); userHadWin = true; }
@@ -3437,7 +3441,7 @@ async function tick() {
             }
         }
 
-        for (const session of Object.values(userSessions)) { automationStrategy.observe(session, predictionLog); gapEntry.observe(session, predictionLog); }
+        for (const session of Object.values(userSessions)) { automationStrategy.observe(session, predictionLog); gapEntry.observe(session, predictionLog); betzeroRollover.observe(session, predictionLog); }
 
         if (lastPrediction && nextId && Number(nextId) >= Number(lastPrediction.drawId) + 2) { lastPrediction = null; try { fs.unlinkSync(LAST_PRED_FILE); } catch (e) {} }
 
@@ -3678,6 +3682,10 @@ async function tick() {
                     });
 
                     if (session.stats.isHalted) continue; 
+                    // BetZero Single Number Rollover: its own run, independent of the other markets.
+                    betzeroRollover.observe(session, predictionLog);
+                    const rolloverBet = String(session.lastBetDrawId) !== String(nextId) ? betzeroRollover.decide(session, nextId, pred, predictionLog) : null;
+                    if (rolloverBet) payloadGenerated = true;
 
                     if (payloadGenerated && String(session.lastBetDrawId) !== String(nextId)) {
                         const bzStake = Math.max(0, Number(payloadStakes.u4) || 0);
@@ -3724,6 +3732,8 @@ async function tick() {
                             bet49CycleMode: session.martingaleState.bet49.cycleMode || session.config.bet49ProfitMode,
                             tc1CycleBase: session.martingaleState.totalColor1.cycleBase || tc1Stake,
                             tc1CycleMode: session.martingaleState.totalColor1.cycleMode || session.config.tc1ProfitMode,
+                            rollover: rolloverBet ? rolloverBet.number : null,
+                            rolloverStake: rolloverBet ? rolloverBet.stake : 0,
                             
                             steps: {
                                 betzero: session.martingaleState.u4.isRollover ? 'ROLLOVER' : session.martingaleState.u4.localStep,
@@ -5169,14 +5179,14 @@ async function handleHttpRequest(req, res) {
                         const incomplete = report.bet49Numbers.length !== bet49Numbers(payload.bet49).length
                             || report.colorSelections.totalColor.length !== (payload.totalColor || []).length
                             || report.colorSelections.totalColor2.length !== (payload.totalColor2 || []).length
-                            || Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake' }).some(([game, field]) => payload[field] > 0 && !report.games.includes(game));
+                            || Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake', rollover:'rolloverStake' }).some(([game, field]) => payload[field] > 0 && !report.games.includes(game));
                         // The betting window closed before every selection could be placed. Nothing
                         // is uncertain, so only the placed selections are counted and the run goes on.
                         const cutShort = report.windowClosed === true && !report.unconfirmedBet49?.length;
                         if (!cutShort && (data.status !== 'SUCCESS' || incomplete || report.unconfirmedBet49?.length)) automationControl.stop(session, 'Execution interrupted. Check the bet slip before starting again.');
                         payload.bet49 = report.bet49Numbers;
                         payload.unconfirmedBet49 = bet49Numbers(report.unconfirmedBet49).filter(n => payload.bet49.includes(n));
-                        for (const [game, field] of Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake' })) if (!report.games.includes(game)) payload[field] = 0;
+                        for (const [game, field] of Object.entries({ u4:'stake', color:'colorStake', sum:'sumStake', totalColor1:'tc1Stake', rollover:'rolloverStake' })) if (!report.games.includes(game)) payload[field] = 0;
                         payload.totalColor = report.colorSelections.totalColor;
                         payload.totalColor2 = report.colorSelections.totalColor2;
                         if (!payload.totalColor.length) payload.tcStake = 0;
@@ -5197,7 +5207,7 @@ async function handleHttpRequest(req, res) {
                         // Receipt describes confirmed placements; never re-submit the batch.
                         payload.bet49 = report.bet49Numbers;
                         payload.unconfirmedBet49 = bet49Numbers(report.unconfirmedBet49).filter(n => payload.bet49.includes(n));
-                        for (const [game, field] of Object.entries({ u4: 'stake', color: 'colorStake', sum: 'sumStake', totalColor: 'tcStake', totalColor2: 'tc2Stake', totalColor1: 'tc1Stake' })) {
+                        for (const [game, field] of Object.entries({ u4: 'stake', color: 'colorStake', sum: 'sumStake', totalColor: 'tcStake', totalColor2: 'tc2Stake', totalColor1: 'tc1Stake', rollover: 'rolloverStake' })) {
                             if (!report.games.includes(game)) payload[field] = 0;
                         }
                         data.status = 'SUCCESS';
@@ -5263,6 +5273,12 @@ async function handleHttpRequest(req, res) {
                             }
                         }
 
+                        if (payload && payload.action === 'EXECUTE_BET' && payload.rollover && payload.rolloverStake > 0) {
+                            details.rollover = { number: Number(payload.rollover), stake: payload.rolloverStake };
+                            totalStake += payload.rolloverStake;
+                            betzeroRollover.placed(session, drawId, details.rollover.number, details.rollover.stake);
+                        }
+
                         if (totalStake > 0) {
                             if (session.stats.initialVirtualBalance == null) {
                                 session.stats.initialVirtualBalance = session.stats.liveAccountBalance || 0;
@@ -5272,11 +5288,11 @@ async function handleHttpRequest(req, res) {
                             session.stats.totalReturned = Math.round(session.stats.virtualBalance - session.stats.initialVirtualBalance);
                         }
 
-                        if (details.games.length) automationControl.record(session, data.drawId, details, {
+                        if (details.games.length || details.rollover) automationControl.record(session, data.drawId, details, {
                             betzero: payload.numbers, rainbow: payload.color, hilo: payload.sumRange,
                             totalColor: payload.totalColor, totalColor2: payload.totalColor2, totalColor1: payload.totalColor1
                         });
-                        session.lastBetDetails = details.games.length ? details : null;
+                        session.lastBetDetails = details.games.length || details.rollover ? details : null;
                         session.lastBetDrawId = String(data.drawId);
                         session.pendingBetPayload = null;
                         session.failedBetRecovery = null;
@@ -5297,6 +5313,7 @@ async function handleHttpRequest(req, res) {
         }
         if (session.config.suggestionStrategy) session.config.suggestionStrategy.needsReview = true;
         automationControl.state(session).resetAt = Date.now();
+        betzeroRollover.reset(session);
         session.martingaleState.u4 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         session.martingaleState.bet49 = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
         session.martingaleState.color = { active: false, localStep: 1, isRollover: false, rolloverStake: 0, inShadowMode: false };
