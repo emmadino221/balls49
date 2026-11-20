@@ -94,6 +94,11 @@ function observe(s, records) {
         if (st.phase === 'WAITING' && r.result.bet49 === 'WIN') st.armedAt = id;
         st.lastObserved = id;
     }
+    // The window the next run would get, from the same Bet49 history, so it can be shown while waiting.
+    if (settled.length || st.estimate === undefined) {
+        const size = windowLength(records, st.lastObserved);
+        st.estimate = size ? { ...size, through: st.lastObserved } : null;
+    }
 }
 
 // The bet for the upcoming draw, or null. Call after observe().
@@ -134,7 +139,7 @@ function placed(s, drawId, number, stake) {
 
 function view(s) {
     const st = state(s), cfg = config(s);
-    return { settings: { ...cfg }, odds: ODDS, phase: st.phase, reason: st.reason, doublings: st.doublings,
+    return { settings: { ...cfg }, odds: ODDS, phase: st.phase, reason: st.reason, doublings: st.doublings, estimate: st.estimate || null,
         nextStartStake: cfg.baseStake * 2 ** st.doublings, armedAt: st.armedAt,
         run: st.run ? { ...st.run, average: st.run.average } : null,
         plan: st.plan, profit: st.profit, completed: st.completed, lost: st.lost, history: st.history.slice(0, 20) };

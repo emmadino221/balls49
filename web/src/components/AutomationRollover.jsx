@@ -44,9 +44,9 @@ export default function AutomationRollover({ control, draft, onChange, onSave, d
       <p className="ro-reason" role="status">{r.settings.enabled ? r.reason : 'Off. Turn it on below and save.'}</p>
       {run
         ? <Ladder start={run.stakeStart} length={run.length} played={run.played} number={number} />
-        : <div className="ro-idle"><p>Next run starts at <b>{money(r.nextStartStake)}</b>{r.doublings ? ` (${2 ** r.doublings}x after ${r.doublings} ${r.doublings === 1 ? 'loss' : 'losses'})` : ''} on the draw after the next Bet49 win.</p></div>}
+        : <div className="ro-idle"><p>Next run starts at <b>{money(r.nextStartStake)}</b>{r.doublings ? ` (${2 ** r.doublings}x after ${r.doublings} ${r.doublings === 1 ? 'loss' : 'losses'})` : ''} on the draw after the next Bet49 win{r.estimate ? `, and plays about ${r.estimate.length} draws` : ''}.</p></div>}
       <dl className="ro-facts">
-        <div><dt>Window length</dt><dd>{run ? `${run.length} draws` : '--'}<small>{run ? `Bet49 average gap ${run.average.toFixed(1)} (${run.samples} gaps)` : 'Set when a run starts'}</small></dd></div>
+        <div><dt>{run ? 'Window length' : 'Next window'}</dt><dd>{run ? `${run.length} draws` : r.estimate ? `${r.estimate.length} draws` : '--'}<small>{run ? `Bet49 average gap ${run.average.toFixed(1)} (${run.samples} gaps)` : r.estimate ? `Bet49 average gap ${r.estimate.average.toFixed(1)} (${r.estimate.samples} gaps), recalculated at the start` : 'Needs two Bet49 gaps at loss level 1'}</small></dd></div>
         <div><dt>Starting stake</dt><dd>{money(run ? run.stakeStart : r.nextStartStake)}<small>Doubling {r.doublings} of {r.settings.maxDoublings}</small></dd></div>
         <div><dt>On the table</dt><dd>{run ? money(run.stake) : '--'}<small>{run ? `${run.bets} ${run.bets === 1 ? 'bet' : 'bets'} placed` : 'No run'}</small></dd></div>
         <div><dt>Rollover profit</dt><dd className={r.profit > 0 ? 'ba-pos' : r.profit < 0 ? 'ba-neg' : ''}>{money(r.profit)}<small>{r.completed} collected / {r.lost} lost</small></dd></div>
