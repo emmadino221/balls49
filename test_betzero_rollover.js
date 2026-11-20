@@ -12,7 +12,9 @@ function record(id, number, drawn) {
 }
 function setup(cfg = { enabled: true, baseStake: 100, maxDoublings: 2 }) {
     const s = { config: { rollover: rollover.normalize(cfg) } };
-    const records = Array.from({ length: 40 }, (_, i) => record(i + 1, NUMBER, (i + 1) % 5 === 0));
+    const records = Array.from({ length: 39 }, (_, i) => record(i + 1, NUMBER, (i + 1) % 5 === 0));
+    rollover.observe(s, records);                           // first look: history is not used to start
+    records.unshift(record(40, NUMBER, true));              // a Bet49 win while watching
     rollover.observe(s, records);
     // One draw of the session: decide, the extension places, the result settles.
     const play = (id, { drawn = false, number = NUMBER, place = true } = {}) => {
@@ -91,6 +93,28 @@ test('an unplaced bet ends the run and keeps the doubling level', () => {
     assert.equal(st().history[0].collected, 220);            // the rolled 200 -> 220 is in the account
     assert.equal(st().doublings, 1);
     assert.equal(st().phase, 'WAITING');
+});
+
+test('a Bet49 win already in the history does not start a run; the next one does', () => {
+    const s = { config: { rollover: rollover.normalize({ enabled: true, baseStake: 100, maxDoublings: 2 }) } };
+    const records = Array.from({ length: 40 }, (_, i) => record(i + 1, NUMBER, (i + 1) % 5 === 0));
+    rollover.observe(s, records);                           // draw 40, the newest, was a Bet49 win
+    assert.equal(rollover.state(s).armedAt, null);
+    assert.equal(rollover.decide(s, 41, { bet49Pick: [NUMBER] }, records), null);
+    assert.equal(rollover.view(s).estimate.length, 5);       // the next window is still shown
+    for (const id of [41, 42, 43, 44]) { records.unshift(record(id, NUMBER, false)); rollover.observe(s, records); }
+    records.unshift(record(45, NUMBER, true)); rollover.observe(s, records);
+    assert.equal(rollover.decide(s, 46, { bet49Pick: [NUMBER] }, records).stake, 100);
+});
+
+test('Bet49 wins while switched off do not start a run once it is switched on', () => {
+    const s = { config: { rollover: rollover.normalize({ enabled: false, baseStake: 100, maxDoublings: 2 }) } };
+    const records = Array.from({ length: 39 }, (_, i) => record(i + 1, NUMBER, (i + 1) % 5 === 0));
+    rollover.observe(s, records);
+    records.unshift(record(40, NUMBER, true)); rollover.observe(s, records);
+    assert.equal(rollover.state(s).armedAt, null);
+    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 100, maxDoublings: 2 }));
+    assert.equal(rollover.decide(s, 41, { bet49Pick: [NUMBER] }, records), null);
 });
 
 test('an old Bet49 win does not start a run after a long stop', () => {
