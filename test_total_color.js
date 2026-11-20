@@ -109,7 +109,8 @@ test('actual generator builds three-way from the active two-way prediction', () 
         predictBet49,
         predictHighLowFromMinmax,
         labMinmaxState: null,
-        singleColorPrediction
+        singleColorPrediction,
+        bet49Tracker: { predict: () => ({ status: 'SKIP', numbers: [], reason: 'not under test' }) }
     });
     vm.runInContext(source.slice(start, end), context);
     const predict = numbers => {

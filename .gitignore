@@ -38,3 +38,5 @@ Thumbs.db
 # Daily reset checkpoints (runtime only)
 collector_daily_reset.json
 daily_pending_settlements.json
+bet49_tracker.json
+bet49_tracker.json.tmp

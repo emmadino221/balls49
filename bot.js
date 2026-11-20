@@ -8,7 +8,8 @@ const { createFootballService } = require('./football-service');
 const { createVirtualFootball } = require('./virtual-football');
 const { createDailyStreakArchive } = require('./daily-streak-archive');
 const { historySuggestions, youtubeId } = require('./site-content');
-const { predictBet49, predictBet49SmallestAdd10, bet49Numbers } = require('./bet49');
+const { predictBet49, bet49Numbers } = require('./bet49');
+const bet49Tracker = require('./bet49-tracker').createBet49Tracker(require('path').join(__dirname, 'bet49_tracker.json'));
 const { predictBetZeroFromLab } = require('./betzero');
 const { createBetZeroLab } = require('./betzero-lab');
 ﻿'use strict';
@@ -2552,7 +2553,8 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
         totalColor: { status: totalColorPred.status }
     };
 
-    const mainBet49 = predictBet49SmallestAdd10(histRaw?.data?.draws, targetDrawId);
+    // Longest-gap number from the last 100 draws, kept until it appears (bet49-tracker.js).
+    const mainBet49 = bet49Tracker.predict(histRaw?.data?.draws, targetDrawId);
     bet49Pick = mainBet49.numbers;
     brainData.bet49 = mainBet49;
 
@@ -3344,6 +3346,7 @@ async function tick() {
         var drawsData = await apiGet('/draws?settle=' + encodeURIComponent(settlementIds));
         checkDailyHistoryReset();
         var draws = [...(drawsData.draws || []), ...(drawsData.settlementDraws || [])];
+        bet49Tracker.observe(draws);
 
         if (lastPrediction && lastPrediction.telegramPredictionQueued !== true) {
             const hasLegacyPredictionRecord = lastPrediction.telegramPredictionQueued === undefined

@@ -51,7 +51,8 @@ const generator = source.slice(start, end);
 const replayPredictions = [];
 const context = vm.createContext({ getBallColor: color, totalColor3WayPrediction, singleColorPrediction,
     predictHighLow, predictBetZero, predictionLog: replayPredictions, getDailyHistoryResetAt: () => 0,
-    getBet49Prediction: () => null }); // Bet49 is outside this comparison; no persistent target state.
+    getBet49Prediction: () => null, // Bet49 is outside this comparison; no persistent target state.
+    bet49Tracker: { predict: () => ({ status: 'SKIP', numbers: [], reason: 'outside this comparison' }) } });
 vm.runInContext(generator, context, { timeout: 1000 });
 
 const candidates = [
