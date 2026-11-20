@@ -28,6 +28,9 @@ function setup(cfg = { enabled: true, baseStake: 100, maxDoublings: 2 }) {
 test('window length is the average Bet49 gap at loss level 1, rounded up', () => {
     const { records } = setup();
     assert.deepEqual(rollover.windowLength(records, 40), { length: 5, average: 5, samples: 6 });
+    // Kept up to date while waiting, so the website can show the next window before a run starts.
+    const { s: session } = setup();
+    assert.deepEqual(rollover.view(session).estimate, { length: 5, average: 5, samples: 6, through: 40 });
 });
 
 test('a run starts after a Bet49 win, rolls over every win and stops at the window length', () => {
