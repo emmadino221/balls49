@@ -23,6 +23,60 @@ function predictBet49SmallestAdd10(draws, targetDrawId) {
     return { status: 'ACTIVE', numbers: [number], reason: '', strategy, sourceDrawId: target - 1, smallest: previous[0] };
 }
 
+// Main Bet49 (LONGEST_GAP_V1). Over the 100 draws before the target, each number has a
+// longest run of draws without appearing and a current run since it last appeared.
+// Numbers are ranked by longest run (then current run, then lowest number); the first whose
+// current run is at least half its longest run is played, one number, graded on appearance.
+// Once chosen it is kept, whatever its ranking, until it appears; then a new number is chosen.
+const BET49_GAP_STRATEGY = 'LONGEST_GAP_V1', BET49_GAP_WINDOW = 100;
+function bet49Draw(draw) {
+    const balls = typeof draw?.dr === 'string' ? draw.dr.split(',').map(Number) : Array.isArray(draw?.balls) ? draw.balls.map(Number) : [];
+    return balls.length === 6 && new Set(balls).size === 6 && balls.every(n => Number.isInteger(n) && n >= 1 && n <= 49) ? balls : null;
+}
+function bet49Gaps(draws, targetDrawId) {
+    const target = Number(targetDrawId), first = target - BET49_GAP_WINDOW;
+    const byId = new Map();
+    for (const draw of Array.isArray(draws) ? draws : []) {
+        const id = Number(draw?.id);
+        if (!Number.isSafeInteger(id) || id < first || id >= target) continue;
+        const balls = bet49Draw(draw);
+        if (!balls) return { error: `Draw ${id} has an invalid result` };
+        if (byId.has(id) && byId.get(id).some(n => !balls.includes(n))) return { error: `Draw ${id} has conflicting results` };
+        byId.set(id, balls);
+    }
+    if (byId.size !== BET49_GAP_WINDOW) return { error: `Need the last ${BET49_GAP_WINDOW} draws (have ${byId.size})` };
+    const longest = Array(50).fill(0), current = Array(50).fill(0), seenAt = Array(50).fill(null);
+    for (let id = first; id < target; id++) {
+        const balls = byId.get(id);
+        for (let n = 1; n <= 49; n++) {
+            if (balls.includes(n)) { current[n] = 0; seenAt[n] = id; }
+            else longest[n] = Math.max(longest[n], ++current[n]);
+        }
+    }
+    return { longest, current, seenAt, byId };
+}
+function predictBet49LongestGap(draws, targetDrawId, lock = null) {
+    const target = Number(targetDrawId);
+    const skip = reason => ({ status: 'SKIP', numbers: [], reason, strategy: BET49_GAP_STRATEGY, lock: null });
+    if (!Number.isSafeInteger(target) || target <= BET49_GAP_WINDOW) return skip('Invalid target draw');
+    const gaps = bet49Gaps(draws, target);
+    if (gaps.error) return skip(gaps.error);
+    const { longest, current, seenAt } = gaps;
+    const facts = (number, since, kept) => ({ status: 'ACTIVE', numbers: [number], reason: '', strategy: BET49_GAP_STRATEGY,
+        longestStreak: longest[number], currentStreak: current[number], playingSince: since, kept,
+        lock: { number, since } });
+    // Keep the number being played until it has appeared in a draw since it was first played.
+    const held = Number(lock?.number), since = Number(lock?.since);
+    if (Number.isInteger(held) && held >= 1 && held <= 49 && Number.isSafeInteger(since) && since <= target
+        && since >= target - BET49_GAP_WINDOW && !(seenAt[held] !== null && seenAt[held] >= since)) {
+        return facts(held, since, true);
+    }
+    const ranked = Array.from({ length: 49 }, (_, i) => i + 1)
+        .sort((a, b) => longest[b] - longest[a] || current[b] - current[a] || a - b);
+    const chosen = ranked.find(n => current[n] > 0 && current[n] * 2 >= longest[n]);
+    return chosen ? facts(chosen, target, false) : skip('No number has been missing for half its longest streak');
+}
+
 // targetDrawId prevents using the target or future results.
 function predictBet49(draws, targetDrawId, totalColor2Prediction) {
     const target = Number(targetDrawId);
@@ -71,4 +125,4 @@ function bet49Numbers(value) {
     return numbers.every(n => Number.isInteger(n) && n >= 1 && n <= 49)
         && new Set(numbers).size === numbers.length ? numbers : [];
 }
-module.exports = { predictBet49, predictBet49SmallestAdd10, bet49Numbers };
+module.exports = { predictBet49, predictBet49SmallestAdd10, predictBet49LongestGap, bet49Gaps, bet49Draw, BET49_GAP_STRATEGY, BET49_GAP_WINDOW, bet49Numbers };

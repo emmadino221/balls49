@@ -41,3 +41,5 @@ daily_pending_settlements.json
 
 # Private rollback copies created by retired-market cleanup
 retirement-backups/
+bet49_tracker.json
+bet49_tracker.json.tmp
