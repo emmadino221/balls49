@@ -108,22 +108,25 @@ test('actual generator builds three-way from the active two-way prediction', () 
         getBallColor: number => number === 49 ? 'yellow' : number % 3 === 1 ? 'red' : number % 3 === 2 ? 'blue' : 'green',
         predictBet49,
         predictHighLowFromMinmax,
-        singleColorPrediction
+        singleColorPrediction,
+        labMinmaxState: null,
+        predictBetZeroFromLab: () => ({ status: 'SKIP', numbers: [], reason: 'not under test' }),
+        predictBet49SmallestAdd10: () => ({ status: 'SKIP', numbers: [], reason: 'not under test' })
     });
     vm.runInContext(source.slice(start, end), context);
     const predict = numbers => {
         const draws = Array.from({ length: 20 }, (_, index) => draw(100 - index, numbers));
         return context.computePredictions({ data: { draws } }, null, null, null, null, null, 101);
     };
+    // Total Color 2-way is retired; its ranking (colorRanking) still drives 3-way and Winning Color.
     const tiedPrediction = predict(tie);
-    assert.equal(tiedPrediction.totalColor2Pred.status, 'SKIP');
+    assert.equal(tiedPrediction.colorRanking.status, 'SKIP');
     assert.equal(tiedPrediction.totalColorPred.status, 'SKIP');
     const prediction = predict(red);
-    assert.equal(prediction.totalColor2Pred.status, 'ACTIVE');
-    assert.deepEqual(getTotalColorTargets(prediction.totalColorPred), [...prediction.totalColor2Pred.top2, 'black']);
+    assert.equal(prediction.colorRanking.status, 'ACTIVE');
+    assert.deepEqual(getTotalColorTargets(prediction.totalColorPred), [...prediction.colorRanking.top2, 'black']);
     assert.equal(prediction.totalColorPred.noWinColor, 'blue');
-    assert.deepEqual(prediction.totalColor1Pred.top1,
-        ['red', 'blue', 'green'].filter(color => !prediction.totalColor2Pred.top2.includes(color)));
+    assert.deepEqual(prediction.totalColor1Pred, singleColorPrediction(prediction.colorRanking));
 });
 
 function extensionHarness({ missingButton = null, placementSuccess = true } = {}) {

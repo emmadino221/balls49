@@ -17,7 +17,7 @@ export function simulateHistory(records, game, base, mode) {
   if (!Number.isFinite(base) || base < 1 || base > 1000000) throw new Error('Enter a base stake between 1 and 1,000,000.');
   const sorted = [...new Map(records.map(r => [String(r.drawId), r])).values()].sort((a,b) => Number(a.drawId) - Number(b.drawId));
   const result = { rows: [], staked: 0, returned: 0, net: 0, largest: 0, maxDrawdown: 0, funding: 0, wins: 0, losses: 0, skipped: 0, worst: 0, stop: '', available: sorted.length };
-  let cycleLoss = 0, step = 1, run = 0, peak = 0, target = null, previous = null;
+  let cycleLoss = 0, step = 1, run = 0, peak = 0, previous = null;
   for (const record of sorted) {
     const id = Number(record.drawId);
     if (!Number.isSafeInteger(id) || (previous !== null && id !== previous + 1)) { result.stop = `Missing or invalid draw before #${record.drawId}. Replay stopped to preserve an accurate progression.`; break; }
@@ -33,12 +33,12 @@ export function simulateHistory(records, game, base, mode) {
       count = picks.length;
       hits = picks.filter(n => balls.includes(n)).length;
       if ((hits > 0) !== (outcome === 'WIN')) { result.stop = `Bet49 result disagrees with the recorded numbers at #${id}. Replay stopped.`; break; }
-      if (mode === 'accumulating' && count !== 1) { result.stop = `Accumulating Bet49 mode requires one selection; legacy multi-number draw #${id} was not replayed.`; break; }
-      if (target === null) target = base * (odds - count);
+      // Bet49 recovery is for one number; older multi-number draws are not replayed.
+      if (mode !== 'flat' && count !== 1) { result.stop = `Bet49 recovery uses one number; older multi-number draw #${id} was not replayed.`; break; }
     }
     let stake = base;
     if (mode === 'flat') stake = money(base);
-    else if (game === 'bet49') stake = count === 1 && target === base * 6.8 ? globalThis.Bet49Staking.nextStake(base, cycleLoss, step - 1, mode) : Math.ceil((cycleLoss + target) / (odds - count));
+    else if (game === 'bet49') stake = globalThis.Bet49Staking.nextStake(base, cycleLoss, step - 1, mode);
     else if (game === 'totalColor1') stake = globalThis.TC1Staking.nextStake(base, cycleLoss, step - 1, mode);
     else if (step > 1) {
       if (game === 'hilo') stake = money(base * Math.pow(mode === '1.4' ? 1.4 : 2, step - 1));
@@ -52,7 +52,7 @@ export function simulateHistory(records, game, base, mode) {
     result.net = money(result.returned - result.staked); result.largest = Math.max(result.largest, cost);
     peak = Math.max(peak, result.net); result.maxDrawdown = Math.max(result.maxDrawdown, money(peak - result.net));
     result.rows.push({ id, outcome, step, stake, count, cost, payout, net: result.net });
-    if (outcome === 'WIN') { result.wins++; cycleLoss = 0; step = 1; run = 0; target = null; }
+    if (outcome === 'WIN') { result.wins++; cycleLoss = 0; step = 1; run = 0; }
     else { result.losses++; cycleLoss = money(cycleLoss + cost); if (mode !== 'flat') step++; run++; result.worst = Math.max(result.worst, run); }
   }
   result.unrecovered = cycleLoss;

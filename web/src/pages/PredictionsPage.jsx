@@ -70,17 +70,15 @@ function getRecommendedStake(marketId, baseAmount, step, prediction, bet49Profit
 
   for (let currentStep = 1; currentStep <= safeStep; currentStep += 1) {
     if (strategy.bet49) {
-      if (!strategy.count) return null;
-      nextStake = strategy.count === 1 ? globalThis.Bet49Staking.nextStake(base, totalCost, currentStep - 1, bet49ProfitMode) : Math.ceil((totalCost + base * (7.8 - strategy.count)) / (7.8 - strategy.count));
+      // Bet49 plays one number; older multi-number records get no recommendation.
+      if (strategy.count !== 1) return null;
+      nextStake = globalThis.Bet49Staking.nextStake(base, totalCost, currentStep - 1, bet49ProfitMode);
     } else if (strategy.multiplier) {
       nextStake = roundMoney(currentStep === 1 ? base : nextStake * strategy.multiplier);
     } else if (strategy.costFactor) {
       nextStake = roundMoney(currentStep === 1 ? base : totalCost / 0.8);
     } else {
-      const stepProfitTarget = strategy.bet49
-        ? targetProfit + ((currentStep - 1) * base)
-        : targetProfit;
-      nextStake = roundMoney(currentStep === 1 ? base : (totalCost + stepProfitTarget) / (strategy.odds - 1));
+      nextStake = roundMoney(currentStep === 1 ? base : (totalCost + targetProfit) / (strategy.odds - 1));
     }
     if (!Number.isFinite(nextStake)) return null;
     totalCost += nextStake * (strategy.count || strategy.costFactor || 1);
