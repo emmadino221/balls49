@@ -2,7 +2,8 @@
 
 const nigeriaDay = time => new Date(time + 3600000).toISOString().slice(0, 10);
 
-function createDailyStreakArchive(db, keys) {
+// optional: markets the website derives itself; summaries imported from the worker may lack them.
+function createDailyStreakArchive(db, keys, optional = []) {
     db.exec(`CREATE TABLE IF NOT EXISTS daily_streak_archive (
         day TEXT PRIMARY KEY, summary_json TEXT NOT NULL, outcomes_json TEXT
     )`);
@@ -60,6 +61,7 @@ function createDailyStreakArchive(db, keys) {
                 const markets = {};
                 for (const key of keys) {
                     const m = item.markets?.[key];
+                    if (m === undefined && optional.includes(key)) continue;
                     if (!m || !['wins', 'losses', 'worstLosses'].every(k => Number.isSafeInteger(m[k]) && m[k] >= 0 && m[k] <= item.draws)) throw new Error('Invalid daily market');
                     markets[key] = { wins: m.wins, losses: m.losses, worstLosses: m.worstLosses };
                 }

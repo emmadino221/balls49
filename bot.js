@@ -942,7 +942,7 @@ const PUBLIC_MARKET_RESULT_KEYS = {
     betzeroSingle: 'betzeroSingle'
 };
 
-const dailyStreakArchive = createDailyStreakArchive(siteDb, Object.keys(PUBLIC_MARKET_RESULT_KEYS));
+const dailyStreakArchive = createDailyStreakArchive(siteDb, Object.keys(PUBLIC_MARKET_RESULT_KEYS), ['betzeroSingle']);
 if (!SITE_PUBLIC_MODE) {
     dailyStreakArchive.recordMany(predictionLog);
     dailyStreakArchive.closeBefore(nigeriaMidnightBoundary());
