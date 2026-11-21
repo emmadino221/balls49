@@ -67,15 +67,33 @@ export default function AutomationPage() {
  },[]);
  useEffect(()=>{ alive.current=true; load(); const timer=setInterval(load,3000); return()=>{alive.current=false;clearInterval(timer);}; },[load]);
  async function link(event) { event.preventDefault(); setBusy(true); setError(''); try { await apiRequest('/account/automation/link',{method:'POST',body:JSON.stringify({key})}); setKey(''); await load(); } catch(e){setError(e.message);} finally{setBusy(false);} }
+ // Start runs the saved settings. Changes still only in the form (such as ticking gap windows
+ // without pressing Save) are saved first, so Start never silently drops them.
+ const unsavedChanges=!!draft && loadedSettings.current!==null && JSON.stringify(draft)!==loadedSettings.current;
+ const settingsPayload=()=>({...draft,unifiedMode:false,weightedStaking:false,gapEntry:Object.fromEntries(Object.entries(draft.gapEntry||{}).map(([id,v])=>[id,{...v,policy:'CONTINUOUS_GAP_WINDOWS_V2'}]))});
  async function command(action) {
-  if(action==='start' && !window.confirm('Start placing real bets in your connected Bet9ja tab using these saved settings?')) return;
+  const saveFirst=action==='start'&&unsavedChanges;
+  if(action==='start' && !window.confirm(saveFirst?'Save your changes in Game setup, then start placing real bets in your connected Bet9ja tab with them?':'Start placing real bets in your connected Bet9ja tab using these saved settings?')) return;
   if(action==='reset' && !window.confirm('Reset this execution session? This clears martingale and sniper progression, stop-loss/take-profit session totals and recent session activity. Saved games, stakes and limits stay unchanged. Automation stays stopped.')) return;
-  if(action==='save' && Object.values(draft.gapEntry||{}).some(v=>v.enabled) && !window.confirm('Save continuous gap playing windows? Play every eligible draw, recalculate the window at its end, and preserve recovery stakes across windows. SKIPs count as draws without advancing stakes. If automatic gap selection is checked, a better-supported level may replace the current level at a window boundary. Automation stays stopped.')) return;
+  if((action==='save'||saveFirst) && Object.values(draft.gapEntry||{}).some(v=>v.enabled) && !window.confirm('Save continuous gap playing windows? Play every eligible draw, recalculate the window at its end, and preserve recovery stakes across windows. SKIPs count as draws without advancing stakes. If automatic gap selection is checked, a better-supported level may replace the current level at a window boundary.')) return;
   setBusy(true); setNotice(''); setError('');
-  try { await apiRequest('/account/automation/command',{method:'POST',body:JSON.stringify({action,revision:action==='save'?draftRevision:data.control.revision,settings:action==='save'?{...draft,unifiedMode:false,weightedStaking:false,gapEntry:Object.fromEntries(Object.entries(draft.gapEntry||{}).map(([id,v])=>[id,{...v,policy:'CONTINUOUS_GAP_WINDOWS_V2'}]))}:undefined})});
-   setNotice(action==='reset'?'Execution session reset. Saved settings are kept. Press Start when ready.':action==='save'?'Settings saved. Automation remains stopped.':action==='start'?'Start accepted. Keep Bet9ja and the extension connected. You can close this dashboard.':action==='stop'?'Stopped. Already submitted bets can still settle.':'Control updated. Automation is paused.');
-   const next=await apiRequest('/account/automation'); setData(next); setUpdated(Date.now()); loadedSettings.current=next.control?JSON.stringify(next.control.settings):null; setDraft(next.control?copy(next.control.settings):null); setDraftRevision(next.control?.revision??null);
-  }catch(e){setError(e.message);}finally{setBusy(false);}
+  let saved=false;
+  const reloadSaved=async()=>{const next=await apiRequest('/account/automation'); setData(next); setUpdated(Date.now()); loadedSettings.current=next.control?JSON.stringify(next.control.settings):null; setDraft(next.control?copy(next.control.settings):null); setDraftRevision(next.control?.revision??null);};
+  try {
+   let revision=action==='save'?draftRevision:data.control.revision;
+   if(saveFirst){
+    await apiRequest('/account/automation/command',{method:'POST',body:JSON.stringify({action:'save',revision:draftRevision,settings:settingsPayload()})});
+    saved=true;
+    revision=(await apiRequest('/account/automation')).control.revision;
+   }
+   await apiRequest('/account/automation/command',{method:'POST',body:JSON.stringify({action,revision,settings:action==='save'?settingsPayload():undefined})});
+   setNotice(action==='reset'?'Execution session reset. Saved settings are kept. Press Start when ready.':action==='save'?'Settings saved. Automation remains stopped.':action==='start'?`${saveFirst?'Your changes were saved and start':'Start'} accepted. Keep Bet9ja and the extension connected. You can close this dashboard.`:action==='stop'?'Stopped. Already submitted bets can still settle.':'Control updated. Automation is paused.');
+   await reloadSaved();
+  }catch(e){
+   // Saved but not started: the form now shows the saved settings; say so with the reason.
+   if(saved){setError(`Your changes were saved, but automation did not start: ${e.message}`); await reloadSaved().catch(()=>{});}
+   else setError(e.message);
+  }finally{setBusy(false);}
  }
  function field(name,value){setDraft(d=>({...d,[name]:value}));}
  // An old saved rollover has maxDoublings (doublings before a pause), which is loss steps - 1.
@@ -146,6 +164,7 @@ export default function AutomationPage() {
   <details className="content-card automation-account"><summary>Extension access <span>Membership &amp; private access key</span></summary><h2>Extension membership</h2><p>The Elite + Extension bundle is NGN 120,000 for 30 days and includes all prediction markets. After the owner approves extension access, retrieve your key here to unlock the extension.</p><button className="btn btn-secondary" onClick={()=>accessKey?setAccessKey(''):revealKey()}>{accessKey?'Hide my access key':'Show my extension access key'}</button>{accessKey&&<label>Keep this key private<input type="text" readOnly value={accessKey} onFocus={e=>e.target.select()} /></label>}</details>
    {draft && <details className="automation-setup-panel" open={setupOpen} onToggle={e=>setSetupOpen(e.currentTarget.open)}><summary>Game setup <span>Games, stakes, sniper &amp; limits</span></summary><form className="automation-settings" onSubmit={e=>{e.preventDefault();command('save');}}>
     <div className="automation-section-title"><div><span className="overline">YOUR GAME SETUP</span><h2>Games &amp; stakes</h2></div><button type="button" className="btn btn-secondary" disabled={busy||stale} onClick={()=>{loadedSettings.current=JSON.stringify(c.settings);setDraft(copy(c.settings));setDraftRevision(c.revision);}}>Reload saved settings</button></div>
+    {unsavedChanges && draftRevision===c.revision && <p className="automation-warning" role="status">You have unsaved changes. Press Save settings, or Start automation (it saves them first).</p>}
     {draftRevision!==c.revision && <p className="automation-help">The settings were saved again (from the extension or another tab) while you were editing. Reload saved settings to see them, then make your change.</p>}
     {c.suggestionStrategy && <p className="automation-warning">Saving this manual setup replaces the suggested plan and disables automatic strategy updates. Use the Strategies section to keep capital sizing.</p>}
     <fieldset disabled={busy||!web||c.running||stale}>
