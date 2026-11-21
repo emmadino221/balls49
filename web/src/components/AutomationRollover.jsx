@@ -60,7 +60,7 @@ export default function AutomationRollover({ control, draft, onChange, onSave, d
         <label className="automation-check"><input type="checkbox" checked={!!settings.enabled} onChange={e => set('enabled', e.target.checked)} /><strong>Play BetZero Single Number Rollover</strong></label>
         <div className="automation-fields">
           <label>Base stake (NGN)<input type="number" min="0" max="50000" step="1" value={settings.baseStake ?? 0} onChange={e => set('baseStake', Number(e.target.value))} /></label>
-          <label>Doublings allowed<input type="number" min="0" max="10" step="1" value={settings.maxDoublings ?? 3} onChange={e => set('maxDoublings', Number(e.target.value))} /></label>
+          <label>Doublings allowed<input type="number" min="0" max="20" step="1" value={settings.maxDoublings ?? 3} onChange={e => set('maxDoublings', Number(e.target.value))} /></label>
         </div>
         {Number(settings.baseStake) > 0 && <p className="automation-help">Each lost run doubles the next starting stake: {startStakes.map(money).join(' → ')}{Number(settings.maxDoublings) > 5 ? ' → …' : ''}. A loss at {money(Number(settings.baseStake) * 2 ** (Number(settings.maxDoublings) || 0))} pauses the rollover. A collected run returns to {money(Number(settings.baseStake))}.</p>}
         <button className="btn btn-primary" disabled={draftStale}>Save rollover settings (keep paused)</button>

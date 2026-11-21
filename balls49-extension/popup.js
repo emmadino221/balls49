@@ -268,7 +268,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const rollover = {
         enabled: !!document.getElementById('btn-rollover')?.classList.contains('active'),
         baseStake: Math.min(50000, Math.max(0, parseInt(document.getElementById('stake-rollover')?.value, 10) || 0)),
-        maxDoublings: Math.min(10, Math.max(0, parseInt(document.getElementById('rollover-doublings')?.value, 10) || 0))
+        maxDoublings: Math.min(20, Math.max(0, parseInt(document.getElementById('rollover-doublings')?.value, 10) || 0))
     };
     if (rollover.enabled && rollover.baseStake < 1) {
         btn.textContent = originalText;
