@@ -2074,6 +2074,7 @@ function getMartingaleStake(clientId, key, localStep, mlScore = 0) {
         return { stake: session.martingaleState.totalColor.rolloverStake, odds: walletConfig.odds };
     }
 
+    if (key === 'totalColor1' && session.config.flatBetting) return { stake: initialBaseUnit, odds: 3.8 };
     if (key === 'totalColor1') {
         const state = session.martingaleState.totalColor1;
         const base = state.cycleBase || initialBaseUnit;
@@ -2155,7 +2156,7 @@ function getUnifiedMasterStake(clientId, targetGameKey, mlScore = 0) {
         else if (mlScore >= 0.65) baseUnit = Math.round(baseUnit * 1.5);
     }
 
-    if ((session.config.bzRbRollover && (targetGameKey === 'u4' || targetGameKey === 'color' || targetGameKey === 'sum'))
+    if ((session.config.bzRbRollover && (targetGameKey === 'u4' || targetGameKey === 'color'))
         || (session.config.hiloRollover && targetGameKey === 'sum')) {
         const state = session.martingaleState[targetGameKey];
         if (state && state.isRollover) {
@@ -3057,7 +3058,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
 
             const state = session.martingaleState[playedKey];
             
-            if (isWin && ((session.config.bzRbRollover && (playedKey === 'u4' || playedKey === 'color' || playedKey === 'sum')) || (session.config.hiloRollover && playedKey === 'sum')) && state && !state.isRollover) {
+            if (isWin && ((session.config.bzRbRollover && (playedKey === 'u4' || playedKey === 'color')) || (session.config.hiloRollover && playedKey === 'sum')) && state && !state.isRollover) {
                 state.isRollover = true;
                 state.rolloverStake = Math.round(currentStake * playedOdds);
                 
@@ -3177,7 +3178,8 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                     }
                 }
                 if (activeWin) {
-                    if (((key === 'u4' || key === 'color' || key === 'sum') && session.config.bzRbRollover || key === 'sum' && session.config.hiloRollover) && !state.isRollover) {
+                    // BetZero / Rainbow rollover covers those two; High / Low has its own setting.
+                    if (((key === 'u4' || key === 'color') && session.config.bzRbRollover || key === 'sum' && session.config.hiloRollover) && !state.isRollover) {
                         state.isRollover = true;
                         state.rolloverStake = Math.round(calc.stake * calc.odds);
                         
@@ -3560,7 +3562,6 @@ async function tick() {
                 if (session.failedBetRecovery && String(session.failedBetRecovery.payload?.drawId) === String(nextId)) continue;
                 if (timeLeft <= 15) continue;
 
-                if (isTimeUp(session.config.schedule)) continue;
 
                 // Retired markets: pause instead of switching legacy settings to other games.
                 // The old settings are switched off once, so the session can be started again after review;
@@ -5562,6 +5563,16 @@ async function handleHttpRequest(req, res) {
                 if (cfg.tc3RolloverTarget !== undefined) session.config.tc3RolloverTarget = validateNumber(cfg.tc3RolloverTarget, 2, 10, 3);
                 if (cfg.shadowMode !== undefined) session.config.shadowMode = Boolean(cfg.shadowMode);
                 if (cfg.weightedStaking !== undefined) session.config.weightedStaking = Boolean(cfg.weightedStaking);
+                // A rollover switched off while one is waiting: bank that win and go back to step 1,
+                // so the next bet is not the rolled-over stake of a setting that is now off.
+                const rolloverOn = { u4: session.config.bzRbRollover, color: session.config.bzRbRollover, sum: session.config.hiloRollover, totalColor: session.config.tc3Rollover };
+                for (const [key, on] of Object.entries(rolloverOn)) {
+                    const st = session.martingaleState[key];
+                    if (!on && st?.isRollover) { st.isRollover = false; st.active = false; st.localStep = 1; st.rolloverStage = 0; if (session.userTracker[key]) session.userTracker[key].step = 1; }
+                }
+                // A manual save from the extension replaces a suggested plan, as a website save does;
+                // otherwise the plan kept overriding the stakes just saved.
+                if (!controlResult && cfg.stakes && session.config.suggestionStrategy) delete session.config.suggestionStrategy;
                 automationControl.state(session).revision++;
                 enforceSessionLimits(session);
                 persistSessions();
