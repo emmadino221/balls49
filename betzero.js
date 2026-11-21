@@ -2,14 +2,16 @@
 
 const { randomInt } = require('crypto');
 const { predictBet49SmallestAdd10 } = require('./bet49');
-// Accept only the persisted Lab record returned by the authenticated feed receiver.
+// Accept only the persisted Lab record returned by the authenticated feed receiver: the Lab's
+// BetZero 49 prediction (the Bet49 longest-gap rule, four numbers), so both show the same numbers.
+const LAB_BETZERO = { strategyId: 'betzero_49', version: '1.0.0' };
 function predictBetZeroFromLab(record, targetDrawId, now = Date.now()) {
-    const strategy = 'LAB_STREAK_ONE_EXACT_FOUR_V1';
+    const strategy = 'LAB_BETZERO_49_V1';
     const skip = reason => ({ status: 'SKIP', numbers: [], strategy, reason });
     const target = Number(targetDrawId);
     if (!Number.isSafeInteger(target) || target <= 0) return skip('INVALID_TARGET_DRAW');
     if (!record) return skip('LAB_PREDICTION_UNAVAILABLE');
-    if (record.strategyId !== 'statistics_streak_drop_betzero' || record.version !== '3.0.0'
+    if (record.strategyId !== LAB_BETZERO.strategyId || record.version !== LAB_BETZERO.version
         || Number(record.targetDrawId) !== target || Number(record.sourceDrawId) !== target - 1)
         return skip('LAB_PREDICTION_TARGET_OR_VERSION_MISMATCH');
     if (!record.enabled) return skip('LAB_STRATEGY_DISABLED');
