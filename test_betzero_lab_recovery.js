@@ -182,10 +182,10 @@ test('statistics samples without a provider status are accepted and rejections a
     assert.equal(s.lab.overview().numberStatistics.lastIngest.outcome,'CONFLICT');
     assert.equal(s.lab.overview().numberStatistics.conflicts,1);
 });
-test('the lab overview only offers the six current predictions',t=>{
+test('the lab overview only offers the seven current predictions',t=>{
     const s=setup(t);openPrediction(s);
     const overview=s.lab.overview();
-    assert.deepEqual(Object.keys(overview.strategyVersions).sort(),['minimum_maximum_three@2.0.0','minmax_high_low@1.0.0','simple_smallest_number_add_10@1.0.0',
+    assert.deepEqual(Object.keys(overview.strategyVersions).sort(),['betzero_49@1.0.0','minimum_maximum_three@2.0.0','minmax_high_low@1.0.0','simple_smallest_number_add_10@1.0.0',
         'smallest_add10_step10_four@1.0.0','statistics_streak_drop_bet49@3.0.0','statistics_streak_drop_betzero@3.0.0']);
     assert.deepEqual(Object.keys(overview.forwardVersionWindows).map(key=>key.replace(':','@')).sort(),Object.keys(overview.strategyVersions).sort());
     // The retired MIN/MAX v1 made a prediction above; its records stay stored but are not listed.

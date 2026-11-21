@@ -329,7 +329,7 @@ const fourDefinition = () => ({ ...STRATEGIES.find(strategy => strategy.id === F
 
 test('four-number variant starts disabled and original experiment is relabeled without changing its identity', t => {
     const state = openLab(t, 1000);
-    assert.equal(state.lab.strategies().length, 11);
+    assert.equal(state.lab.strategies().length, 12);
     for (const id of ['statistics_streak_drop_betzero', 'statistics_streak_drop_bet49']) {
         assert.equal(state.lab.strategies().find(s => s.id === id).enabled, false);
     }

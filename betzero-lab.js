@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const minmax = require('./betzero-minmax');
 const transitions = require('./betzero-statistics-transition');
+const bz49 = require('./betzero-49');
 const { gradeHighLow, highLowForMethod } = require('./high-low');
 
 // HIGH/LOW follows Minimum/Maximum v2: its MAX method predicts LOW, its MIN method predicts HIGH.
@@ -57,6 +58,13 @@ const STRATEGIES = [
         status: 'RESEARCH_ONLY', kind: 'PREDICTION',
         description: 'New research variant: smallest previous-draw number +10, then three +10 steps wrapping within 1–49. Skip if the first selection exceeds 49.',
         missingInformation: 'Newly designed research variant, not the instructor-verified method.'
+    },
+    {
+        id: bz49.ID, version: bz49.VERSION, selectionCount: bz49.COUNT,
+        label: 'BetZero 49 - Bet49 longest-gap rule, four numbers',
+        status: 'RESEARCH_ONLY', kind: 'PREDICTION',
+        description: 'The main Bet49 rule over the last 100 draws, taking four numbers: ranked by longest absence, each must be missing for at least half its longest absence, and each is kept until it appears. Graded as BetZero: a win when none of the four is drawn. Skips when fewer than four numbers qualify.',
+        missingInformation: 'Research specification; not independently instructor-verified.'
     }
 ];
 
@@ -99,7 +107,7 @@ function predictionFromStrategy(strategy, source) {
         return { status: 'SKIP', selections: [], conditions: { reason: 'Strategy is disabled.' } };
     }
     if (transitions.isStrategy(strategy.id)) return { status:'SKIP', selections:[], conditions:{reason:'MISSING_STATISTICS_SNAPSHOTS'} };
-    if (strategy.id === minmax.ID || strategy.id === HIGH_LOW_ID) return { status: 'SKIP', selections: [], conditions: { reason: 'STATEFUL_CONTEXT_REQUIRED' } };
+    if (strategy.id === minmax.ID || strategy.id === HIGH_LOW_ID || strategy.id === bz49.ID) return { status: 'SKIP', selections: [], conditions: { reason: 'STATEFUL_CONTEXT_REQUIRED' } };
     const definition = strategyDefinition(strategy.id, strategy.version);
     if (!definition?.selectionCount) {
         return { status: 'SKIP', selections: [], conditions: { reason: strategy.missingInformation } };
@@ -525,7 +533,7 @@ function createBetZeroLab(db, options = {}) {
     for (const strategy of STRATEGIES) {
         insertStrategy.run(strategy.id, strategy.version, strategy.label, strategy.status, strategy.kind,
             strategy.description, strategy.missingInformation);
-        insertConfig.run(strategy.id, strategy.version, strategy.id === 'simple_smallest_number_add_10' ? 1 : 0,
+        insertConfig.run(strategy.id, strategy.version, strategy.id === 'simple_smallest_number_add_10' || strategy.id === bz49.ID ? 1 : 0,
             JSON.stringify({ alertThresholds: ALERT_THRESHOLDS }), now());
     }
     // One-time retirement: streak-drop v1/v2 stop predicting now that streak-1 v3 replaces them. History is kept.
@@ -883,6 +891,12 @@ function createBetZeroLab(db, options = {}) {
             for (const version of ['1.0.0','2.0.0']) saveMinmaxState({ ...minmaxState(version), paused: true, conflictDrawId: id }, version);
         } else if (!previous) db.prepare('INSERT OR IGNORE INTO betzero_lab_minmax_draws(draw_id,balls_json,observed_at) VALUES(?,?,?)').run(id,json,observedAt);
     }
+    // Draws the Lab had stored before a BetZero 49 prediction was made, for replaying its rule.
+    function bz49Draws(target, recordedAt) {
+        return db.prepare(`SELECT draw_id id, balls_json balls FROM betzero_lab_minmax_draws
+            WHERE conflicted=0 AND observed_at<=? AND draw_id<? AND draw_id>=?`)
+            .all(recordedAt, target, target - bz49.REPLAY - 100).map(r => ({ id: r.id, balls: JSON.parse(r.balls) }));
+    }
     function minmaxHistory(target, recordedAt) {
         return db.prepare(`SELECT s.draw_id sid,s.balls_json sb,t.draw_id tid,t.balls_json tb
             FROM betzero_lab_minmax_draws t JOIN betzero_lab_minmax_draws s ON s.draw_id=t.draw_id-1
@@ -948,6 +962,8 @@ function createBetZeroLab(db, options = {}) {
             ? minmax.decide({ id: drawIdFromRecord(sourceRecord), balls: sourceBalls }, targetDrawId, minmaxHistory(targetDrawId, predictedAt), state, strategy.version)
             : transitions.isStrategy(strategy.id) && strategy.enabled
                 ? statisticsStore.predict(strategy, targetDrawId, transitions.SEED, predictedAt + 1)
+            : strategy.id === bz49.ID && strategy.enabled
+                ? bz49.predict(bz49Draws(targetDrawId, predictedAt), targetDrawId)
                 : predictionFromStrategy(strategy, { balls: sourceBalls });
         const sourceId = drawIdFromRecord(sourceRecord);
         const predictionId = crypto.randomUUID();
@@ -1215,7 +1231,9 @@ function createBetZeroLab(db, options = {}) {
         const highLowPicks = effectiveStrategies.some(s => s.id === HIGH_LOW_ID && s.enabled)
             ? new Map([...(minmaxPicks.get('2.0.0') || minmax.simulate(opportunities, extracted.opportunities, () => {}, '2.0.0'))]
                 .map(([targetId, pick]) => [targetId, highLowFromMinmax(pick)])) : null;
-        const picksFor = s => s.id === minmax.ID ? minmaxPicks.get(s.version) : s.id === HIGH_LOW_ID ? highLowPicks : transitionPicks.get(`${s.id}@${s.version}`);
+        // BetZero 49 replays over every draw supplied, so numbers kept from before the first target carry in.
+        const bz49Picks = effectiveStrategies.some(s => s.id === bz49.ID && s.enabled) ? bz49.simulate(extracted.draws) : null;
+        const picksFor = s => s.id === minmax.ID ? minmaxPicks.get(s.version) : s.id === HIGH_LOW_ID ? highLowPicks : s.id === bz49.ID ? bz49Picks : transitionPicks.get(`${s.id}@${s.version}`);
         const resultRows = [];
         for (const strategy of effectiveStrategies) {
             const effectiveStrategy = effectiveStrategies.find(item => item.id === strategy.id && item.version === strategy.version);
