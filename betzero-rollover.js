@@ -10,7 +10,7 @@
 const { seed } = require('./automation-gap-entry');
 const { bet49Numbers } = require('./bet49');
 
-const ODDS = 1.1, LEVEL = 1, STALE_ARM = 3, MAX_BASE = 50000, MAX_DOUBLINGS = 10;
+const ODDS = 1.1, LEVEL = 1, STALE_ARM = 3, MAX_BASE = 50000, MAX_DOUBLINGS = 20;
 const fail = message => Object.assign(new Error(message), { status: 409 });
 
 function normalize(input = {}) {

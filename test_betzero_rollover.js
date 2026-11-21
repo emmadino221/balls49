@@ -126,7 +126,8 @@ test('an old Bet49 win does not start a run after a long stop', () => {
 test('settings are validated and a change starts over', () => {
     assert.throws(() => rollover.normalize({ enabled: true, baseStake: 0 }), /base stake/);
     assert.throws(() => rollover.normalize({ baseStake: 1.5 }), /whole amount/);
-    assert.throws(() => rollover.normalize({ baseStake: 100, maxDoublings: 11 }), /doublings/);
+    assert.equal(rollover.normalize({ baseStake: 100, maxDoublings: 20 }).maxDoublings, 20);
+    assert.throws(() => rollover.normalize({ baseStake: 100, maxDoublings: 21 }), /doublings/);
     assert.deepEqual(rollover.normalize({}), { enabled: false, baseStake: 0, maxDoublings: 3 });
     const { s, play, st } = setup();
     play(41, { drawn: true });
