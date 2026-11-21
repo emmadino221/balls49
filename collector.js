@@ -215,7 +215,7 @@ const proxyServer = http.createServer(function(req, res) {
     const proxyReq = https.request(options, proxyRes => {
         proxyRes.pipe(res);
     });
-    proxyReq.on('error', () => { res.writeHead(502); res.end(); });
+    limitProxy(proxyReq, res);
     proxyReq.write(payload);
     proxyReq.end();
     return;
@@ -235,7 +235,7 @@ const proxyServer = http.createServer(function(req, res) {
     const proxyReq = https.request(options, proxyRes => {
       proxyRes.pipe(res);
     });
-    proxyReq.on('error', () => { res.writeHead(502); res.end(); });
+    limitProxy(proxyReq, res);
     req.pipe(proxyReq);
     return;
   }
@@ -260,8 +260,19 @@ const proxyServer = http.createServer(function(req, res) {
   const options = { hostname: TARGET, port: 443, path: req.url, method: req.method, agent: false, headers };
   const proxyReq = https.request(options, proxyRes => { proxyRes.pipe(res); });
   req.pipe(proxyReq);
-  proxyReq.on('error', () => { res.writeHead(502); res.end(); });
+  limitProxy(proxyReq, res);
 });
+
+// A game-site request that never answers would leave the worker waiting on it, so forwarded
+// requests give up after 15 s and answer 502; the worker then retries on its next tick.
+function limitProxy(proxyReq, res) {
+  const fail = () => { if (!res.headersSent) res.writeHead(502); res.end(); };
+  proxyReq.setTimeout(15000, () => {
+    console.warn('[Proxy] Game site did not answer within 15 s; request dropped.');
+    proxyReq.destroy(new Error('Game site request timed out'));
+  });
+  proxyReq.on('error', fail);
+}
 
 proxyServer.listen(PROXY_PORT, LISTEN_HOST, () => console.log(`[Server] Proxy running on ${LISTEN_HOST}:${PROXY_PORT}`));
 
