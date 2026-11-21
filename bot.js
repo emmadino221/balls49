@@ -3579,7 +3579,7 @@ async function tick() {
                     continue;
                 }
 
-                if (gapEntry.enabled(session) && (session.config.unifiedMode || automationControl.state(session).controller !== "website")) continue;
+                if (gapEntry.enabled(session) && session.config.unifiedMode) continue;
                 if (session.config.unifiedMode) {
                     if (session.masterState.inShadowMode) continue;
 
@@ -5440,6 +5440,21 @@ async function handleHttpRequest(req, res) {
                     return sendJson(res, 400, { error: 'Invalid Telegram Chat ID format' });
                 }
                 // BZ Single Rollover from the extension popup (the dashboard applies it in its own save).
+                // Gap playing windows from the extension popup (the website applies them in its own save).
+                if (!controlResult && cfg.gapEntry !== undefined) {
+                    let nextGap;
+                    try { nextGap = gapEntry.normalize(cfg.gapEntry); }
+                    catch (error) { return sendJson(res, 400, { error: error.message }); }
+                    if (Object.values(nextGap).some(v => v.enabled && v.policy !== 'CONTINUOUS_GAP_WINDOWS_V2')) {
+                        return sendJson(res, 400, { error: 'Update the extension to use gap playing windows.' });
+                    }
+                    if (JSON.stringify(nextGap) !== JSON.stringify(gapEntry.normalize(session.config.gapEntry || {}))) {
+                        if (!session.stats.isHalted || session.pendingBetPayload || session.betExecutionClaim || session.lastBetDetails) {
+                            return sendJson(res, 409, { error: 'Stop automation and let the last placed bet settle before changing gap windows.' });
+                        }
+                        gapEntry.configure(session, nextGap, predictionLog);
+                    }
+                }
                 if (cfg.rollover !== undefined) {
                     let rolloverSettings;
                     try { rolloverSettings = betzeroRollover.normalize(cfg.rollover); }
@@ -5572,7 +5587,7 @@ async function handleHttpRequest(req, res) {
                 }
                 // A manual save from the extension replaces a suggested plan, as a website save does;
                 // otherwise the plan kept overriding the stakes just saved.
-                if (!controlResult && cfg.stakes && session.config.suggestionStrategy) delete session.config.suggestionStrategy;
+                if (!controlResult && cfg.manualSave === true && session.config.suggestionStrategy) delete session.config.suggestionStrategy;
                 automationControl.state(session).revision++;
                 enforceSessionLimits(session);
                 persistSessions();
