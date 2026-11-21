@@ -150,7 +150,7 @@ function reason(s, key, target) {
   const cfg = s.config.gapEntry?.[markets[key]];
   if (!cfg?.enabled) return null;
   const st = s.gapEntryState?.[key];
-  if (s.automationControl?.controller !== 'website' || s.config.unifiedMode) return 'Gap entry requires website control and individual mode.';
+  if (s.config.unifiedMode) return 'Gap entry requires individual mode.';
   if (s.config.suggestionStrategy || s.config.shadowMode || s.config.bzRbRollover || s.config.hiloRollover || s.config.tc3Rollover) return 'Gap entry requires manual individual settings without shadow or rollover modes.';
   if (!st || st.policy !== POLICY) return 'Gap entry state is unavailable. Save settings while stopped.';
   if (st.paused) return st.paused;

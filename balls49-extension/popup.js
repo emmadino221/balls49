@@ -72,6 +72,7 @@ function unlockDashboard() {
     
     loadParameters(); 
     loadStats();
+    if (typeof initPlans === 'function') initPlans();
     
     setInterval(() => { 
         loadStats(); 
@@ -223,6 +224,12 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         alert('Turn off Unified mode to use Winning Color with its separate progression.');
         return;
     } 
+    const gapEntry = readGapEntry();
+    if (typeof gapEntry === 'string') {
+        btn.textContent = originalText;
+        alert(gapEntry);
+        return;
+    }
     const bzRbRollover = getToggleValue('bzrb-rollover');
     const hiloRollover = getToggleValue('hilo-rollover');
     const cbCooldown = Math.min(300, Math.max(0, parseInt(document.getElementById('cb-cooldown')?.value, 10) || 0));
@@ -282,7 +289,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
         unifiedMode, bzRbRollover, hiloRollover, cbCooldown, hiloMultiplier, tc1ProfitMode, bet49ProfitMode, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
-        shadowMode, weightedStaking, rollover
+        shadowMode, weightedStaking, rollover, gapEntry, manualSave: true
     };
 
     chrome.storage.sync.set(payload, async () => {

@@ -223,6 +223,46 @@
             </div>
         </div>
 
+        <div class="section" id="gap-section">
+            <div class="section-label">📏 Gap Playing Windows</div>
+            <div class="sniper-settings-heading">
+                <span>Market</span>
+                <span>Loss level / auto gap</span>
+            </div>
+            <div class="sniper-config-list" id="gap-rows"></div>
+            <p class="sniper-help">The loss level measures how far apart that many losses in a row have been. The average gap, rounded up, sets a playing window: every eligible draw in it is played, then the next window opens. Auto picks a better-supported level at each window end. SKIPs use up a draw without a bet. Saved with Save Settings, while automation is stopped. Not with Shadow Mode, the BZ/RB, Hi/Lo or TC3 rollovers, or a suggested plan.</p>
+            <div id="gap-status" class="sniper-help"></div>
+        </div>
+
+        <div class="section" id="strategy-section">
+            <div class="section-label">🧭 Suggested Strategies</div>
+            <div id="strategy-current" class="sniper-help"></div>
+            <div class="grid-3" id="strategy-games" style="margin-bottom: 6px;"></div>
+            <div class="grid-2" style="margin-bottom: 6px;">
+                <select id="strategy-window" title="Draws of history to review">
+                    <option value="50">Last 50 draws</option><option value="100" selected>Last 100 draws</option><option value="200">Last 200 draws</option><option value="500">Last 500 draws</option><option value="1000">Last 1000 draws</option>
+                </select>
+                <select id="strategy-stake-mode" title="How the base stake is set">
+                    <option value="capital">From my capital</option><option value="base">My base stake</option>
+                </select>
+                <input type="number" id="strategy-amount" min="50" step="1" placeholder="Capital (₦)">
+                <select id="strategy-risk" title="Suggested risk budget">
+                    <option value="off">Risk budget: Off</option><option value="low">Low (10%)</option><option value="medium">Medium (25%)</option><option value="high">High (50%)</option>
+                </select>
+                <select id="strategy-bet49-profit" title="Bet49 profit">
+                    <option value="fixed">Bet49: same profit</option><option value="accumulating">Bet49: accumulating</option>
+                </select>
+            </div>
+            <label class="check-wrap"><input type="checkbox" id="strategy-auto"> Update rules after a settled recovery win</label>
+            <label class="check-wrap"><input type="checkbox" id="strategy-warn-only"> Warn only at the risk amount (bypasses stop loss and limits)</label>
+            <div class="grid-2" style="margin-bottom: 6px;">
+                <button id="strategy-preview-btn" class="btn-outline" type="button">Preview plan</button>
+                <button id="strategy-apply-btn" class="btn-outline" type="button" disabled>Save this plan</button>
+            </div>
+            <div id="strategy-preview" class="sniper-help"></div>
+            <p id="strategy-error" class="sniper-help" role="alert" style="display:none; color: var(--accent-red);"></p>
+        </div>
+
         <div class="section">
             <div class="section-label" style="color: var(--accent-blue);">🛰️ Live Telemetry</div>
             <div class="grid-3">
@@ -273,5 +313,6 @@
 <script src="tc1-staking.js"></script>
 <script src="bet49-staking.js"></script>
 <script src="popup.js"></script>
+    <script src="popup-plans.js"></script>
 </body>
 </html>

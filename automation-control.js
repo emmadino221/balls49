@@ -62,7 +62,7 @@ function command(s, cfg, busy, records = []) {
   if (c.controller === 'website') { if (cfg.running === false) { stop(s); c.revision++; return { done: true }; } throw fail('Website controls this session. Stop or switch back to extension control first.'); }
   if (Object.keys(cfg).some(key => key !== 'running' && key !== 'revision')) {
    const pick = key => cfg[key] !== undefined ? cfg[key] : s.config[key];
-   const problem = conflict({ gapEntry: s.config.gapEntry, shadowMode: pick('shadowMode'), cbMaxLosses: pick('cbMaxLosses'), cbCooldown: pick('cbCooldown'),
+   const problem = conflict({ gapEntry: cfg.gapEntry !== undefined ? gapEntry.normalize(cfg.gapEntry) : s.config.gapEntry, shadowMode: pick('shadowMode'), cbMaxLosses: pick('cbMaxLosses'), cbCooldown: pick('cbCooldown'),
     bzRbRollover: pick('bzRbRollover'), hiloRollover: pick('hiloRollover'), tc3Rollover: pick('tc3Rollover'),
     enabledGames: { bet49: cfg.enabledGames?.bet49 !== undefined ? cfg.enabledGames.bet49 === true : !!s.config.enabledGames?.bet49 },
     rollover: cfg.rollover !== undefined ? rollover.normalize(cfg.rollover) : rollover.config(s) });
@@ -74,7 +74,9 @@ function command(s, cfg, busy, records = []) {
  if (action === 'extension') { stop(s); if (s.config.suggestionStrategy) s.config.suggestionStrategy.needsReview = true; c.controller = 'extension'; c.revision++; return { done: true }; }
  if (cfg.revision !== c.revision) throw fail('Settings changed. Refresh the dashboard before continuing.');
  if (action === 'website') { stop(s); c.controller = 'website'; c.revision++; return { done: true }; }
- if (c.controller !== 'website') throw fail('Switch to website control first.');
+ // Strategy plans may come from the extension while it is in control (each screen only offers
+ // them while it is in control); start and save remain website-control actions.
+ if (c.controller !== 'website' && !['strategy-preview', 'strategy-apply'].includes(action)) throw fail('Switch to website control first.');
  if (action === 'strategy-preview' || action === 'strategy-apply') {
   if (action === 'strategy-apply' && gapEntry.enabled(s)) throw fail('Disable gap entry in manual Settings before applying automatic suggestions.');
   const plan = strategy.preview(cfg.settings || {}, records);
