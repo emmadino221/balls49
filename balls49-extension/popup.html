@@ -174,7 +174,8 @@
             </div>
             
             <div class="grid-3" style="margin-bottom: 8px;">
-                <label class="check-wrap"><input type="checkbox" id="bzrb-rollover-toggle"> BZ/RB/HL Rollover</label>
+                <label class="check-wrap"><input type="checkbox" id="bzrb-rollover-toggle"> BZ/RB Rollover</label>
+                <label class="check-wrap"><input type="checkbox" id="hilo-rollover-toggle"> Hi/Lo Rollover</label>
                 <label class="check-wrap"><input type="checkbox" id="tc3-rollover-toggle"> TC3 Rollover</label>
             </div>
 
@@ -217,7 +218,8 @@
             </div>
             
             <div class="grid-2" style="margin-bottom: 8px;">
-                <input type="number" id="cb-max-losses" placeholder="CB Max Loss">
+                <input type="number" id="cb-max-losses" placeholder="CB Max Loss" title="Circuit breaker: pause after this many losses in a row (0 = off)">
+                <input type="number" id="cb-cooldown" min="0" max="300" placeholder="CB Cooldown Draws" title="Draws to skip when the circuit breaker trips (not used with Shadow Mode)">
             </div>
         </div>
 

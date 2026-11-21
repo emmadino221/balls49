@@ -20,6 +20,17 @@ function settings(s) {
  return out;
 }
 function view(s) { guard(s); const c = state(s); return { rollover: rollover.view(s), gapEntry: gapEntry.view(s), suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, settledDraws: s.stats.settledDraws || 0, currentLossStreak: s.stats.currentLossStreak || 0, maxLossStreak: s.stats.maxLossStreak || 0, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
+// Settings that cannot work together. Checked on every save, from the website or the extension,
+// so neither can store a combination that silently stops a game or makes two bets cancel out.
+// c: { gapEntry, shadowMode, cbMaxLosses, cbCooldown, bzRbRollover, hiloRollover, tc3Rollover, enabledGames, rollover }
+function conflict(c) {
+ const gap = Object.values(c.gapEntry || {}).some(v => v?.enabled);
+ if (gap && (c.shadowMode || c.bzRbRollover || c.hiloRollover || c.tc3Rollover)) return 'Gap playing windows cannot be used with Shadow mode or the BetZero / Rainbow, High / Low or 3-way rollovers: a game with gap windows would never play. Turn those off, or turn gap windows off.';
+ if (c.shadowMode && !(Number(c.cbMaxLosses) > 0)) return 'Shadow mode needs Circuit-breaker losses above 0: it starts after that many losses in a row, so with 0 it never starts.';
+ if (Number(c.cbMaxLosses) > 0 && !c.shadowMode && !(Number(c.cbCooldown) > 0)) return 'The circuit breaker needs Cooldown draws above 0 (or Shadow mode on): with 0 cooldown draws it never pauses anything.';
+ if (c.enabledGames?.bet49 && c.rollover?.enabled) return 'Bet49 and the BZ Single Rollover bet the same number in opposite ways (Bet49 needs it drawn, the rollover needs it not drawn), so one of them always loses. Turn one of them off.';
+ return null;
+}
 function normalize(input) {
  // Total Color 2-way and Unified are retired. The dashboard sends back whatever settings()
  // returned, including an old enabled flag the page has no control for, so a save switches
@@ -37,8 +48,8 @@ function normalize(input) {
  for (const key of [...Object.values(aliases),'unified']) { const v = input.sniperSettings?.[key] || {}; const step = Number(v.step || 0), resetLosses = Number(v.resetLosses || 0); if (!Number.isInteger(step) || step < 0 || step > 10 || !Number.isInteger(resetLosses) || resetLosses < 0 || resetLosses > 50 || (v.enabled && (!step || !resetLosses))) throw fail('Sniper needs step 1-10 and reset losses 1-50.'); out.sniperSettings[key] = { enabled: v.enabled === true, step, resetLosses }; }
  out.gapEntry = gapEntry.normalize(input.gapEntry);
  if (Object.values(out.gapEntry).some(v => v.enabled && v.policy !== 'CONTINUOUS_GAP_WINDOWS_V2')) throw fail('Review and confirm continuous gap windows on the updated website before saving.');
- if (Object.values(out.gapEntry).some(v => v.enabled) && (out.unifiedMode || out.shadowMode || out.bzRbRollover || out.hiloRollover || out.tc3Rollover)) throw fail('Gap entry requires individual mode without shadow or rollover modes.');
  out.rollover = rollover.normalize(input.rollover || {});
+ const problem = conflict(out); if (problem) throw fail(problem);
  out.summaryModelMarkets = {}; out.summaryModelTargets = {};
  for (const key of ['u4','color','sum','totalColor']) { out.summaryModelMarkets[key] = input.summaryModelMarkets?.[key] === true; out.summaryModelTargets[key] = input.summaryModelTargets?.[key] === 'HOLD' ? 'HOLD' : 'ENTER'; }
  return out;
@@ -51,8 +62,18 @@ function command(s, cfg, busy, records = []) {
   // From the extension. Start/stop needs nothing more; a settings save must be based on the
   // settings it last loaded, so it never overwrites a newer save from the website.
   if (cfg.running === false && Object.keys(cfg).every(key => key === 'running' || key === 'revision')) { stop(s); c.revision++; return { done: true }; }
-  if (Object.keys(cfg).some(key => key !== 'running' && key !== 'revision') && Number(cfg.revision) !== c.revision)
+  const saving = Object.keys(cfg).some(key => key !== 'running' && key !== 'revision');
+  if (saving && Number(cfg.revision) !== c.revision)
    throw fail('These settings were changed on the website since the extension loaded them. The latest settings are now shown: make your change again and save.');
+  if (saving) {
+   // The same check as a website save, on the settings as they would be after this save.
+   const pick = key => cfg[key] !== undefined ? cfg[key] : s.config[key];
+   const problem = conflict({ gapEntry: s.config.gapEntry, shadowMode: pick('shadowMode'), cbMaxLosses: pick('cbMaxLosses'), cbCooldown: pick('cbCooldown'),
+    bzRbRollover: pick('bzRbRollover'), hiloRollover: pick('hiloRollover'), tc3Rollover: pick('tc3Rollover'),
+    enabledGames: { bet49: cfg.enabledGames?.bet49 !== undefined ? cfg.enabledGames.bet49 === true : !!s.config.enabledGames?.bet49 },
+    rollover: cfg.rollover !== undefined ? rollover.normalize(cfg.rollover) : rollover.config(s) });
+   if (problem) throw fail(problem);
+  }
   return null;
  }
  if (action === 'stop') { stop(s); c.revision++; return { done: true }; }
@@ -93,4 +114,4 @@ function settle(s, record) {
   else game.result = record.result[game.game] || 'UNKNOWN';
  }
 }
-module.exports = { state, stop, guard, heartbeat, view, settings, command, record, settle };
+module.exports = { state, stop, guard, heartbeat, view, settings, command, record, settle, conflict };

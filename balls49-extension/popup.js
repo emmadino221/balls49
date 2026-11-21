@@ -217,6 +217,8 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         return;
     } 
     const bzRbRollover = getToggleValue('bzrb-rollover');
+    const hiloRollover = getToggleValue('hilo-rollover');
+    const cbCooldown = Math.min(300, Math.max(0, parseInt(document.getElementById('cb-cooldown')?.value, 10) || 0));
     const strategyFilters = { u4: 'follow', color: 'follow' };
     const summaryModelMarkets = Object.fromEntries(SUMMARY_MODEL_MARKETS.map(({ id, key }) => ([
         key,
@@ -272,7 +274,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloMultiplier, tc1ProfitMode, bet49ProfitMode, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
+        unifiedMode, bzRbRollover, hiloRollover, cbCooldown, hiloMultiplier, tc1ProfitMode, bet49ProfitMode, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
         shadowMode, weightedStaking, rollover
     };
 
@@ -372,7 +374,7 @@ function loadParameters() {
     chrome.storage.sync.get([
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
-        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode',
+        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloRollover', 'cbCooldown', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode',
         'tc3Rollover', 'tc3RolloverTarget', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking', 'rollover'
     ], (data) => {
         const rollover = data.rollover || {};
@@ -417,6 +419,8 @@ function loadParameters() {
         setCheckState('flat-betting', data.flatBetting);
         setCheckState('unified-mode', data.unifiedMode);
         setCheckState('bzrb-rollover', data.bzRbRollover);
+        setCheckState('hilo-rollover', data.hiloRollover);
+        if (document.getElementById('cb-cooldown')) document.getElementById('cb-cooldown').value = data.cbCooldown ?? 0;
 
         SUMMARY_MODEL_MARKETS.forEach(({ id, key }) => {
             const select = document.getElementById(`summary-model-${id}`);
