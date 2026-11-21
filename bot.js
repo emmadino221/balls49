@@ -1171,7 +1171,7 @@ async function publishPredictionSnapshotOnce() {
             current: buildPublicFeedCurrent(),
             clock: publicClock,
             numberStatistics: labNumberStatistics,
-            labResults: predictionLog.filter(r => r.result?.balls?.length === 6).slice(0, 60).map(r => ({ drawId: Number(r.drawId), balls: r.result.balls })),
+            labResults: recentLabResults(),
             historyUpdates
         };
         const body = JSON.stringify(snapshot);
@@ -2384,6 +2384,21 @@ async function sendPrediction(drawId, drawDate, pred) {
 // A collector request that never answers would hold the tick forever (and with it every
 // prediction), so each request gives up after this long.
 const COLLECTOR_TIMEOUT_MS = 20000;
+// The latest results for the Lab: the collector's stored draws (it keeps collecting while the
+// worker is stopped or stuck) plus the worker's own settled records, which win on any overlap.
+// The Lab needs every one of the last 100 draws for BetZero 49, so a few more than that are sent.
+let collectorRecentDraws = [];
+const LAB_RESULTS_SENT = 150;
+function recentLabResults() {
+    const byId = new Map();
+    for (const draw of collectorRecentDraws) {
+        const balls = String(draw?.dr || '').split(',').map(Number).filter(n => n >= 1 && n <= 49);
+        if (Number.isSafeInteger(Number(draw?.id)) && balls.length === 6) byId.set(Number(draw.id), balls);
+    }
+    for (const record of predictionLog) if (record.result?.balls?.length === 6) byId.set(Number(record.drawId), record.result.balls);
+    return [...byId].sort((a, b) => b[0] - a[0]).slice(0, LAB_RESULTS_SENT).map(([drawId, balls]) => ({ drawId, balls }));
+}
+
 function apiPost(path, body) {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify(Object.assign({ tmp: nowISO() }, body));
@@ -3365,6 +3380,7 @@ async function tick() {
         var drawsData = await apiGet('/draws?settle=' + encodeURIComponent(settlementIds));
         checkDailyHistoryReset();
         var draws = [...(drawsData.draws || []), ...(drawsData.settlementDraws || [])];
+        if (draws.length) collectorRecentDraws = draws;
         bet49Tracker.observe(draws);
 
         if (lastPrediction && lastPrediction.telegramPredictionQueued !== true) {
