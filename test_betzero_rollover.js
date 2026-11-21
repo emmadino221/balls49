@@ -10,7 +10,7 @@ function record(id, number, drawn) {
     return { drawId: String(id), predicted: { bet49: number ? [number] : [] },
         result: { balls, bet49: number ? (balls.includes(number) ? 'WIN' : 'LOSS') : 'SKIP' } };
 }
-function setup(cfg = { enabled: true, baseStake: 100, maxDoublings: 2 }) {
+function setup(cfg = { enabled: true, baseStake: 100, lossSteps: 3 }) {
     const s = { config: { rollover: rollover.normalize(cfg) } };
     const records = Array.from({ length: 39 }, (_, i) => record(i + 1, NUMBER, (i + 1) % 5 === 0));
     rollover.observe(s, records);                           // first look: history is not used to start
@@ -63,7 +63,7 @@ test('a loss restarts at once with double the stake, then back to base after a c
 });
 
 test('losses in a row keep doubling up to the cap, then pause', () => {
-    const { s, play, st } = setup({ enabled: true, baseStake: 100, maxDoublings: 2 });
+    const { s, play, st } = setup({ enabled: true, baseStake: 100, lossSteps: 3 });
     assert.equal(play(41, { drawn: true }).stake, 100);
     assert.equal(play(42, { drawn: true }).stake, 200);
     assert.equal(play(43, { drawn: true }).stake, 400);
@@ -71,7 +71,7 @@ test('losses in a row keep doubling up to the cap, then pause', () => {
     assert.equal(play(44), null);
     assert.equal(st().profit, -700);
     // Saving the same settings again clears the pause; it then waits for a Bet49 win at the base stake.
-    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 100, maxDoublings: 2 }));
+    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 100, lossSteps: 3 }));
     assert.equal(st().phase, 'WAITING'); assert.equal(st().doublings, 0);
 });
 
@@ -96,7 +96,7 @@ test('an unplaced bet ends the run and keeps the doubling level', () => {
 });
 
 test('a Bet49 win already in the history does not start a run; the next one does', () => {
-    const s = { config: { rollover: rollover.normalize({ enabled: true, baseStake: 100, maxDoublings: 2 }) } };
+    const s = { config: { rollover: rollover.normalize({ enabled: true, baseStake: 100, lossSteps: 3 }) } };
     const records = Array.from({ length: 40 }, (_, i) => record(i + 1, NUMBER, (i + 1) % 5 === 0));
     rollover.observe(s, records);                           // draw 40, the newest, was a Bet49 win
     assert.equal(rollover.state(s).armedAt, null);
@@ -108,12 +108,12 @@ test('a Bet49 win already in the history does not start a run; the next one does
 });
 
 test('Bet49 wins while switched off do not start a run once it is switched on', () => {
-    const s = { config: { rollover: rollover.normalize({ enabled: false, baseStake: 100, maxDoublings: 2 }) } };
+    const s = { config: { rollover: rollover.normalize({ enabled: false, baseStake: 100, lossSteps: 3 }) } };
     const records = Array.from({ length: 39 }, (_, i) => record(i + 1, NUMBER, (i + 1) % 5 === 0));
     rollover.observe(s, records);
     records.unshift(record(40, NUMBER, true)); rollover.observe(s, records);
     assert.equal(rollover.state(s).armedAt, null);
-    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 100, maxDoublings: 2 }));
+    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 100, lossSteps: 3 }));
     assert.equal(rollover.decide(s, 41, { bet49Pick: [NUMBER] }, records), null);
 });
 
@@ -126,12 +126,14 @@ test('an old Bet49 win does not start a run after a long stop', () => {
 test('settings are validated and a change starts over', () => {
     assert.throws(() => rollover.normalize({ enabled: true, baseStake: 0 }), /base stake/);
     assert.throws(() => rollover.normalize({ baseStake: 1.5 }), /whole amount/);
-    assert.equal(rollover.normalize({ baseStake: 100, maxDoublings: 20 }).maxDoublings, 20);
-    assert.throws(() => rollover.normalize({ baseStake: 100, maxDoublings: 21 }), /doublings/);
-    assert.deepEqual(rollover.normalize({}), { enabled: false, baseStake: 0, maxDoublings: 3 });
+    assert.equal(rollover.normalize({ baseStake: 100, lossSteps: 20 }).lossSteps, 20);
+    assert.throws(() => rollover.normalize({ baseStake: 100, lossSteps: 21 }), /loss steps/);
+    assert.throws(() => rollover.normalize({ baseStake: 100, lossSteps: 0 }), /loss steps/);
+    assert.deepEqual(rollover.normalize({}), { enabled: false, baseStake: 0, lossSteps: 4 });
+    assert.equal(rollover.normalize({ baseStake: 100, maxDoublings: 2 }).lossSteps, 3);   // old setting
     const { s, play, st } = setup();
     play(41, { drawn: true });
-    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 50, maxDoublings: 2 }));
+    rollover.configure(s, rollover.normalize({ enabled: true, baseStake: 50, lossSteps: 3 }));
     assert.equal(st().doublings, 0); assert.equal(st().phase, 'WAITING');
 });
 
@@ -141,10 +143,10 @@ test('dashboard: save, start with only the rollover, status and activity rows', 
     const s = { config: { initialStakes: {}, maxSteps: {}, enabledGames: {}, gapEntry: {} }, stats: { isHalted: true },
         martingaleState: {}, masterState: { step: 1 }, automationControl: { controller: 'website', revision: 1, executorAt: Date.now(), executorToken: '' } };
     const settings = { stakes: Object.fromEntries(games.map(g => [g, 0])), gameSteps: Object.fromEntries(games.map(g => [g, 0])), enabledGames: {},
-        takeProfit: 0, stopLoss: 0, hiloMultiplier: 2, sniperSettings: {}, gapEntry: {}, rollover: { enabled: true, baseStake: 100, maxDoublings: 3 } };
+        takeProfit: 0, stopLoss: 0, hiloMultiplier: 2, sniperSettings: {}, gapEntry: {}, rollover: { enabled: true, baseStake: 100, lossSteps: 8 } };
     const saved = control.command(s, { dashboardAction: 'save', revision: 1, settings }, false, []);
     assert.equal(saved.config.rollover, undefined);          // applied directly, not via the generic config copy
-    assert.deepEqual(s.config.rollover, { enabled: true, baseStake: 100, maxDoublings: 3 });
+    assert.deepEqual(s.config.rollover, { enabled: true, baseStake: 100, lossSteps: 8 });
     assert.deepEqual(control.settings(s).rollover, s.config.rollover);
     assert.deepEqual(control.command(s, { dashboardAction: 'start', revision: 2 }, false, []), { config: { running: true } });
     assert.throws(() => control.command(s, { dashboardAction: 'save', revision: 3, settings: { ...settings, rollover: { enabled: true, baseStake: 0 } } }, false, []), /base stake/);
@@ -155,4 +157,25 @@ test('dashboard: save, start with only the rollover, status and activity rows', 
     assert.deepEqual(s.automationHistory[0].games, [{ game: 'betzeroSingle', unitStake: 110, stake: 110, selections: [7], result: 'PENDING' }]);
     control.settle(s, { drawId: '41', result: { balls: [1, 2, 3, 4, 5, 6] } });
     assert.equal(s.automationHistory[0].games[0].result, 'WIN');
+});
+
+test('8 loss steps: each loss doubles, and only the 8th loss in a row pauses', () => {
+    const { s, play, st, records } = setup({ enabled: true, baseStake: 100, lossSteps: 8 });
+    let id = 41;
+    for (let step = 1; step <= 8; step++) {
+        const bet = play(id, { drawn: true });               // this step's first bet loses
+        assert.equal(bet.stake, 100 * 2 ** (step - 1), `step ${step} stake`);
+        id++;
+        if (step < 8) {
+            assert.equal(st().phase, 'WAITING', `still playing after ${step} losses`);
+            assert.equal(st().armedAt, id - 1);               // the losing draw was a Bet49 win: next run starts at once
+        }
+    }
+    assert.equal(st().phase, 'PAUSED');
+    assert.equal(rollover.decide(s, id, { bet49Pick: [NUMBER] }, records), null);
+});
+
+test('an old saved doubling limit becomes loss steps', () => {
+    const s = { config: { rollover: { enabled: true, baseStake: 100, maxDoublings: 7 } } };
+    assert.deepEqual(rollover.config(s), { enabled: true, baseStake: 100, lossSteps: 8 });
 });

@@ -5410,7 +5410,7 @@ async function handleHttpRequest(req, res) {
                     try { rolloverSettings = betzeroRollover.normalize(cfg.rollover); }
                     catch (error) { return sendJson(res, 400, { error: error.message }); }
                     const current = betzeroRollover.config(session);
-                    const changed = ['enabled', 'baseStake', 'maxDoublings'].some(key => current[key] !== rolloverSettings[key]);
+                    const changed = ['enabled', 'baseStake', 'lossSteps'].some(key => current[key] !== rolloverSettings[key]);
                     // A change restarts the rollover, so not mid-run while it is playing or a bet is unsettled.
                     const midRun = betzeroRollover.state(session).phase === 'PLAYING' && !session.stats.isHalted && cfg.running !== false;
                     if (changed && (midRun || session.betExecutionClaim || session.lastBetDetails)) {
