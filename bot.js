@@ -284,9 +284,18 @@ function getSiteUsers() {
 }
 const siteEmail = createSiteEmail(siteDb, { apiKey: RESEND_API_KEY, from: SITE_EMAIL_FROM, publicUrl: SITE_PUBLIC_URL });
 const automationReports = createAutomationReports(siteDb, automationBridge, getSiteUser, siteEmail);
+// Large JSON (the BetZero Lab sends ~600 KB per refresh) is gzipped when the browser accepts it:
+// about ten times smaller, so slow connections finish before the page's refresh timeout.
 function sendJson(res, status, data) {
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify(data));
+    const body = JSON.stringify(data);
+    const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' };
+    if (body.length >= 8192 && /gzip/.test(String(res.req?.headers?.['accept-encoding'] || ''))) {
+        const zipped = require('node:zlib').gzipSync(body, { level: 6 });
+        res.writeHead(status, { ...headers, 'Content-Encoding': 'gzip', 'Content-Length': zipped.length });
+        return res.end(zipped);
+    }
+    res.writeHead(status, headers);
+    res.end(body);
 }
 function readRequestJson(req) {
     return new Promise((resolve, reject) => {
