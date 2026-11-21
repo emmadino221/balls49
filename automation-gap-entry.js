@@ -39,7 +39,8 @@ function seed(records, market, threshold) {
     const id = Number(r.drawId), outcome = r.result?.[market];
     if (!Number.isSafeInteger(id) || id <= lastSeen) continue;
     if (!['WIN','LOSS','SKIP'].includes(outcome)) break;
-    if (lastSeen && id !== lastSeen+1) history = sample();
+    // A draw missing from the history (worker restart, a skipped tick) counts as a SKIP: it
+    // changes nothing, so the gaps measured so far are kept.
     advance(history, id, outcome, threshold); lastSeen = id;
   }
   return { history, lastSeen };
@@ -113,6 +114,8 @@ function observe(s, records) {
     const cfg = s.config.gapEntry?.[market];
     if (!cfg?.enabled) continue;
     const st = s.gapEntryState[key];
+    // Older versions paused windows for good when a draw was missing; missing draws now count as SKIPs.
+    if (st?.paused && /^Missing draw history/.test(st.paused)) delete st.paused;
     if (!st || st.paused || st.policy !== POLICY) continue;
     st.activeLevel ||= cfg.losses;
     if (cfg.autoSelect && !st.candidates) seedCandidates(st,ordered,market);
@@ -124,7 +127,8 @@ function observe(s, records) {
         continue;
       }
       if (!['WIN','LOSS','SKIP'].includes(result)) break;
-      if (st.lastSeen && id !== st.lastSeen + 1) { st.paused = 'Missing draw history. Review and reset the stopped session before continuing windows.'; break; }
+      // A missing draw (worker restart, a skipped tick) counts as a SKIP: no bet, no change to the
+      // loss run or gaps, but it still uses up a draw of the current window.
       st.lastSeen = id; st.outcomes[id] = result;
       for (const seen of Object.keys(st.outcomes)) if (Number(seen) < id - 200) delete st.outcomes[seen];
       if (cfg.autoSelect) {

@@ -33,7 +33,7 @@ export default function GapSuggestion({records,market,label,loading,level,snapsh
   try {
    const {control:c}=await apiRequest('/account/automation');
    if(!c)throw new Error('Link your extension on Automation first.');
-   if(c.running||c.busy)throw new Error('Stop automation and wait for outstanding execution/recovery to finish.');
+   if(c.controller!=='website'||c.running||c.busy)throw new Error('Use website control, stop automation, and wait for outstanding execution/recovery to finish.');
    const s=c.settings;
    if(c.suggestionStrategy||s.unifiedMode||s.shadowMode||s.bzRbRollover||s.hiloRollover||s.tc3Rollover)throw new Error('Review manual individual settings on Automation first. Automatic suggestions, legacy combined mode, shadow and rollover are incompatible.');
    if(!s.enabledGames?.[market]||!(s.stakes?.[market]>0))throw new Error('Enable this game and save its stake on Automation first.');

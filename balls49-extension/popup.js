@@ -6,9 +6,7 @@ const SUMMARY_MODEL_MARKETS = [
     { id: 'hilo', key: 'sum' },
     { id: 'totalColor', key: 'totalColor' }
 ];
-let CLIENT_ID = "";
-// Revision of the saved setup the form was loaded from; a save is refused if it is out of date.
-let serverRevision = null;
+let CLIENT_ID = ""; 
 let LICENSE_KEY = ""; 
 const SERVER_URL = "http://localhost:3001"; 
 
@@ -62,20 +60,6 @@ async function verifyBotConnection() {
     }
 }
 
-// The saved setup lives on the bot and is shared with the website: load it into Chrome before
-// showing the form, so the popup always shows what the website last saved (and vice versa).
-async function pullServerSettings() {
-    try {
-        const response = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboard=1`);
-        if (!response.ok) return false;
-        const control = (await response.json()).control;
-        if (!control?.settings) return false;
-        await chrome.storage.sync.set({ ...control.settings, running: control.running });
-        serverRevision = control.revision;
-        return true;
-    } catch (error) { return false; }
-}
-
 function showLoginScreen(errorMsg = "") {
     if (document.getElementById('main-content')) document.getElementById('main-content').style.display = 'none';
     if (document.getElementById('auth-overlay')) document.getElementById('auth-overlay').style.display = 'flex';
@@ -86,7 +70,7 @@ function unlockDashboard() {
     if (document.getElementById('auth-overlay')) document.getElementById('auth-overlay').style.display = 'none';
     if (document.getElementById('main-content')) document.getElementById('main-content').style.display = 'block';
     
-    pullServerSettings().finally(loadParameters);
+    loadParameters(); 
     loadStats();
     
     setInterval(() => { 
@@ -148,7 +132,8 @@ document.getElementById('toggle-btn')?.addEventListener('click', async () => {
         if (!statusResponse.ok) throw new Error('Cannot reach the bot.');
         const status = await statusResponse.json();
         const data = await chrome.storage.sync.get(['running']);
-        const running = status.control ? status.control.running : data.running;
+        const running = status.control?.controller === 'website' ? status.control.running : data.running;
+        if (status.control?.controller === 'website' && !running) throw new Error('Use Website Start, or switch to extension control below.');
         const response = await extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ running: !running }) });
         const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Command failed.');
         await chrome.storage.sync.set({ running: !running }); setToggleBtn(!running);
@@ -156,6 +141,21 @@ document.getElementById('toggle-btn')?.addEventListener('click', async () => {
     finally { button.disabled = false; }
 });
 
+const controlButton = document.createElement('button');
+controlButton.type = 'button'; controlButton.textContent = 'Use extension control (pauses automation)';
+controlButton.style.cssText = 'width:100%;padding:10px;margin:8px 0;background:#182923;color:#c8f5df;border:1px solid #315342;border-radius:8px;cursor:pointer';
+document.getElementById('toggle-btn')?.parentElement?.after(controlButton);
+controlButton.addEventListener('click', async () => {
+    controlButton.disabled = true;
+    try {
+        const response = await extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({dashboardAction:'extension'}) });
+        const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Command failed.');
+        const statusResponse = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboard=1`);
+        if (!statusResponse.ok) throw new Error('Switched and stopped. Reopen the extension to refresh settings.');
+        const status = await statusResponse.json();
+        await chrome.storage.sync.set({...status.control.settings, running:false}); window.location.reload();
+    } catch(error) { alert(error.message); } finally { controlButton.disabled = false; }
+});
 
 document.getElementById('sound-btn')?.addEventListener('click', () => {
     chrome.storage.sync.get(['soundEnabled'], ({ soundEnabled }) => {
@@ -164,9 +164,16 @@ document.getElementById('sound-btn')?.addEventListener('click', () => {
     });
 });
 
-// The website and the extension share one saved setup, so the popup may always save; the bot
-// refuses the save only if the website saved newer settings since this form was loaded.
 document.getElementById('save-btn')?.addEventListener('click', async () => {
+    try {
+        const response = await extensionFetch(`${SERVER_URL}/stats?dashboard=1`);
+        if (!response.ok) throw new Error('Cannot confirm the active controller. Reconnect before saving.');
+        const status = await response.json();
+        if (status.control?.controller === 'website') {
+            alert('Save settings on the website, or select Use extension control first.');
+            return;
+        }
+    } catch (error) { alert(error.message); return; }
     if (!LICENSE_KEY) return;
     const btn = document.getElementById('save-btn');
     const originalText = btn.textContent;
@@ -297,21 +304,13 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         try {
             const response = await extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...payload, revision: serverRevision })
+                body: JSON.stringify(payload)
             });
             const result = await response.json().catch(() => ({}));
-            if (response.status === 409 && /changed on the website/.test(result.error || '')) {
-                // The website saved newer settings: show those instead of overwriting them.
-                await pullServerSettings(); loadParameters();
-                btn.textContent = originalText;
-                setFeedback(result.error, false);
-                return;
-            }
             if (!response.ok || result.ok !== true) {
                 throw new Error(result.error || `HTTP ${response.status}`);
             }
-            await pullServerSettings();
-            setFeedback('Saved. The website now shows these settings too.', true);
+            setFeedback('Settings saved in Chrome and accepted by the bot.', true);
         } catch (error) {
             btn.textContent = 'Bot sync failed';
             const detail = error instanceof TypeError
