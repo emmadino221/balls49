@@ -112,3 +112,22 @@ test('a Lab test run replays BetZero 49 over the history', t => {
     assert.equal(predictions, expected);
     assert.ok(predictions > 100);
 });
+
+test('the main BetZero prediction gets exactly the Lab BetZero 49 numbers', t => {
+    const { predictBetZeroFromLab } = require('./betzero');
+    const lab = openLab(t, 1000);
+    const history = draws(150, 3, 1001);
+    const records = history.map((d, i) => ({ drawId: String(d.id), settledAt: new Date(1001 + i).toISOString(), result: { balls: d.balls } }));
+    lab.ingestSnapshot({ current: { drawId: '1151' }, clock: { drawId: '1151', timeLeftSeconds: 100, observedAt: 1200 }, historyUpdates: records, snapshotAt: 1200 });
+    const labRow = lab.listForwardPredictions({ strategyId: bz49.ID })[0];
+    const handed = lab.mainBetzeroPrediction(1151);
+    assert.equal(handed.strategyId, bz49.ID);
+    assert.deepEqual(handed.selections, labRow.selections);
+    const main = predictBetZeroFromLab(handed, 1151, Date.parse(handed.predictedAt) + 1);
+    if (labRow.status === 'PENDING') {
+        assert.equal(main.status, 'ACTIVE');
+        assert.deepEqual(main.numbers, labRow.selections);
+        assert.equal(main.strategy, 'LAB_BETZERO_49_V1');
+    } else assert.equal(main.status, 'SKIP');
+    assert.equal(lab.mainBetzeroPrediction(1152), null);                          // nothing for a later draw yet
+});

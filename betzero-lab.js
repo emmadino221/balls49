@@ -859,21 +859,20 @@ function createBetZeroLab(db, options = {}) {
             pending: Number.isSafeInteger(state.pending) ? state.pending : null,
             afterTargetId: Number(state.afterTargetId) || 0 };
     }
+    // The main BetZero prediction plays the Lab's BetZero 49 numbers for the same draw.
     function mainBetzeroPrediction(targetDrawId) {
         const target = Number(targetDrawId);
         if (!Number.isSafeInteger(target) || target <= 1) return null;
-        const strategy = strategies().find(s => s.id === transitions.ZERO && s.version === '3.0.0');
+        const strategy = strategies().find(s => s.id === bz49.ID && s.version === bz49.VERSION);
         const row = db.prepare(`SELECT * FROM betzero_lab_forward_predictions
             WHERE strategy_id=? AND strategy_version=? AND target_draw_id=?`)
-            .get(transitions.ZERO, '3.0.0', String(target));
+            .get(bz49.ID, bz49.VERSION, String(target));
         if (!row) return null;
         const conditions = JSON.parse(row.conditions_json);
-        const sample = statisticsStore.read(target - 1);
         return { predictionId: row.prediction_id, strategyId: row.strategy_id, version: row.strategy_version,
             enabled: Boolean(strategy?.enabled), sourceDrawId: row.source_draw_id,
             targetDrawId: row.target_draw_id, predictedAt: row.predicted_at,
-            status: sample?.conflicted ? 'SKIP' : row.status,
-            reason: sample?.conflicted ? 'CONFLICTING_STATISTICS_SNAPSHOTS' : conditions.reason,
+            status: row.status, reason: conditions.reason,
             selections: JSON.parse(row.selections_json), deadline: conditions.timing?.expectedTargetAt };
     }
     function rememberMinmaxResult(record, observedAt) {

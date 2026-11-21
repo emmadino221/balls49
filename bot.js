@@ -1587,7 +1587,7 @@ function evaluateMLEntryConfidence(key, currentStep, predData, liveStreaks) {
             confidenceScore -= (currentLossStreak * 0.08);
         }
 
-        if (key === 'u4' && predData.brainData.betzero && !['bet49_first_four', 'SMALLEST_ADD10_STEP10_FOUR_V1', 'LAB_STREAK_ONE_EXACT_FOUR_V1'].includes(predData.brainData.betzero.strategy)) {
+        if (key === 'u4' && predData.brainData.betzero && !['bet49_first_four', 'SMALLEST_ADD10_STEP10_FOUR_V1', 'LAB_STREAK_ONE_EXACT_FOUR_V1', 'LAB_BETZERO_49_V1'].includes(predData.brainData.betzero.strategy)) {
             let poolSize = predData.brainData.betzero.poolSize || 0;
             if (poolSize < 12) confidenceScore -= 0.20; 
             else if (poolSize >= 15) confidenceScore += 0.15; 
