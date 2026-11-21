@@ -43,6 +43,8 @@ function normalize(input) {
  for (const key of ['u4','color','sum','totalColor']) { out.summaryModelMarkets[key] = input.summaryModelMarkets?.[key] === true; out.summaryModelTargets[key] = input.summaryModelTargets?.[key] === 'HOLD' ? 'HOLD' : 'ENTER'; }
  return out;
 }
+// A placed bet the bot is still waiting on (or a bet slip being confirmed).
+function unsettled(s) { return Boolean(s.pendingBetPayload || s.betExecutionClaim || s.lastBetDetails || s.failedBetRecovery || s.balanceVerification?.pendingWinSync); }
 function command(s, cfg, busy, records = []) {
  const c = state(s), action = cfg.dashboardAction;
  if (!action) {
@@ -67,7 +69,10 @@ function command(s, cfg, busy, records = []) {
   return { done: true };
  }
  if (action === 'start') { if (s.config.suggestionStrategy?.needsReview) throw fail('Review and reapply the strategy after resetting execution.'); if (Date.now() - c.executorAt > 10000) throw fail('Open Bet9ja with the updated extension connected first.'); if (s.betExecutionClaim || s.lastBetDetails) throw fail('Wait for the placed bet to settle.'); if (!rollover.enabled(s) && !Object.keys(aliases).some(k => s.config.enabledGames[k] && s.config.initialStakes[k] > 0)) throw fail('Enable a game or the rollover and save a stake first.'); c.revision++; return { config: { running: true } }; }
- if (action === 'save') { if (!s.stats.isHalted || busy) throw fail('Stop and finish the active recovery sequence before changing settings. Progression is preserved.'); const config = normalize(cfg.settings || {}); if (strategy.recovery(s)) throw fail('Finish the suggested recovery before changing settings.'); gapEntry.configure(s, config.gapEntry, records); rollover.configure(s, config.rollover); delete config.rollover; delete s.config.suggestionStrategy; c.revision++; return { config: { ...config, running: false } }; }
+ // Saving needs automation stopped and no placed bet still waiting to settle. A game partway
+ // through a recovery (step 2 and up) does not block it: that can only finish by playing, so
+ // blocking it meant settings could never be saved without resetting. Progression is kept.
+ if (action === 'save') { if (!s.stats.isHalted || unsettled(s)) throw fail('Stop automation and let the last placed bet settle before changing settings. Progression is preserved.'); const config = normalize(cfg.settings || {}); if (strategy.recovery(s)) throw fail('Finish the suggested recovery before changing settings.'); gapEntry.configure(s, config.gapEntry, records); rollover.configure(s, config.rollover); delete config.rollover; delete s.config.suggestionStrategy; c.revision++; return { config: { ...config, running: false } }; }
  throw fail('Unknown dashboard action.');
 }
 function record(s, drawId, details, prediction) {
