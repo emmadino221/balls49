@@ -4011,7 +4011,7 @@ async function handleHttpRequest(req, res) {
                         snapshotAt,
                         numberStatistics: snapshot.numberStatistics,
                         // Validated again inside the Lab; bounded here so a bad feed cannot grow the work.
-                        labResults: Array.isArray(snapshot.labResults) ? snapshot.labResults.slice(-60) : []
+                        labResults: Array.isArray(snapshot.labResults) ? snapshot.labResults.slice(-200) : []
                     });
                 } catch (error) {
                     console.error('[BetZeroLab] Could not process a prediction snapshot; the production feed was stored.', error);

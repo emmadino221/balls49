@@ -22,7 +22,7 @@ const RANDOM_REPETITIONS = 64;
 const ALERT_THRESHOLDS = [3, 5, 7, 10];
 // A MIN/MAX prediction whose result is still missing this long after its draw stops blocking new ones.
 const MINMAX_RESULT_OVERDUE_MS = 15 * 60 * 1000;
-const MAX_LAB_RESULTS = 60;
+const MAX_LAB_RESULTS = 200;
 function describeEvaluation(data) {
     return data.evaluationMode ? data : { ...data, evaluationMode: 'LEGACY_EXPLORATORY',
         methodology: 'Legacy exploratory historical simulation. Its final_test segment is a reused holdout, not an enforced untouched final test.' };
