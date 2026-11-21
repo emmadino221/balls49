@@ -6,7 +6,9 @@ const { getTotalColorOutcome } = require('./total-color');
 const { presetSessionBusy } = require('./preset-history');
 const aliases = { u4: 'betzero', bet49: 'bet49', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor', totalColor1: 'totalColor1' };
 const fail = message => Object.assign(new Error(message), { status: 409 });
-function state(s) { return s.automationControl ||= { controller: 'extension', revision: 0, executorAt: 0, executorToken: '' }; }
+// The website and the extension share one saved setup. The session always runs with the
+// website's safeguards (one connected executor, stop when it disconnects); either side may save.
+function state(s) { const c = s.automationControl ||= { controller: 'website', revision: 0, executorAt: 0, executorToken: '' }; c.controller = 'website'; return c; }
 function stop(s, reason = 'Stopped by user') { s.stats.isHalted = true; s.stats.haltReason = reason; if (!s.betExecutionClaim) s.pendingBetPayload = null; s.failedBetRecovery = null; }
 function guard(s) { const c = state(s); if (c.controller === 'website' && !s.stats.isHalted && Date.now() - c.executorAt > 15000) stop(s, 'Extension connection expired. Reconnect Bet9ja, then start again.'); }
 function heartbeat(s, token) { const c = state(s); if (/^[a-f0-9]{32}$/.test(token) && (!c.executorToken || c.executorToken === token || Date.now() - c.executorAt > 15000)) { c.executorToken = token; c.executorAt = Date.now(); } }
@@ -43,12 +45,18 @@ function normalize(input) {
 }
 function command(s, cfg, busy, records = []) {
  const c = state(s), action = cfg.dashboardAction;
- if (!action) { if (c.controller === 'website') { if (cfg.running === false) { stop(s); c.revision++; return { done: true }; } throw fail('Website controls this session. Stop or switch back to extension control first.'); } return null; }
+ if (!action) {
+  // From the extension. Start/stop needs nothing more; a settings save must be based on the
+  // settings it last loaded, so it never overwrites a newer save from the website.
+  if (cfg.running === false && Object.keys(cfg).every(key => key === 'running' || key === 'revision')) { stop(s); c.revision++; return { done: true }; }
+  if (Object.keys(cfg).some(key => key !== 'running' && key !== 'revision') && Number(cfg.revision) !== c.revision)
+   throw fail('These settings were changed on the website since the extension loaded them. The latest settings are now shown: make your change again and save.');
+  return null;
+ }
  if (action === 'stop') { stop(s); c.revision++; return { done: true }; }
- if (action === 'extension') { stop(s); if (s.config.suggestionStrategy) s.config.suggestionStrategy.needsReview = true; c.controller = 'extension'; c.revision++; return { done: true }; }
+ // Old pages and extensions still send these; there is only one shared control now.
+ if (action === 'extension' || action === 'website') return { done: true };
  if (cfg.revision !== c.revision) throw fail('Settings changed. Refresh the dashboard before continuing.');
- if (action === 'website') { stop(s); c.controller = 'website'; c.revision++; return { done: true }; }
- if (c.controller !== 'website') throw fail('Switch to website control first.');
  if (action === 'strategy-preview' || action === 'strategy-apply') {
   if (action === 'strategy-apply' && gapEntry.enabled(s)) throw fail('Disable gap entry in manual Settings before applying automatic suggestions.');
   const plan = strategy.preview(cfg.settings || {}, records);

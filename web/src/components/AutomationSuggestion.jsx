@@ -9,15 +9,14 @@ function RiskBudgetSummary({ plan }) {
   if (!plan.request.capitalMode || !level || plan.request.riskLevel === 'off' || !plan.request.riskLevel) return null;
   return <p><strong>Suggested risk budget: {level.label} ({level.percent}%) — {money(plan.sizingBudget)}</strong><br />This sizes the complete sequence across your selected games. The base stake is shown separately. {plan.request.riskWarningOnly ? 'Reaching this amount triggers a warning; automation continues.' : 'Your existing stop settings still apply.'}</p>;
 }
-export default function AutomationSuggestion({ control, disabled, onSaved, onUseWebsite }) {
+export default function AutomationSuggestion({ control, disabled, onSaved }) {
   const query = new URLSearchParams(window.location.search);
   const saved = control.suggestionStrategy;
   const [input,setInput] = useState(() => saved?.request || { games: [markets.some(([id]) => id === query.get('suggestion')) ? query.get('suggestion') : 'betzero'], window: Number(query.get('window')) || 100, base: Math.max(50, Number(query.get('base')) || 50), capitalMode: true, capital: '', autoUpdate: false, bet49ProfitMode: query.get('bet49ProfitMode') === 'accumulating' ? 'accumulating' : 'fixed' });
   const [preview,setPreview] = useState(null), [error,setError] = useState(''), [loading,setLoading] = useState(false);
-  const locked = disabled || loading || control.controller !== 'website' || control.running || control.busy;
+  const locked = disabled || loading || control.running || control.busy;
   // Say exactly what blocks editing; resetting the session does not change who is in control.
-  const lockReason = control.controller !== 'website' ? 'The extension controls this session, so plans can only be edited from the extension. Switch to website control to edit them here.'
-    : control.running ? 'Automation is running. Stop it to edit plans; your progression is kept.'
+  const lockReason = control.running ? 'Automation is running. Stop it to edit plans; your progression is kept.'
     : control.busy ? 'A placed bet or a recovery sequence is still in progress. Plans can be edited once it settles.'
     : disabled ? 'Waiting for a fresh connection to your extension.' : '';
   function change(key,value) { setInput(s => ({...s,[key]:value,...(key === 'capitalMode' && !value ? {riskLevel:'off'} : {})})); setPreview(null); setError(''); }
@@ -36,7 +35,7 @@ export default function AutomationSuggestion({ control, disabled, onSaved, onUse
   return <section className="content-card automation-suggestion">
     <span className="overline">FOR AUTOMATION MEMBERS</span><h2>Suggested strategies</h2>
     <p>Choose one or more games. Preview the complete entry, pause and recovery plan before saving.</p>
-    {locked && lockReason && <div className="automation-warning" role="status"><p>{lockReason}</p>{control.controller !== 'website' && onUseWebsite && <button type="button" className="btn btn-primary" disabled={disabled} onClick={onUseWebsite}>Use website control</button>}</div>}
+    {locked && lockReason && <div className="automation-warning" role="status"><p>{lockReason}</p></div>}
     {saved && <div className="automation-notice" role="status"><strong>{saved.request.autoUpdate?'Auto strategy: ON':'Auto strategy: OFF'}</strong><p>{saved.message}</p>{saved.capital !== null && <p>Allocated capital: {money(saved.capital)} · Available after settled bets: {money(saved.available)}</p>}<p>{saved.plans.map(p => `${p.name}: ${money(p.base)} per selection${p.key === 'bet49' ? ` (${saved.request.bet49ProfitMode === 'accumulating' ? 'accumulating' : 'same'} profit)` : ''}`).join(' · ')}</p>{saved.needsReview && <p>Review and reapply a plan before starting.</p>}</div>}
     {saved && <RiskBudgetSummary plan={saved} />}
     {saved?.request.riskWarningOnly && saved.risk && <p className="automation-warning" role="status">{saved.risk.warnedAt ? 'Risk threshold reached. Automation continues. ' : 'Warning-only risk tracking. '}Net settled loss since this suggestion: {money(saved.risk.loss)} / {money(saved.risk.threshold)}. The counter resets only when a different setup is applied.</p>}

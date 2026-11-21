@@ -1667,33 +1667,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function startApp() {
     CLIENT_ID = await initializeClient();
     
-    if (LICENSE_KEY) {
-        chrome.storage.sync.get([
-            'stakes', 'gameSteps', 'takeProfit', 'stopLoss', 
-            'enabledGames', 'schedule', 'telegramChatId', 'step1Only', 
-            'hiloStrategy', 'flatBetting', 'sniperSettings', 'sniperMode', 'sniperStep', 'sniperResetLosses',
-            'dynamicStakePercent', 'cbMaxLosses', 'cbCooldown',
-            'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
-        ], (data) => {
-            if (data) {
-                data.unifiedMode = false;
-                // Per-game sniper settings replace the old shared fields. Sending the old fields
-                // made the bot copy one shared profile over every game on each page load.
-                if (data.sniperSettings) { delete data.sniperMode; delete data.sniperStep; delete data.sniperResetLosses; }
-                if(data.enabledGames) data.enabledGames.totalColor2 = false;
-                if(data.stakes) data.stakes.totalColor2 = 0;
-                // Strategy selection is automatic; retire any saved specific-strategy gate.
-                data.strategyFilters = { u4: 'follow', color: 'follow' };
-                setSelectedGameFromSettings(data);
-                
-                extensionFetch(`${SERVER_URL}/config?clientId=${CLIENT_ID}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                }).catch(() => {});
-            }
-        });
-    }
+    // Settings are not pushed on page load: the bot holds the one saved setup (from the website
+    // or the popup), and pollOverlayData copies it into Chrome whenever it changes.
 
     injectLiveOverlay();
     pollOverlayData();
