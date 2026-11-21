@@ -140,7 +140,7 @@
             <div class="section-label">🔁 BZ Single Rollover (BetZero 1.10)</div>
             <div class="grid-2" style="margin-bottom: 4px;">
                 <input type="number" id="stake-rollover" min="0" max="50000" step="1" placeholder="Rollover base stake" title="Starting stake of each rollover run">
-                <input type="number" id="rollover-doublings" min="0" max="20" step="1" placeholder="Doublings (0-20)" title="Each lost run doubles the next starting stake; after this many doublings a loss pauses the rollover">
+                <input type="number" id="rollover-steps" min="1" max="20" step="1" placeholder="Loss steps (1-20)" title="Each lost run moves to the next step and doubles the starting stake. Only a loss at the last step pauses the rollover.">
             </div>
             <small id="rollover-status" style="display:block;margin-bottom:10px;color:var(--text-muted);">Starts after a Bet49 win and rolls each return over for the Bet49 average gap. Change it only while stopped.</small>
             

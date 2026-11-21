@@ -268,7 +268,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const rollover = {
         enabled: !!document.getElementById('btn-rollover')?.classList.contains('active'),
         baseStake: Math.min(50000, Math.max(0, parseInt(document.getElementById('stake-rollover')?.value, 10) || 0)),
-        maxDoublings: Math.min(20, Math.max(0, parseInt(document.getElementById('rollover-doublings')?.value, 10) || 0))
+        lossSteps: Math.min(20, Math.max(1, parseInt(document.getElementById('rollover-steps')?.value, 10) || 4))
     };
     if (rollover.enabled && rollover.baseStake < 1) {
         btn.textContent = originalText;
@@ -377,7 +377,7 @@ function loadParameters() {
         const rollover = data.rollover || {};
         document.getElementById('btn-rollover')?.classList.toggle('active', rollover.enabled === true);
         if (document.getElementById('stake-rollover')) document.getElementById('stake-rollover').value = rollover.baseStake || '';
-        if (document.getElementById('rollover-doublings')) document.getElementById('rollover-doublings').value = rollover.maxDoublings ?? 3;
+        if (document.getElementById('rollover-steps')) document.getElementById('rollover-steps').value = rollover.lossSteps ?? (rollover.maxDoublings != null ? Number(rollover.maxDoublings) + 1 : 4);
         showRolloverStatus();
         let enabledGames = data.enabledGames || { betzero: false, bet49: false, rainbow: false, totalColor: false, totalColor2: false, hilo: false };
         const stakes = data.stakes || { betzero: '', bet49: '', rainbow: '', totalColor: '', totalColor2: '', hilo: '' };

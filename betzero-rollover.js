@@ -5,23 +5,29 @@
 // level 1 (rounded up). Every win rolls the whole return into the next draw until the length is
 // reached; then the run is collected and the automation waits for the next Bet49 win.
 // A loss (the number is drawn, which is also a Bet49 win) starts a new run at once with the
-// starting stake doubled; after maxDoublings losses in a row the rollover pauses.
+// starting stake doubled. lossSteps is how many runs in a row may lose: step 1 plays the base
+// stake, step N plays base x 2^(N-1); a loss at the last step pauses the rollover.
 // Draws where Bet49 has no prediction are not bet but count toward the length.
 const { seed } = require('./automation-gap-entry');
 const { bet49Numbers } = require('./bet49');
 
-const ODDS = 1.1, LEVEL = 1, STALE_ARM = 3, MAX_BASE = 50000, MAX_DOUBLINGS = 20;
+const ODDS = 1.1, LEVEL = 1, STALE_ARM = 3, MAX_BASE = 50000, MAX_STEPS = 20, DEFAULT_STEPS = 4;
 const fail = message => Object.assign(new Error(message), { status: 409 });
 
 function normalize(input = {}) {
-    const baseStake = Number(input.baseStake ?? 0), maxDoublings = Number(input.maxDoublings ?? 3);
+    // maxDoublings is the old setting (doublings before a pause), which is lossSteps - 1.
+    const baseStake = Number(input.baseStake ?? 0), lossSteps = Number(input.lossSteps ?? (input.maxDoublings != null ? Number(input.maxDoublings) + 1 : DEFAULT_STEPS));
     if (!Number.isSafeInteger(baseStake) || baseStake < 0 || baseStake > MAX_BASE) throw fail(`Rollover base stake must be a whole amount from 0 to ${MAX_BASE}.`);
-    if (!Number.isSafeInteger(maxDoublings) || maxDoublings < 0 || maxDoublings > MAX_DOUBLINGS) throw fail(`Rollover doublings must be 0 to ${MAX_DOUBLINGS}.`);
+    if (!Number.isSafeInteger(lossSteps) || lossSteps < 1 || lossSteps > MAX_STEPS) throw fail(`Rollover loss steps must be 1 to ${MAX_STEPS}.`);
     const enabled = input.enabled === true;
     if (enabled && baseStake < 1) throw fail('Enter a rollover base stake before enabling it.');
-    return { enabled, baseStake, maxDoublings };
+    return { enabled, baseStake, lossSteps };
 }
-function config(s) { return s.config.rollover ||= { enabled: false, baseStake: 0, maxDoublings: 3 }; }
+function config(s) {
+    const c = s.config.rollover ||= { enabled: false, baseStake: 0, lossSteps: DEFAULT_STEPS };
+    if (c.lossSteps == null) { c.lossSteps = Math.min(MAX_STEPS, Math.max(1, Number(c.maxDoublings ?? DEFAULT_STEPS - 1) + 1)); delete c.maxDoublings; }
+    return c;
+}
 function fresh() { return { phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, lastObserved: 0, history: [], profit: 0, completed: 0, lost: 0, reason: 'Waiting for a Bet49 win' }; }
 function state(s) { return s.rollover ||= fresh(); }
 function reset(s) { s.rollover = fresh(); }
@@ -29,7 +35,7 @@ function reset(s) { s.rollover = fresh(); }
 function configure(s, next) {
     const before = config(s), st = state(s);
     s.config.rollover = next;
-    if (st.phase === 'PAUSED' || before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.maxDoublings !== next.maxDoublings) {
+    if (st.phase === 'PAUSED' || before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.lossSteps !== next.lossSteps) {
         Object.assign(st, { phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, reason: 'Waiting for a Bet49 win' });
     }
 }
@@ -78,8 +84,8 @@ function observe(s, records) {
                 if (balls.includes(number)) {
                     closeRun(st, id, 'LOST', 0, number); st.lost++;
                     st.doublings++;
-                    if (st.doublings > cfg.maxDoublings) { st.phase = 'PAUSED'; st.reason = `Paused: ${st.doublings} losses in a row reached the doubling limit. Save the rollover settings to start again.`; }
-                    else { st.armedAt = id; st.reason = `Lost on #${id}. Next run starts at ${2 ** st.doublings}x the base stake.`; }
+                    if (st.doublings >= cfg.lossSteps) { st.phase = 'PAUSED'; st.reason = `Paused: all ${cfg.lossSteps} loss steps lost in a row. Save the rollover settings to start again from step 1.`; }
+                    else { st.armedAt = id; st.reason = `Lost step ${st.doublings} of ${cfg.lossSteps} on #${id}. Step ${st.doublings + 1} starts at ${2 ** st.doublings}x the base stake after the next Bet49 win.`; }
                 } else {
                     run.played++;
                     run.stake = rolled(stake);
@@ -154,4 +160,4 @@ function view(s) {
         plan: st.plan, profit: st.profit, completed: st.completed, lost: st.lost, history: st.history.slice(0, 20) };
 }
 
-module.exports = { ODDS, normalize, config, state, reset, configure, enabled, observe, decide, placed, view, windowLength, rolled };
+module.exports = { ODDS, MAX_STEPS, normalize, config, state, reset, configure, enabled, observe, decide, placed, view, windowLength, rolled };
