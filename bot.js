@@ -2403,6 +2403,9 @@ async function sendPrediction(drawId, drawDate, pred) {
     if (predictionQueued) await flushTelegramPredictionOutbox();
 }
 
+// A collector request that never answers would hold the tick forever (and with it every
+// prediction), so each request gives up after this long.
+const COLLECTOR_TIMEOUT_MS = 20000;
 function apiPost(path, body) {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify(Object.assign({ tmp: nowISO() }, body));
@@ -2411,18 +2414,25 @@ function apiPost(path, body) {
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
         }, (res) => {
             let data = ''; res.on('data', c => data += c);
+            res.on('error', err => reject(err));
             res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
         });
-        req.on('error', err => reject(err)); req.write(payload); req.end();
+        const timer = setTimeout(() => req.destroy(new Error(`Collector request timed out: ${path}`)), COLLECTOR_TIMEOUT_MS);
+        req.on('close', () => clearTimeout(timer));
+        req.on('error', err => { clearTimeout(timer); reject(err); }); req.write(payload); req.end();
     });
 }
 
 function apiGet(path) {
     return new Promise((resolve) => {
-        http.get({ hostname: '127.0.0.1', port: 3000, path: path }, (res) => {
+        const req = http.get({ hostname: '127.0.0.1', port: 3000, path: path }, (res) => {
             let data = ''; res.on('data', c => data += c);
+            res.on('error', () => resolve({ draws: [] }));
             res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { resolve({ draws: [] }); } });
-        }).on('error', () => resolve({ draws: [] }));
+        });
+        const timer = setTimeout(() => req.destroy(new Error(`Collector request timed out: ${path}`)), COLLECTOR_TIMEOUT_MS);
+        req.on('close', () => clearTimeout(timer));
+        req.on('error', error => { clearTimeout(timer); console.error(`[Collector] ${path} failed: ${error.message}`); resolve({ draws: [] }); });
     });
 }
 
@@ -3249,10 +3259,18 @@ function evaluateSessionBets(clientId, session, pLogItem) {
     automationStrategy.settle(session, pLogItem, details, predictionLog);
 }
 
-let tickInProgress = false;
+let tickInProgress = false, tickStartedAt = 0, tickStallLoggedAt = 0;
+// A tick that is still running after two minutes is stuck: say so once a minute, so a frozen
+// worker shows in the log instead of just going quiet.
+setInterval(() => {
+    if (!tickInProgress || Date.now() - tickStartedAt < 120000 || Date.now() - tickStallLoggedAt < 60000) return;
+    tickStallLoggedAt = Date.now();
+    console.error(`[ERROR] Tick has been running for ${Math.round((Date.now() - tickStartedAt) / 1000)}s; predictions are paused until it finishes.`);
+}, 15000).unref();
 async function tick() {
     if (tickInProgress) return;
     tickInProgress = true;
+    tickStartedAt = Date.now();
     try {
         checkDailyHistoryReset();
         for (const id of disabledManagedSessions(Object.keys(userSessions))) {
