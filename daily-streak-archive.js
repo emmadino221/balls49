@@ -7,16 +7,22 @@ function createDailyStreakArchive(db, keys, optional = []) {
     db.exec(`CREATE TABLE IF NOT EXISTS daily_streak_archive (
         day TEXT PRIMARY KEY, summary_json TEXT NOT NULL, outcomes_json TEXT
     )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS daily_streak_archive_settings (
+        id INTEGER PRIMARY KEY CHECK(id=1), reset_at INTEGER NOT NULL
+    )`);
+    const resetSetting = db.prepare('SELECT reset_at FROM daily_streak_archive_settings WHERE id=1');
+    const resetAt = () => Number(resetSetting.get()?.reset_at) || 0;
     const get = db.prepare('SELECT * FROM daily_streak_archive WHERE day = ?');
     const put = db.prepare(`INSERT INTO daily_streak_archive(day, summary_json, outcomes_json) VALUES (?, ?, ?)
         ON CONFLICT(day) DO UPDATE SET summary_json=excluded.summary_json, outcomes_json=excluded.outcomes_json`);
     const list = db.prepare('SELECT day, summary_json FROM daily_streak_archive ORDER BY day DESC');
     let cursor = 0;
     function recordMany(records) {
+        const cutoff = resetAt();
         const groups = new Map();
         for (const record of records) {
             const time = Date.parse(record?.settledAt || record?.timestamp || '');
-            if (!record?.result || !Number.isFinite(time) || !Number.isSafeInteger(Number(record.drawId))) continue;
+            if (!record?.result || !Number.isFinite(time) || time <= cutoff || !Number.isSafeInteger(Number(record.drawId))) continue;
             const day = nigeriaDay(time);
             if (!groups.has(day)) {
                 const existing = get.get(day);
@@ -39,7 +45,7 @@ function createDailyStreakArchive(db, keys, optional = []) {
                     markets[key].worstLosses = Math.max(markets[key].worstLosses, runs[key]);
                 }
             }
-            put.run(day, JSON.stringify({ day, draws: ordered.length, markets }), JSON.stringify(outcomes));
+            put.run(day, JSON.stringify({ day, draws: ordered.length, markets, resetAt: cutoff }), JSON.stringify(outcomes));
         }
     }
     return {
@@ -56,7 +62,11 @@ function createDailyStreakArchive(db, keys, optional = []) {
         },
         importSummaries(items) {
             if (!Array.isArray(items) || items.length > 30) throw new Error('Invalid daily archive batch');
+            const cutoff = resetAt();
             for (const item of items) {
+                // Both producers must use the same explicit reset. Reject delayed pre-reset batches.
+                if ((Number(item?.resetAt) || 0) !== cutoff) continue;
+                if (cutoff && item?.day < nigeriaDay(cutoff)) continue;
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(item?.day) || !Number.isSafeInteger(item.draws) || item.draws < 0) throw new Error('Invalid daily archive');
                 const markets = {};
                 for (const key of keys) {
@@ -65,7 +75,7 @@ function createDailyStreakArchive(db, keys, optional = []) {
                     if (!m || !['wins', 'losses', 'worstLosses'].every(k => Number.isSafeInteger(m[k]) && m[k] >= 0 && m[k] <= item.draws)) throw new Error('Invalid daily market');
                     markets[key] = { wins: m.wins, losses: m.losses, worstLosses: m.worstLosses };
                 }
-                put.run(item.day, JSON.stringify({ day: item.day, draws: item.draws, markets }), null);
+                put.run(item.day, JSON.stringify({ day: item.day, draws: item.draws, markets, resetAt: cutoff }), null);
             }
         }
     };
