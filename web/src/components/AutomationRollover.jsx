@@ -11,7 +11,7 @@ export function ladder(start, length) {
   for (let i = 0; i < length; i++) { stakes.push(stake); stake = Math.floor(stake * ODDS); }
   return { stakes, collect: length ? Math.round(stakes[length - 1] * ODDS * 100) / 100 : start };
 }
-const PHASE = { WAITING: 'Waiting for a Bet49 win', PLAYING: 'Rolling over', PAUSED: 'Paused' };
+const PHASE = { WAITING: 'Waiting for a BetZero Single win', PLAYING: 'Rolling over', PAUSED: 'Paused' };
 const RESULT = { COMPLETE: 'Collected', LOST: 'Lost', STOPPED: 'Ended early' };
 
 function Ladder({ start, length, played, number }) {
@@ -43,17 +43,19 @@ export default function AutomationRollover({ control, draft, onChange, onSave, d
     <div className="ro-stage">
       <div className="ro-head">
         <div><span className="overline">SPECIAL MARKET</span><h2 id="ro-title">BetZero Single Number Rollover</h2>
-          <p>The saved 1-Number BetZero Lab selection at {ODDS.toFixed(2)}: it wins when that number does not come out. After a Bet49 win, each win rolls the whole return into the next draw until the window ends.</p></div>
+          <p>The saved 1-Number BetZero Lab selection at {ODDS.toFixed(2)}: it wins when that number does not come out. After a BetZero Single win, each win rolls the whole return into the next draw until the window ends.</p></div>
         <span className={`ro-phase is-${r.phase.toLowerCase()}`}><i aria-hidden="true" />{run ? `Draw ${Math.min(run.played + 1, run.length)} of ${run.length}` : PHASE[r.phase] || r.phase}</span>
       </div>
+      {run && run.sourcePolicy !== 'SINGLE_WIN_OWN_GAPS_V1' && <p className="automation-help">This run retains its previously sized window. Independent BetZero Single windows begin after this run ends; old triggers are discarded.</p>}
       <p className="ro-reason" role="status">{r.settings.enabled ? r.reason : 'Off. Turn it on below and save.'}</p>
       {run
         ? <Ladder start={run.stakeStart} length={run.length} played={run.played} number={number} />
         : r.phase === 'PAUSED'
           ? <div className="ro-idle"><p>All {savedSteps} loss steps lost. Save the rollover settings to start again from step 1 at <b>{money(r.settings.baseStake)}</b>.</p></div>
-          : <div className="ro-idle"><p>Next run is step {r.doublings + 1} of {savedSteps} at <b>{money(r.nextStartStake)}</b>{r.doublings ? ` (${2 ** r.doublings}x after ${r.doublings} ${r.doublings === 1 ? 'loss' : 'losses'})` : ''}, on the draw after the next Bet49 win{r.estimate ? `, and plays about ${r.estimate.length} draws` : ''}.</p></div>}
+          : <div className="ro-idle"><p>Next run is step {r.doublings + 1} of {savedSteps} at <b>{money(r.nextStartStake)}</b>{r.doublings ? ` (${2 ** r.doublings}x after ${r.doublings} ${r.doublings === 1 ? 'loss' : 'losses'})` : ''}, on the draw after the next BetZero Single win{r.estimate ? `, and plays about ${r.estimate.length} draws` : ''}.</p></div>}
       <dl className="ro-facts">
-        <div><dt>{run ? 'Window length' : 'Next window'}</dt><dd>{run ? `${run.length} draws` : r.estimate ? `${r.estimate.length} draws` : '--'}<small>{run ? `Bet49 average gap ${run.average.toFixed(1)} (${run.samples} gaps)` : r.estimate ? `Bet49 average gap ${r.estimate.average.toFixed(1)} (${r.estimate.samples} gaps), recalculated at the start` : 'Needs two Bet49 gaps at loss level 1'}</small></dd></div>
+        <div><dt>{run ? 'Window length' : 'Next window'}</dt><dd>{run ? `${run.length} draws` : r.estimate ? `${r.estimate.length} draws` : '--'}<small>{run ? `BetZero Single average gap ${run.average.toFixed(1)} (${run.samples} gaps)` : r.estimate ? `BetZero Single average gap ${r.estimate.average.toFixed(1)} (${r.estimate.samples} gaps), recalculated at the start` : 'Needs two BetZero Single gaps at the selected loss level'}</small></dd></div>
+        <div><dt>Gap loss level</dt><dd>{run?.gapLosses ?? r.settings.gapLosses ?? 1}</dd><small>BetZero Single results only</small></div>
         <div><dt>Starting stake</dt><dd>{money(run ? run.stakeStart : r.nextStartStake)}<small>{r.phase === 'PAUSED' ? `All ${savedSteps} steps lost` : `Loss step ${r.doublings + 1} of ${savedSteps}`}</small></dd></div>
         <div><dt>On the table</dt><dd>{run ? money(run.stake) : '--'}<small>{run ? `${run.bets} ${run.bets === 1 ? 'bet' : 'bets'} placed` : 'No run'}</small></dd></div>
         <div><dt>Rollover profit</dt><dd className={r.profit > 0 ? 'ba-pos' : r.profit < 0 ? 'ba-neg' : ''}>{money(r.profit)}<small>{r.completed} collected / {r.lost} lost</small></dd></div>
@@ -67,9 +69,10 @@ export default function AutomationRollover({ control, draft, onChange, onSave, d
         <label className="automation-check"><input type="checkbox" checked={!!settings.enabled} onChange={e => set('enabled', e.target.checked)} /><strong>Play BetZero Single Number Rollover</strong></label>
         <div className="automation-fields">
           <label>Base stake (NGN)<input type="number" min="0" max="50000" step="1" value={settings.baseStake ?? 0} onChange={e => set('baseStake', Number(e.target.value))} /></label>
+          <label>Gap loss level (1-100)<input type="number" min="1" max="100" step="1" value={settings.gapLosses ?? 1} onChange={e => set('gapLosses', Number(e.target.value))} /></label>
           <label>Loss steps (1-20)<input type="number" min="1" max="20" step="1" value={settings.lossSteps} onChange={e => set('lossSteps', Number(e.target.value))} /></label>
         </div>
-        {Number(settings.baseStake) > 0 && <p className="automation-help">Each lost run moves to the next step and doubles the starting stake: {startStakes.map(money).join(' → ')}{stepCount > 6 ? ' → …' : ''}. Step {stepCount} plays {money(Number(settings.baseStake) * 2 ** (stepCount - 1))}; only a loss there pauses the rollover. A collected run returns to step 1 at {money(Number(settings.baseStake))}.</p>}
+        {Number(settings.baseStake) > 0 && <p className="automation-help">Each lost run waits for a fresh BetZero Single win, then uses the next step with double the starting stake: {startStakes.map(money).join(' → ')}{stepCount > 6 ? ' → …' : ''}. Step {stepCount} plays {money(Number(settings.baseStake) * 2 ** (stepCount - 1))}; only a loss there pauses the rollover. A collected run returns to step 1 at {money(Number(settings.baseStake))}.</p>}
         <button className="btn btn-primary" disabled={draftStale}>Save rollover settings (keep paused)</button>
       </fieldset>
       <p className="automation-help">Saving also saves the rest of this page's settings, and only works while automation is stopped. Changing these settings starts the rollover over from the base stake. Draws where BetZero Single has no valid Lab number are not bet but count toward the window. Every bet can lose; a loss loses the whole rolled amount.</p>

@@ -1,9 +1,10 @@
 import GapSuggestion from '../components/GapSuggestion';
+import BetZeroSingleGapPreview from '../components/BetZeroSingleGapPreview';
 import React, { useEffect, useMemo, useState } from 'react';
 import { losingStreakGaps } from '../losing-streak-gaps';
 import './gap-analysis.css';
 const API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history';
-const games = [['betzero','BetZero'],['bet49','Bet49'],['rainbow','Rainbow'],['hilo','High / Low'],['totalColor','Total Color 3-way'],['totalColor1','Winning Color'],];
+const games = [['betzero','BetZero'],['bet49','Bet49'],['betzeroSingle','BetZero Single'],['rainbow','Rainbow'],['hilo','High / Low'],['totalColor','Total Color 3-way'],['totalColor1','Winning Color'],];
 const colors = ['#267cce','#b56b19','#398361','#9658cc','#d34e6a','#53858f','#818590'];
 const fmt = n => n == null ? 'N/A' : Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1);
 function Bars({ rows, field, selected, onSelect, unit }) {
@@ -63,7 +64,9 @@ export default function GapAnalysisPage() {
       <p className="gap-refresh-help">{autoRefresh?'Refreshes every 10 seconds after requests finish; pauses while this tab is hidden or settings are saving.':'Automatic refresh is off. Use Refresh charts or Calculate playing window for a manual update.'} Refreshing never applies settings or starts automation.</p>
     </section>
     <nav className="gap-games" aria-label="Select prediction market">{games.map(([id,name])=><button type="button" key={id} aria-pressed={market===id} onClick={()=>setMarket(id)}>{name}</button>)}</nav>
-    <GapSuggestion key={`${market}:${level}`} snapshotAt={snapshot?.at} autoRefresh={autoRefresh} onBusy={setWindowBusy} level={level} records={records} market={market} label={label} loading={loading || !!error} />
+    {market === 'betzeroSingle'
+      ? <BetZeroSingleGapPreview onBusy={setWindowBusy} key={`${market}:${level}`} records={records} level={level} loading={loading || !!error} autoRefresh={autoRefresh} snapshotAt={snapshot?.at} />
+      : <GapSuggestion key={`${market}:${level}`} snapshotAt={snapshot?.at} autoRefresh={autoRefresh} onBusy={setWindowBusy} level={level} records={records} market={market} label={label} loading={loading || !!error} />}
     {error&&<p role="alert" className="content-card">{error} {snapshot?'Charts retain the previous snapshot.':''}</p>}
     <p className="gap-coverage" role="status">{snapshot?`${label} | ${report.count} loaded / ${snapshot.range} requested draws | #${report.first || '?'} to #${report.latest || '?'} | Refreshed ${new Date(snapshot.at).toLocaleTimeString()}`:'Loading your first history snapshot...'} {provisional?'Partial / provisional coverage.':''}</p>
     <section className="gap-kpis" aria-label="Market overview">{[[report.pending?'Last known loss run':'Current loss run',`${report.lowerBound?'At least ':''}${report.run}`],['Largest observed run',report.worst],['Selected level',`${level} losses`],['Occurrences',selected.count]].map(([name,value])=><article className="content-card" key={name}><span>{name}</span><strong>{value}</strong></article>)}</section>

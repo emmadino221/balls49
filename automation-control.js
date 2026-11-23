@@ -26,7 +26,6 @@ function conflict(c) {
  if (gap && (c.shadowMode || c.bzRbRollover || c.hiloRollover || c.tc3Rollover)) return 'Gap playing windows cannot be used with Shadow mode or the BetZero / Rainbow, High / Low or 3-way rollovers: a game with gap windows would never play. Turn those off, or turn gap windows off.';
  if (c.shadowMode && !(Number(c.cbMaxLosses) > 0)) return 'Shadow mode needs Circuit-breaker losses above 0: it starts after that many losses in a row, so with 0 it never starts.';
  if (Number(c.cbMaxLosses) > 0 && !c.shadowMode && !(Number(c.cbCooldown) > 0)) return 'The circuit breaker needs Cooldown draws above 0 (or Shadow mode on): with 0 cooldown draws it never pauses anything.';
- if (c.enabledGames?.bet49 && c.rollover?.enabled) return 'Bet49 and the BZ Single Rollover bet the same number in opposite ways (Bet49 needs it drawn, the rollover needs it not drawn), so one of them always loses. Turn one of them off.';
  return null;
 }
 function normalize(input) {

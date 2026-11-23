@@ -116,7 +116,7 @@
                 <div id="btn-totalColor1" class="game-btn">Winning Color</div>
                 <div id="btn-bet49" class="game-btn">Bet49</div>
             </div>
-            <div id="btn-rollover" class="game-btn" style="margin-top: 6px;" title="The Bet49 number on BetZero at 1.10, rolled over until the Bet49 gap window ends">BZ Single Rollover</div>
+            <div id="btn-rollover" class="game-btn" style="margin-top: 6px;" title="The Lab single number on BetZero at 1.10, using its own gaps and WIN trigger">BZ Single Rollover</div>
         </div>
 
         <div class="section">
@@ -140,9 +140,10 @@
             <div class="section-label">🔁 BZ Single Rollover (BetZero 1.10)</div>
             <div class="grid-2" style="margin-bottom: 4px;">
                 <input type="number" id="stake-rollover" min="0" max="50000" step="1" placeholder="Rollover base stake" title="Starting stake of each rollover run">
+                <input type="number" id="rollover-gap-level" min="1" max="100" step="1" placeholder="Gap loss level (1-100)" aria-label="BetZero Single gap loss level" title="Uses BetZero Single historical gaps at this loss level">
                 <input type="number" id="rollover-steps" min="1" max="20" step="1" placeholder="Loss steps (1-20)" title="Each lost run moves to the next step and doubles the starting stake. Only a loss at the last step pauses the rollover.">
             </div>
-            <small id="rollover-status" style="display:block;margin-bottom:10px;color:var(--text-muted);">Starts after a Bet49 win and rolls each return over for the Bet49 average gap. Change it only while stopped.</small>
+            <small id="rollover-status" style="display:block;margin-bottom:10px;color:var(--text-muted);">Starts after a BetZero Single win and rolls each return over for the BetZero Single average gap. Change it only while stopped.</small>
             
             <div class="section-label" style="color: var(--accent-red);">🛡️ Risk Limits</div>
             <div style="margin-bottom: 4px; font-size: 9px; color: var(--text-muted);">Max Step Constraints:</div>
