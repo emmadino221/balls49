@@ -3,6 +3,7 @@ const { createAutomationReports } = require('./automation-reports');
 const automationStrategy = require('./automation-strategy');
 const automationControl = require('./automation-control');
 const betzeroRollover = require('./betzero-rollover');
+const betzeroSingle = require('./betzero-single');
 const { createAutomationBridge } = require('./automation-bridge');
 const { createSiteEmail } = require('./site-email');
 const { createFootballService } = require('./football-service');
@@ -475,6 +476,7 @@ let labNumberStatistics = null;
 // The Lab's Minimum/Maximum v2 state, returned by the website after each snapshot. The main
 // High/Low prediction continues from it so both give the same pick.
 let labMinmaxState = null;
+let labBetzeroSingleRecord = null;
 let globalDefaultStakes = { u4: 0, bet49: 0, color: 0, sum: 0, totalColor: 0, totalColor2: 0, totalColor1: 0 };
 
 const processedDrawIds = new Set();
@@ -871,6 +873,7 @@ function buildPublicFeedHistory() {
         predicted: {
             betzero: Array.isArray(record.predicted?.betzero) ? record.predicted.betzero : [],
             bet49: bet49Numbers(record.predicted?.bet49),
+            betzeroSingle: betzeroSingle.recordPick(record),
             rainbow: record.predicted?.rainbow || 'SKIP',
             totalColor: record.predicted?.totalColor ? {
                 status: record.predicted.totalColor.status || 'SKIP',
@@ -895,6 +898,7 @@ function buildPublicFeedHistory() {
             range: record.result.range || null,
             betzero: record.result.betzero || 'SKIP',
             bet49: record.result.bet49 || 'SKIP',
+            betzeroSingle: betzeroSingle.outcome(betzeroSingle.recordPick(record), record.result),
             rainbow: record.result.rainbow || 'SKIP',
             totalColor: record.result.totalColor || 'SKIP',
             totalColor2: record.result.totalColor2 || 'SKIP',
@@ -1108,6 +1112,7 @@ function buildPublicFeedCurrent() {
             betzeroStatus: pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 ? 'ACTIVE' : 'SKIP',
             unlikely4: Array.isArray(pred.unlikely4) ? pred.unlikely4.map(item => ({ number: Number(item.number) })) : [],
             bet49Pick: bet49Numbers(pred.bet49Pick),
+            betzeroSinglePick: betzeroSingle.pick(pred.betzeroSinglePick),
             rainbowStatus: pred.rainbowStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             topColor: pred.topColor?.name ? { name: String(pred.topColor.name) } : null,
             totalColorPred: {
@@ -1201,9 +1206,10 @@ async function publishPredictionSnapshotOnce() {
                         // The Lab's running Minimum/Maximum v2 state as of this snapshot's draw.
                         try {
                             const labMinmax = JSON.parse(responseBody).labMinmax;
+                            labBetzeroSingleRecord = JSON.parse(responseBody).labBetzeroSingle || null;
                             labMinmaxState = labMinmax && typeof labMinmax === 'object' && Number(snapshot.clock?.drawId) > 0
                                 ? { ...labMinmax, asOfDrawId: Number(snapshot.clock.drawId) } : null;
-                        } catch { labMinmaxState = null; }
+                        } catch { labMinmaxState = null; labBetzeroSingleRecord = null; }
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
                         try { resolve(JSON.parse(responseBody).labBetzero || null); } catch { resolve(null); }
                     } else {
@@ -2339,6 +2345,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         predicted: {
             betzero: pred.betzeroStatus === 'ACTIVE' && pred.unlikely4.length === 4 ? pred.unlikely4.map(x => x.number) : [],
             bet49: bet49Numbers(pred.bet49Pick),
+            betzeroSingle: betzeroSingle.pick(pred.betzeroSinglePick),
             rainbow: pred.rainbowStatus === 'ACTIVE' ? pred.topColor.name : 'SKIP',
             totalColor: pred.totalColorPred,
             totalColor2: pred.totalColor2Pred,
@@ -2537,6 +2544,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var bet49Pick = bet49Prediction.numbers;
 
     const mainBetZero = predictBetZeroFromLab(labBetzero, targetDrawId);
+    const betzeroSinglePick = betzeroSingle.fromLab(labBetzeroSingleRecord, targetDrawId);
     const betzeroStatus = mainBetZero.status;
     const unlikely4 = mainBetZero.numbers.map(number => ({ number }));
     const bzSkipReason = mainBetZero.reason;
@@ -2584,7 +2592,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     brainData.bet49 = mainBet49;
 
     return { 
-        unlikely4, betzeroStatus, bzSkipReason, bet49Pick,
+        unlikely4, betzeroStatus, bzSkipReason, bet49Pick, betzeroSinglePick,
         topColor, rainbowStatus, rbSkipReason,
         totalColorPred, 
         totalColor2Pred,
@@ -2661,6 +2669,7 @@ function processUpdates(pred, actualDraw) {
             hilo: pred.hiloStatus === 'SKIP' ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
             unified: unifiedStatus === 'SKIP' ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
         };
+        betzeroSingle.enrich(targetItem);
         targetItem.settledAt = new Date().toISOString();
         dailyStreakArchive.recordMany([targetItem]);
         const shadowResultKeys = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' };
@@ -3450,6 +3459,7 @@ async function tick() {
                             hilo: (!p.predicted.hilo || p.predicted.hilo === 'SKIP') ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS'),
                             unified: !p.predicted.unified ? 'SKIP' : (unifiedWin ? 'WIN' : 'LOSS')
                         };
+                        betzeroSingle.enrich(p);
                         p.settledAt = new Date().toISOString();
                         dailyStreakArchive.recordMany([p]);
                         updatedLog = true;

@@ -139,10 +139,10 @@ function decide(s, drawId, prediction, records) {
         st.run = { start: id, length: size.length, average: size.average, samples: size.samples, played: 0, bets: 0, stakeStart, stake: stakeStart, lastDraw: null };
         st.phase = 'PLAYING'; st.armedAt = null;
     }
-    const picks = bet49Numbers(prediction?.bet49Pick);
+    const picks = bet49Numbers(prediction?.betzeroSinglePick);
     const number = picks.length === 1 ? picks[0] : null;
     st.plan = { drawId: id, number, stake: st.run.stake, skip: number === null };
-    st.reason = number === null ? `Draw #${id}: Bet49 has no number; the draw counts toward the run.` : `Playing ${number} on BetZero, draw ${st.run.played + 1} of ${st.run.length}.`;
+    st.reason = number === null ? `Draw #${id}: BetZero Single has no number; the draw counts toward the run.` : `Playing ${number} on BetZero, draw ${st.run.played + 1} of ${st.run.length}.`;
     return number === null ? null : { number, stake: st.run.stake };
 }
 
