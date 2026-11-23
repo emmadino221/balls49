@@ -13,7 +13,7 @@ const HISTORY_API = import.meta.env.VITE_HISTORY_API_URL || '/api/public-history
 const CLOCK_API = import.meta.env.VITE_CLOCK_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-clock');
 const LIVE_PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HISTORY_API.replace(/\/public-history(?:\?.*)?$/, '/public-current-prediction');
 const games = [
-  { id: 'betzero', name: 'BetZero', detail: 'Plays the Lab’s BetZero 49 numbers for this draw: the four numbers missing longest (each missing for at least half its longest absence), kept until they come out. Wins when none appear.' },
+  { id: 'betzero', name: 'BetZero', detail: 'Uses the saved BetZero - Streak 1 Lab prediction for this draw. Requires exactly four numbers; otherwise skips. Wins when none of the four appear.' },
   { id: 'bet49', name: 'Bet49', detail: 'One number: the longest-missing number in the last 100 draws, kept until it appears. Wins when that number appears.' },
   { id: 'betzeroSingle', name: 'BetZero Single', detail: 'The Bet49 number played on BetZero at 1.10 odds. Wins when that number does not appear.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },

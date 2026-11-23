@@ -59,22 +59,17 @@ const STRATEGIES = [
         description: 'New research variant: smallest previous-draw number +10, then three +10 steps wrapping within 1–49. Skip if the first selection exceeds 49.',
         missingInformation: 'Newly designed research variant, not the instructor-verified method.'
     },
-    {
-        id: bz49.ID, version: bz49.VERSION, selectionCount: bz49.COUNT,
-        label: 'BetZero 49 - Bet49 longest-gap rule, four numbers',
-        status: 'RESEARCH_ONLY', kind: 'PREDICTION',
-        description: 'The main Bet49 rule over the last 100 draws, taking four numbers: ranked by longest absence, each must be missing for at least half its longest absence, and each is kept until it appears. Graded as BetZero: a win when none of the four is drawn. Skips when fewer than four numbers qualify.',
-        missingInformation: 'Research specification; not independently instructor-verified.'
-    }
 ];
 
 // Versions the Lab no longer offers. Their saved history stays in the database, but the Lab
 // does not list them, show their records or offer them for testing.
-const RETIRED = new Set([`${transitions.ZERO}@1.0.0`, `${transitions.ZERO}@2.0.0`, `${transitions.HIT}@1.0.0`, `${transitions.HIT}@2.0.0`, `${minmax.ID}@1.0.0`]);
+const RETIRED = new Set([`${bz49.ID}@${bz49.VERSION}`, `${transitions.ZERO}@1.0.0`, `${transitions.ZERO}@2.0.0`, `${transitions.HIT}@1.0.0`, `${transitions.HIT}@2.0.0`, `${minmax.ID}@1.0.0`]);
 const isRetired = (id, version) => RETIRED.has(`${id}@${version}`);
 const activeDefinitions = () => STRATEGIES.filter(strategy => !isRetired(strategy.id, strategy.version));
 
 function strategyDefinition(id, version) {
+    // Settlement-only definition for already published retired predictions. Not offered for new work.
+    if (id === bz49.ID && version === bz49.VERSION) return { id, version, selectionCount: bz49.COUNT };
     return STRATEGIES.find(strategy => strategy.id === id && strategy.version === version);
 }
 
@@ -533,9 +528,12 @@ function createBetZeroLab(db, options = {}) {
     for (const strategy of STRATEGIES) {
         insertStrategy.run(strategy.id, strategy.version, strategy.label, strategy.status, strategy.kind,
             strategy.description, strategy.missingInformation);
-        insertConfig.run(strategy.id, strategy.version, strategy.id === 'simple_smallest_number_add_10' || strategy.id === bz49.ID ? 1 : 0,
+        insertConfig.run(strategy.id, strategy.version, strategy.id === 'simple_smallest_number_add_10' ? 1 : 0,
             JSON.stringify({ alertThresholds: ALERT_THRESHOLDS }), now());
     }
+    // Removed from the Lab. Preserve past records and settle any existing pending picks.
+    db.prepare(`UPDATE betzero_lab_strategy_configs SET enabled=0, updated_at=? WHERE strategy_id=? AND enabled<>0`)
+        .run(now(), bz49.ID);
     // One-time retirement: streak-drop v1/v2 stop predicting now that streak-1 v3 replaces them. History is kept.
     if (db.prepare(`INSERT OR IGNORE INTO betzero_lab_state(state_key, state_value) VALUES ('streak_drop_v1_v2_retired_at', ?)`).run(String(now())).changes) {
         db.prepare(`UPDATE betzero_lab_strategy_configs SET enabled=0, updated_at=? WHERE enabled=1 AND strategy_id IN (?,?) AND version IN ('1.0.0','2.0.0')`)
@@ -859,14 +857,14 @@ function createBetZeroLab(db, options = {}) {
             pending: Number.isSafeInteger(state.pending) ? state.pending : null,
             afterTargetId: Number(state.afterTargetId) || 0 };
     }
-    // The main BetZero prediction plays the Lab's BetZero 49 numbers for the same draw.
+    // Main BetZero reads the saved Streak 1 record; its consumer requires exactly four numbers.
     function mainBetzeroPrediction(targetDrawId) {
         const target = Number(targetDrawId);
         if (!Number.isSafeInteger(target) || target <= 1) return null;
-        const strategy = strategies().find(s => s.id === bz49.ID && s.version === bz49.VERSION);
+        const strategy = strategies().find(s => s.id === transitions.ZERO && s.version === '3.0.0');
         const row = db.prepare(`SELECT * FROM betzero_lab_forward_predictions
             WHERE strategy_id=? AND strategy_version=? AND target_draw_id=?`)
-            .get(bz49.ID, bz49.VERSION, String(target));
+            .get(transitions.ZERO, '3.0.0', String(target));
         if (!row) return null;
         const conditions = JSON.parse(row.conditions_json);
         return { predictionId: row.prediction_id, strategyId: row.strategy_id, version: row.strategy_version,

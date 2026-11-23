@@ -393,7 +393,7 @@ export default function BetZeroLabPage({ session }) {
 
   async function toggleResearchStrategy(strategy, title) {
     if (!session?.admin || busy || strategySaveLock.current || !strategy || !['1.0.0','2.0.0','3.0.0'].includes(strategy.version)
-      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three', 'minmax_high_low', 'statistics_streak_drop_betzero', 'statistics_streak_drop_bet49', 'betzero_49'].includes(strategy.id)) return;
+      || !['simple_smallest_number_add_10', 'smallest_add10_step10_four', 'minimum_maximum_three', 'minmax_high_low', 'statistics_streak_drop_betzero', 'statistics_streak_drop_bet49'].includes(strategy.id)) return;
     // The first time v2 is switched on it must go through the confirmed cutover.
     if (strategy.id === 'minimum_maximum_three' && strategy.version === '2.0.0' && !strategy.enabled && !strategy.decisionState?.cutoverAt) return cutoverMinmax();
     strategySaveLock.current = true;
@@ -479,7 +479,6 @@ export default function BetZeroLabPage({ session }) {
   const cards = [
     { key: 'simple_smallest_number_add_10@1.0.0', count: 1, title: '1-Number BetZero', summary: 'Smallest number of the last draw + 10.' },
     { key: 'smallest_add10_step10_four@1.0.0', count: 4, title: '4-Number BetZero', summary: 'Smallest + 10, then steps of 10.' },
-    { key: 'betzero_49@1.0.0', count: 4, title: 'BetZero 49', summary: 'The Bet49 rule, four numbers: longest missing, each kept until it comes out. Wins when none of the four is drawn.' },
     { key: 'statistics_streak_drop_betzero@3.0.0', count: [1,2,3,4], title: 'BetZero - Streak 1', summary: 'Up to four numbers whose streak is exactly 1.', statistics: true },
     { key: 'statistics_streak_drop_bet49@3.0.0', count: 1, title: 'Bet49 - Streak 1', summary: 'One number picked from the streak-1 numbers.', statistics: true },
     { key: 'minimum_maximum_three@2.0.0', count: 3, title: 'Minimum/Maximum v2', summary: 'Three numbers. After a win: keep method. After a loss: switch.', review: true },
