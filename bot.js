@@ -4865,7 +4865,7 @@ async function handleHttpRequest(req, res) {
         const activePlan = account?.plan;
         const planTier = session?.admin ? session.previewTier : activePlan?.tier;
         const planGames = session?.admin ? session.previewGames : activePlan?.games;
-        // BetZero Single is the Bet49 number, so it is included wherever Bet49 is.
+        // BetZero Single has its own prediction but shares Bet49 plan access.
         const planMarket = market === 'betzeroSingle' ? 'bet49' : market;
         const fullAccess = (planTier === 'elite' || (planTier === 'premium' && planGames?.includes(planMarket)))
             && (session?.admin || (activePlan?.expiresAt && activePlan.expiresAt > Date.now()));
@@ -4891,13 +4891,14 @@ async function handleHttpRequest(req, res) {
             strategyStats: selectedMarketStats.strategyStats ?? calculatedMarketStats[market].strategyStats
         };
         const selectedPicks = {
-            betzero: [], bet49: null, rainbow: 'SKIP',
+            betzero: [], bet49: null, betzeroSingle: 'SKIP', rainbow: 'SKIP',
             totalColor: { status: 'SKIP', topColors: [], noWinColor: null },
             totalColor1: { status: 'SKIP', top1: [] },
             hilo: 'SKIP'
         };
         if (market === 'betzero') selectedPicks.betzero = publicPrediction.predicted.betzero;
         if (market === 'bet49') selectedPicks.bet49 = publicPrediction.predicted.bet49;
+        if (market === 'betzeroSingle') selectedPicks.betzeroSingle = publicPrediction.predicted.betzeroSingle;
         if (market === 'rainbow') selectedPicks.rainbow = publicPrediction.predicted.rainbow;
         if (market === 'totalColor') selectedPicks.totalColor = publicPrediction.predicted.totalColor;
         if (market === 'totalColor1') selectedPicks.totalColor1 = publicPrediction.predicted.totalColor1;
