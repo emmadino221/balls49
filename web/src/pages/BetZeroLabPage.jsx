@@ -170,6 +170,7 @@ function PredictionCard({ strategy, count, title, summary, onToggle, onReset, sa
       <div><dt>Win rate</dt><dd>{percentage(strategy?.winRate)}</dd></div>
       <div><dt>Losing streak</dt><dd>{strategy?.currentLosingStreak ?? 0}</dd></div>
       <div><dt>Max losing streak</dt><dd className="is-loss">{strategy?.worstLosingStreak ?? 0}</dd></div>
+      <div><dt>Max winning streak</dt><dd className="is-win">{strategy?.longestWinningStreak ?? 0}</dd></div>
     </dl>
 
     <details className="betzero-pick-more">
@@ -189,6 +190,7 @@ function PredictionCard({ strategy, count, title, summary, onToggle, onReset, sa
         </Fact>}
         {resultMissing && <Fact label="Missing result">The result of draw #{pending.targetDrawId} has not been received.</Fact>}
         <Fact label="Last completed">{settled ? <>Draw #{settled.targetDrawId} <StatusBadge value={settled.status} /></> : 'None yet'}</Fact>
+        <Fact label="Max winning streak">{strategy?.longestWinningStreak ?? 0} consecutive settled wins in this strategy version's recorded history.</Fact>
         <Fact label="Worst losing streak">{strategy?.worstLosingStreak ?? 0}</Fact>
         <Fact label="Waiting / skipped">{strategy?.pending ?? 0} / {strategy?.skipped ?? 0}</Fact>
         <Fact label="Version">{strategy?.version || '—'}</Fact>
@@ -556,6 +558,7 @@ export default function BetZeroLabPage({ session }) {
           <div className="betzero-simple-totals">
             <MetricCard label="Evaluated predictions" value={(selectedStrategy?.wins || 0) + (selectedStrategy?.losses || 0)} />
             <MetricCard label="Wins / losses" value={`${selectedStrategy?.wins || 0} / ${selectedStrategy?.losses || 0}`} />
+            <MetricCard label="Max winning streak" value={selectedStrategy?.longestWinningStreak ?? 0} />
             <MetricCard label="Recorded win rate" value={percentage(selectedStrategy?.winRate)} />
             <MetricCard label="Current / worst losing streak" value={`${selectedStrategy?.currentLosingStreak || 0} / ${selectedStrategy?.worstLosingStreak || 0}`} />
             <MetricCard label="Pending / skipped" value={`${selectedStrategy?.pending || 0} / ${selectedStrategy?.skipped || 0}`} />
@@ -630,7 +633,7 @@ export default function BetZeroLabPage({ session }) {
           {selectedOverall && <div className="betzero-simple-pick">
             <h3>Full historical test</h3>
             <p>{selectedOverall.predictions} evaluated | {selectedOverall.wins} wins | {selectedOverall.losses} losses | {selectedOverall.skipped} skipped</p>
-            <p>Win rate: {percentage(selectedOverall.winRate)} | Current losing streak: {selectedOverall.currentLosingStreak} | Worst: {selectedOverall.worstLosingStreak}</p>
+            <p>Win rate: {percentage(selectedOverall.winRate)} | Current losing streak: {selectedOverall.currentLosingStreak} | Worst: {selectedOverall.worstLosingStreak} | Max winning streak: {selectedOverall.longestWinningStreak ?? 0}</p>
             <p>Matched random: {percentage(selectedOverall.randomBaseline?.winRate)} | Theoretical: {percentage(selectedOverall.theoreticalBaseline?.expectedWinRate)}</p>
             <p>Difference from random: {selectedOverall.winRate == null ? 'Unavailable' : `${((selectedOverall.winRate - selectedOverall.randomBaseline.winRate)*100).toFixed(2)} percentage points`}. Historical performance does not guarantee future results.</p>
           </div>}
