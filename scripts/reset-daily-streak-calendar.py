@@ -1,24 +1,31 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Reset only the History calendar; default is read-only preview. Stop writers before apply."""
 import argparse
 import datetime as dt
 import json
 from pathlib import Path
 import sqlite3
-import time
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--db', action='append', required=True, help='Existing SQLite database; repeat for bot and website')
-    parser.add_argument('--since-ms', type=int, required=True, help='Same UTC epoch milliseconds for both databases')
+    boundary = parser.add_mutually_exclusive_group(required=True)
+    boundary.add_argument('--since-ms', type=int, help='Same UTC epoch milliseconds for both databases; at most next Nigeria midnight')
+    boundary.add_argument('--next-nigeria-day', action='store_true', help='Exclude today; start at the next midnight in Nigeria (UTC+1)')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--services-stopped', action='store_true')
     args = parser.parse_args()
     if args.apply and not args.services_stopped:
         parser.error('Stop bot and website services, then use --services-stopped.')
-    if not 0 < args.since_ms <= int(time.time() * 1000):
-        parser.error('--since-ms must be a positive timestamp no later than now.')
+    nigeria = dt.timezone(dt.timedelta(hours=1))
+    tomorrow = dt.datetime.now(nigeria).date() + dt.timedelta(days=1)
+    next_midnight = dt.datetime.combine(tomorrow, dt.time.min, tzinfo=nigeria)
+    latest_cutoff = int(next_midnight.timestamp() * 1000)
+    if args.next_nigeria_day:
+        args.since_ms = latest_cutoff
+    if not 0 < args.since_ms <= latest_cutoff:
+        parser.error('--since-ms must be positive and no later than the next Nigeria midnight.')
     paths = list(dict.fromkeys(Path(value).resolve(strict=True) for value in args.db))
     summaries = []
     # Inspect every database before making backups or changing any database.
@@ -35,7 +42,7 @@ def main():
             old_cutoff = cutoff[0] if cutoff else 0
             if old_cutoff > args.since_ms:
                 raise RuntimeError(f'Refusing to move the reset cutoff backwards: {path}')
-            summaries.append({'database': str(path), 'calendarDays': count, 'previousResetAt': old_cutoff, 'resetAt': args.since_ms})
+            summaries.append({'database': str(path), 'calendarDays': count, 'previousResetAt': old_cutoff, 'resetAt': args.since_ms, 'startsAtNigeria': dt.datetime.fromtimestamp(args.since_ms / 1000, nigeria).isoformat()})
     if not args.apply:
         print(json.dumps({'dryRun': True, 'databases': summaries}, indent=2))
         return
