@@ -1,6 +1,6 @@
 import React from 'react';
 
-// BetZero Single Number Rollover: the Bet49 number on BetZero at 1.10, rolled over draw by draw.
+// BetZero Single Number Rollover: the saved 1-Number BetZero Lab selection at 1.10, rolled over draw by draw.
 const ODDS = 1.1;
 const money = n => n == null ? '--' : new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 2 }).format(n);
 const ballColor = n => Number(n) === 49 ? 'yellow' : Number(n) % 3 === 1 ? 'red' : Number(n) % 3 === 2 ? 'blue' : 'green';
@@ -43,7 +43,7 @@ export default function AutomationRollover({ control, draft, onChange, onSave, d
     <div className="ro-stage">
       <div className="ro-head">
         <div><span className="overline">SPECIAL MARKET</span><h2 id="ro-title">BetZero Single Number Rollover</h2>
-          <p>The Bet49 number on BetZero at {ODDS.toFixed(2)}: it wins when that number does not come out. After a Bet49 win, each win rolls the whole return into the next draw until the window ends.</p></div>
+          <p>The saved 1-Number BetZero Lab selection at {ODDS.toFixed(2)}: it wins when that number does not come out. After a Bet49 win, each win rolls the whole return into the next draw until the window ends.</p></div>
         <span className={`ro-phase is-${r.phase.toLowerCase()}`}><i aria-hidden="true" />{run ? `Draw ${Math.min(run.played + 1, run.length)} of ${run.length}` : PHASE[r.phase] || r.phase}</span>
       </div>
       <p className="ro-reason" role="status">{r.settings.enabled ? r.reason : 'Off. Turn it on below and save.'}</p>
@@ -72,7 +72,7 @@ export default function AutomationRollover({ control, draft, onChange, onSave, d
         {Number(settings.baseStake) > 0 && <p className="automation-help">Each lost run moves to the next step and doubles the starting stake: {startStakes.map(money).join(' → ')}{stepCount > 6 ? ' → …' : ''}. Step {stepCount} plays {money(Number(settings.baseStake) * 2 ** (stepCount - 1))}; only a loss there pauses the rollover. A collected run returns to step 1 at {money(Number(settings.baseStake))}.</p>}
         <button className="btn btn-primary" disabled={draftStale}>Save rollover settings (keep paused)</button>
       </fieldset>
-      <p className="automation-help">Saving also saves the rest of this page's settings, and only works while automation is stopped. Changing these settings starts the rollover over from the base stake. Draws where Bet49 has no number are not bet but count toward the window. Every bet can lose; a loss loses the whole rolled amount.</p>
+      <p className="automation-help">Saving also saves the rest of this page's settings, and only works while automation is stopped. Changing these settings starts the rollover over from the base stake. Draws where BetZero Single has no valid Lab number are not bet but count toward the window. Every bet can lose; a loss loses the whole rolled amount.</p>
     </form>
 
     <section className="content-card automation-history"><div className="automation-section-title"><div><span className="overline">PAST RUNS</span><h2>Rollover runs</h2></div><span className="automation-caption">Latest {r.history.length} &middot; newest first</span></div>

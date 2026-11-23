@@ -15,7 +15,7 @@ const LIVE_PREDICTION_API = import.meta.env.VITE_LIVE_PREDICTION_API_URL || HIST
 const games = [
   { id: 'betzero', name: 'BetZero', detail: 'Uses the saved BetZero - Streak 1 Lab prediction for this draw. Requires exactly four numbers; otherwise skips. Wins when none of the four appear.' },
   { id: 'bet49', name: 'Bet49', detail: 'One number: the longest-missing number in the last 100 draws, kept until it appears. Wins when that number appears.' },
-  { id: 'betzeroSingle', name: 'BetZero Single', detail: 'The Bet49 number played on BetZero at 1.10 odds. Wins when that number does not appear.' },
+  { id: 'betzeroSingle', name: 'BetZero Single', detail: 'The saved 1-Number BetZero Lab prediction (Smallest +10) at 1.10 odds. Wins when that number does not appear.' },
   { id: 'rainbow', name: 'Rainbow Color', detail: 'One color pick, graded by the draw’s color result.' },
   { id: 'totalColor', name: 'Total Color (3-way)', detail: 'Pick the three outcomes other than the previous draw result. No frequency filter.' },
   { id: 'totalColor1', name: 'Winning Color', detail: 'The top-ranked color from the shared color ranking.' },
@@ -397,7 +397,7 @@ export default function PredictionsPage() {
             <div id={`prediction-detail-panel-${activeGame.id}`} className="prediction-detail-panel" role="tabpanel" aria-labelledby={`${activeDetailTab === 'analysis' ? 'analysis' : 'prediction'}-detail-tab-${activeGame.id}`}>
             {activeDetailTab === 'analysis'
               ? activeGame.id === 'betzeroSingle'
-                ? <p className="prediction-market-description">BetZero Single uses the Bet49 number, so its analysis is on the Bet49 tab.</p>
+                ? <p className="prediction-market-description">BetZero Single follows the saved 1-Number BetZero Lab prediction. It skips when no valid Lab prediction is available for this draw.</p>
                 : <PredictionAnalysisPanel market={activeGame.id} hasAccess={activeMarketHasAccess} signedIn={sessionKind === 'account' || sessionKind === 'admin'} />
               : <>
             <div className="prediction-card-draw"><span>{activeMarketReveal ? `Draw #${activeMarketPrediction.drawId}` : 'Waiting for prediction'}</span><span>{formatCountdown(secondsLeft)}</span></div>

@@ -859,12 +859,18 @@ function createBetZeroLab(db, options = {}) {
     }
     // Main BetZero reads the saved Streak 1 record; its consumer requires exactly four numbers.
     function mainBetzeroPrediction(targetDrawId) {
+        return savedMainPrediction(targetDrawId, transitions.ZERO, '3.0.0');
+    }
+    function mainBetzeroSinglePrediction(targetDrawId) {
+        return savedMainPrediction(targetDrawId, 'simple_smallest_number_add_10', '1.0.0');
+    }
+    function savedMainPrediction(targetDrawId, strategyId, version) {
         const target = Number(targetDrawId);
         if (!Number.isSafeInteger(target) || target <= 1) return null;
-        const strategy = strategies().find(s => s.id === transitions.ZERO && s.version === '3.0.0');
+        const strategy = strategies().find(s => s.id === strategyId && s.version === version);
         const row = db.prepare(`SELECT * FROM betzero_lab_forward_predictions
             WHERE strategy_id=? AND strategy_version=? AND target_draw_id=?`)
-            .get(transitions.ZERO, '3.0.0', String(target));
+            .get(strategyId, version, String(target));
         if (!row) return null;
         const conditions = JSON.parse(row.conditions_json);
         return { predictionId: row.prediction_id, strategyId: row.strategy_id, version: row.strategy_version,
@@ -1452,6 +1458,7 @@ function createBetZeroLab(db, options = {}) {
         ingestSnapshot,
         minmaxFollowState,
         mainBetzeroPrediction,
+        mainBetzeroSinglePrediction,
         reconcileArchive,
         listForwardPredictions,
         stats,

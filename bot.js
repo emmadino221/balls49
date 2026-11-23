@@ -501,6 +501,7 @@ let labRecentResults = [];
 // The Lab's Minimum/Maximum v2 state, returned by the website after each snapshot. The main
 // High/Low prediction continues from it so both give the same pick.
 let labMinmaxState = null;
+let labBetzeroSingleRecord = null;
 function rememberLabRecentResults(draws) {
     const byId = new Map(labRecentResults.map(item => [item.drawId, item]));
     for (const draw of Array.isArray(draws) ? draws : []) {
@@ -908,6 +909,7 @@ function buildPublicFeedHistory() {
         predicted: {
             betzero: Array.isArray(record.predicted?.betzero) ? record.predicted.betzero : [],
             bet49: bet49Numbers(record.predicted?.bet49),
+            betzeroSingle: betzeroSingle.recordPick(record),
             rainbow: record.predicted?.rainbow || 'SKIP',
             totalColor: record.predicted?.totalColor ? {
                 status: record.predicted.totalColor.status || 'SKIP',
@@ -927,6 +929,7 @@ function buildPublicFeedHistory() {
             range: record.result.range || null,
             betzero: record.result.betzero || 'SKIP',
             bet49: record.result.bet49 || 'SKIP',
+            betzeroSingle: betzeroSingle.outcome(betzeroSingle.recordPick(record), record.result),
             rainbow: record.result.rainbow || 'SKIP',
             totalColor: record.result.totalColor || 'SKIP',
             totalColor1: record.result.totalColor1 || 'SKIP',
@@ -1138,6 +1141,7 @@ function buildPublicFeedCurrent() {
             betzeroStatus: pred.betzeroStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             unlikely4: Array.isArray(pred.unlikely4) ? pred.unlikely4.map(item => ({ number: Number(item.number) })) : [],
             bet49Pick: bet49Numbers(pred.bet49Pick),
+            betzeroSinglePick: betzeroSingle.pick(pred.betzeroSinglePick),
             rainbowStatus: pred.rainbowStatus === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
             topColor: pred.topColor?.name ? { name: String(pred.topColor.name) } : null,
             totalColorPred: {
@@ -1226,9 +1230,10 @@ async function publishPredictionSnapshotOnce() {
                         // The Lab's running Minimum/Maximum v2 state as of this snapshot's draw.
                         try {
                             const labMinmax = JSON.parse(responseBody).labMinmax;
+                            labBetzeroSingleRecord = JSON.parse(responseBody).labBetzeroSingle || null;
                             labMinmaxState = labMinmax && typeof labMinmax === 'object' && Number(snapshot.clock?.drawId) > 0
                                 ? { ...labMinmax, asOfDrawId: Number(snapshot.clock.drawId) } : null;
-                        } catch { labMinmaxState = null; }
+                        } catch { labMinmaxState = null; labBetzeroSingleRecord = null; }
                         for (const [drawId, recordHash] of batchHistoryHashes) lastPublishedHistoryHashes.set(drawId, recordHash);
                         try { resolve(JSON.parse(responseBody).labBetzero || null); } catch { resolve(null); }
                     } else {
@@ -2364,6 +2369,7 @@ async function sendPrediction(drawId, drawDate, pred) {
         predicted: {
             betzero: pred.betzeroStatus === 'ACTIVE' ? pred.unlikely4.map(x => x.number) : [],
             bet49: bet49Numbers(pred.bet49Pick),
+            betzeroSingle: betzeroSingle.pick(pred.betzeroSinglePick),
             rainbow: pred.rainbowStatus === 'ACTIVE' ? pred.topColor.name : 'SKIP',
             totalColor: pred.totalColorPred,
             totalColor1: pred.totalColor1Pred,
@@ -2543,6 +2549,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     var bet49Pick = bet49Prediction.numbers;
 
     const mainBetZero = predictBetZeroFromLab(labBetzero, targetDrawId);
+    const betzeroSinglePick = betzeroSingle.fromLab(labBetzeroSingleRecord, targetDrawId);
     const betzeroStatus = mainBetZero.status;
     const unlikely4 = mainBetZero.numbers.map(number => ({ number }));
     const bzSkipReason = mainBetZero.reason;
@@ -2589,7 +2596,7 @@ function computePredictions(histRaw, stats24Num, stats100Num, stats24HiLo, stats
     brainData.bet49 = mainBet49;
 
     return { 
-        unlikely4, betzeroStatus, bzSkipReason, bet49Pick,
+        unlikely4, betzeroStatus, bzSkipReason, bet49Pick, betzeroSinglePick,
         topColor, rainbowStatus, rbSkipReason,
         totalColorPred, 
         colorRanking,
@@ -2664,6 +2671,7 @@ function processUpdates(pred, actualDraw) {
             totalColor1: pred.totalColor1Pred?.status === 'ACTIVE' ? (tc1Win ? 'WIN' : 'LOSS') : 'SKIP',
             hilo: pred.hiloStatus === 'SKIP' ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS')
         };
+        betzeroSingle.enrich(targetItem);
         targetItem.settledAt = new Date().toISOString();
         dailyStreakArchive.recordMany([targetItem]);
         const shadowResultKeys = { u4: 'betzero', color: 'rainbow', sum: 'hilo', totalColor: 'totalColor' };
@@ -3441,6 +3449,7 @@ async function tick() {
                             totalColor1: p.predicted.totalColor1?.status === 'ACTIVE' ? (tc1Win ? 'WIN' : 'LOSS') : 'SKIP',
                             hilo: (!p.predicted.hilo || p.predicted.hilo === 'SKIP') ? 'SKIP' : (sumWin ? 'WIN' : 'LOSS')
                         };
+                        betzeroSingle.enrich(p);
                         p.settledAt = new Date().toISOString();
                         dailyStreakArchive.recordMany([p]);
                         updatedLog = true;
@@ -3957,6 +3966,7 @@ async function handleHttpRequest(req, res) {
                     predicted: {
                         betzero: safeArray(record.predicted.betzero, 4).map(Number).filter(value => Number.isInteger(value) && value >= 1 && value <= 49),
                         bet49: bet49Numbers(record.predicted.bet49),
+                        betzeroSingle: betzeroSingle.recordPick(record),
                         rainbow: safeText(record.predicted.rainbow),
                         totalColor: record.predicted.totalColor && typeof record.predicted.totalColor === 'object' ? {
                             status: safeText(record.predicted.totalColor.status),
@@ -4021,7 +4031,9 @@ async function handleHttpRequest(req, res) {
             try { labMinmax = betzeroLab ? betzeroLab.minmaxFollowState() : null; } catch { labMinmax = null; }
             let labBetzero = null;
             try { labBetzero = betzeroLab ? betzeroLab.mainBetzeroPrediction(snapshot.clock?.drawId) : null; } catch { labBetzero = null; }
-            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt(), labMinmax, labBetzero });
+            let labBetzeroSingle = null;
+            try { labBetzeroSingle = betzeroLab ? betzeroLab.mainBetzeroSinglePrediction(snapshot.clock?.drawId) : null; } catch { labBetzeroSingle = null; }
+            return sendJson(res, 200, { ok: true, updatedAt: snapshotAt, marketStatsResetAt: getMarketStatsResetAt(), labMinmax, labBetzero, labBetzeroSingle });
         } catch (error) {
             console.error('[PredictionFeed] Could not store an incoming snapshot.');
             return sendJson(res, 500, { error: 'Prediction snapshot could not be stored.' });
@@ -4704,7 +4716,7 @@ async function handleHttpRequest(req, res) {
             predicted: {
                 betzero: Array.isArray(p.predicted?.betzero) ? p.predicted.betzero : [],
                 bet49: bet49Numbers(p.predicted?.bet49),
-                betzeroSingle: betzeroSingle.pick(p.predicted?.bet49),
+                betzeroSingle: betzeroSingle.recordPick(p),
                 rainbow: p.result?.rainbow === 'SKIP' ? 'SKIP' : (p.predicted?.rainbow || 'SKIP'),
                 totalColor: p.predicted?.totalColor ? {
                     status: p.predicted.totalColor.status || 'SKIP',
@@ -4724,7 +4736,7 @@ async function handleHttpRequest(req, res) {
                 range: p.result?.range || null,
                 betzero: p.result?.betzero || (p.result ? 'SKIP' : 'PENDING'),
                 bet49: p.result?.bet49 || (p.result ? 'SKIP' : 'PENDING'),
-                betzeroSingle: betzeroSingle.outcome(p.predicted?.bet49, p.result),
+                betzeroSingle: betzeroSingle.outcome(betzeroSingle.recordPick(p), p.result),
                 rainbow: p.result?.rainbow || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor: p.result?.totalColor || (p.result ? 'SKIP' : 'PENDING'),
                 totalColor1: p.result?.totalColor1 || (p.result ? 'SKIP' : 'PENDING'),
@@ -4790,7 +4802,7 @@ async function handleHttpRequest(req, res) {
                     ? live.unlikely4.map(item => Number(item.number)).filter(number => Number.isInteger(number) && number >= 1 && number <= 49)
                     : [],
                 bet49: bet49Numbers(live.bet49Pick),
-                betzeroSingle: betzeroSingle.pick(live.bet49Pick),
+                betzeroSingle: betzeroSingle.pick(live.betzeroSinglePick),
                 rainbow: live.rainbowStatus === 'ACTIVE' ? live.topColor?.name || 'SKIP' : 'SKIP',
                 totalColor: {
                     status: live.totalColorPred?.status === 'ACTIVE' ? 'ACTIVE' : 'SKIP',
@@ -4810,7 +4822,7 @@ async function handleHttpRequest(req, res) {
             predicted: {
                 betzero: previousRecord.result?.betzero === 'SKIP' ? [] : (Array.isArray(previousRecord.predicted?.betzero) ? previousRecord.predicted.betzero : []),
                 bet49: bet49Numbers(previousRecord.predicted?.bet49),
-                betzeroSingle: betzeroSingle.pick(previousRecord.predicted?.bet49),
+                betzeroSingle: betzeroSingle.recordPick(previousRecord),
                 rainbow: previousRecord.result?.rainbow === 'SKIP' ? 'SKIP' : (previousRecord.predicted?.rainbow || 'SKIP'),
                 totalColor: previousRecord.predicted?.totalColor ? {
                     status: previousRecord.predicted.totalColor.status || 'SKIP',
@@ -4830,7 +4842,7 @@ async function handleHttpRequest(req, res) {
                 range: previousRecord.result.range || null,
                 betzero: previousRecord.result.betzero || 'SKIP',
                 bet49: previousRecord.result.bet49 || 'SKIP',
-                betzeroSingle: betzeroSingle.outcome(previousRecord.predicted?.bet49, previousRecord.result),
+                betzeroSingle: betzeroSingle.outcome(betzeroSingle.recordPick(previousRecord), previousRecord.result),
                 rainbow: previousRecord.result.rainbow || 'SKIP',
                 totalColor: previousRecord.result.totalColor || 'SKIP',
                 totalColor1: previousRecord.result.totalColor1 || 'SKIP',
