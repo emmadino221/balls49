@@ -1,10 +1,12 @@
 // Read-only statistics. Events never bridge missing or unresolved draw records.
-export function losingStreakGaps(records, market, view = 'completed') {
+export function losingStreakGaps(records, market, view = 'completed', target = 'LOSS') {
   const grouped = new Map();
   for (const record of records) {
     const id = Number(record.drawId);
     if (!Number.isSafeInteger(id) || id < 1) continue;
-    const outcome = record.result?.[market] || 'PENDING';
+    const actual = record.result?.[market] || 'PENDING';
+    // Single gap charts count wins; the shared engine counts its target as LOSS.
+    const outcome = target === 'WIN' ? (actual === 'WIN' ? 'LOSS' : actual === 'LOSS' ? 'WIN' : actual) : actual;
     if (!grouped.has(id)) grouped.set(id, outcome);
     else if (grouped.get(id) !== outcome) grouped.set(id, 'CONFLICT');
   }

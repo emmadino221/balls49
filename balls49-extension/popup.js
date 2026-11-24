@@ -278,6 +278,8 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         enabled: !!document.getElementById('btn-rollover')?.classList.contains('active'),
         baseStake: Math.min(50000, Math.max(0, parseInt(document.getElementById('stake-rollover')?.value, 10) || 0)),
         lossSteps: Math.min(20, Math.max(1, parseInt(document.getElementById('rollover-steps')?.value, 10) || 4)),
+        windowMode: document.getElementById('rollover-window-mode').value,
+        manualDraws: Number(document.getElementById('rollover-manual-draws').value),
         gapLosses: Math.min(100, Math.max(1, parseInt(document.getElementById('rollover-gap-level')?.value, 10) || 1))
     };
     if (rollover.enabled && rollover.baseStake < 1) {
@@ -387,6 +389,8 @@ function loadParameters() {
         const rollover = data.rollover || {};
         document.getElementById('btn-rollover')?.classList.toggle('active', rollover.enabled === true);
         if (document.getElementById('stake-rollover')) document.getElementById('stake-rollover').value = rollover.baseStake || '';
+        document.getElementById('rollover-window-mode').value = rollover.windowMode ?? 'automatic';
+        document.getElementById('rollover-manual-draws').value = rollover.manualDraws ?? 10;
         if (document.getElementById('rollover-gap-level')) document.getElementById('rollover-gap-level').value = rollover.gapLosses ?? 1;
         if (document.getElementById('rollover-steps')) document.getElementById('rollover-steps').value = rollover.lossSteps ?? (rollover.maxDoublings != null ? Number(rollover.maxDoublings) + 1 : 4);
         showRolloverStatus();
@@ -547,7 +551,7 @@ async function showRolloverStatus() {
         if (!response.ok) return;
         const r = (await response.json()).control?.rollover;
         if (!r) return;
-        const windowText = r.run ? `draw ${Math.min(r.run.played + 1, r.run.length)} of ${r.run.length}` : r.estimate ? `next window ${r.estimate.length} draws (BetZero Single average gap ${r.estimate.average.toFixed(1)})` : 'needs two BetZero Single gaps';
+        const windowText = r.run ? `draw ${Math.min(r.run.played + 1, r.run.length)} of ${r.run.length}` : r.estimate ? `next window ${r.estimate.length} draws (BetZero Single average gap ${r.estimate.mode === 'manual' ? 'manual draw count' : r.estimate.average.toFixed(1)})` : 'needs two BetZero Single gaps';
         line.textContent = r.settings.enabled ? `${r.reason} · ${windowText} · profit ₦${Number(r.profit || 0).toLocaleString()}` : `Off · ${windowText}`;
     } catch { /* status is optional */ }
 }

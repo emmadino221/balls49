@@ -1,13 +1,13 @@
 'use strict';
 // BetZero Single Number Rollover.
 // Uses the saved single-number Lab selection and its own WIN/LOSS history.
-// A fresh Single WIN arms a run; its own selected loss-level spacing sizes the run.
+// A fresh Single WIN arms a run; its own selected win-level spacing sizes the run.
 // Wins roll the entire return at 1.10. A losing run doubles the next start, but
 // waits for another Single WIN. Skips consume a draw slot without changing stake.
 const { seed } = require('./automation-gap-entry');
 const { bet49Numbers } = require('./bet49');
 
-const SOURCE_POLICY = 'SINGLE_WIN_OWN_GAPS_V1';
+const SOURCE_POLICY = 'SINGLE_WIN_WIN_GAPS_V2';
 const ODDS = 1.1, LEVEL = 1, STALE_ARM = 3, MAX_BASE = 50000, MAX_STEPS = 20, DEFAULT_STEPS = 4;
 const fail = message => Object.assign(new Error(message), { status: 409 });
 
@@ -17,15 +17,21 @@ function normalize(input = {}) {
     if (!Number.isSafeInteger(baseStake) || baseStake < 0 || baseStake > MAX_BASE) throw fail(`Rollover base stake must be a whole amount from 0 to ${MAX_BASE}.`);
     if (!Number.isSafeInteger(lossSteps) || lossSteps < 1 || lossSteps > MAX_STEPS) throw fail(`Rollover loss steps must be 1 to ${MAX_STEPS}.`);
     const gapLosses = Number(input.gapLosses ?? LEVEL);
-    if (!Number.isSafeInteger(gapLosses) || gapLosses < 1 || gapLosses > 100) throw fail('Rollover gap loss level must be 1 to 100.');
+    if (!Number.isSafeInteger(gapLosses) || gapLosses < 1 || gapLosses > 100) throw fail('Rollover gap win level must be 1 to 100.');
     const enabled = input.enabled === true;
     if (enabled && baseStake < 1) throw fail('Enter a rollover base stake before enabling it.');
-    return { enabled, baseStake, lossSteps, gapLosses };
+    const windowMode = input.windowMode ?? 'automatic';
+    const manualDraws = Number(input.manualDraws ?? 10);
+    if (!['automatic', 'manual'].includes(windowMode)) throw fail('Unknown rollover window mode.');
+    if (!Number.isSafeInteger(manualDraws) || manualDraws < 1 || manualDraws > 100) throw fail('Manual rollover window must be 1 to 100 draws.');
+    return { enabled, baseStake, lossSteps, gapLosses, windowMode, manualDraws };
 }
 function config(s) {
     const c = s.config.rollover ||= { enabled: false, baseStake: 0, lossSteps: DEFAULT_STEPS };
     if (c.lossSteps == null) { c.lossSteps = Math.min(MAX_STEPS, Math.max(1, Number(c.maxDoublings ?? DEFAULT_STEPS - 1) + 1)); delete c.maxDoublings; }
     if (c.gapLosses == null) c.gapLosses = LEVEL;
+    c.windowMode ??= 'automatic';
+    c.manualDraws ??= 10;
     return c;
 }
 function fresh() { return { sourcePolicy: SOURCE_POLICY, phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, lastObserved: 0, history: [], profit: 0, completed: 0, lost: 0, reason: 'Waiting for a BetZero Single win' }; }
@@ -44,7 +50,7 @@ function reset(s) { s.rollover = fresh(); }
 function configure(s, next) {
     const before = config(s), st = state(s);
     s.config.rollover = next;
-    if (st.phase === 'PAUSED' || before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.lossSteps !== next.lossSteps || before.gapLosses !== next.gapLosses) {
+    if (st.phase === 'PAUSED' || before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.lossSteps !== next.lossSteps || before.gapLosses !== next.gapLosses || before.windowMode !== next.windowMode || before.manualDraws !== next.manualDraws) {
         Object.assign(st, { sourcePolicy: SOURCE_POLICY, lastObserved: 0, estimate: null, phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, reason: 'Waiting for a BetZero Single win' });
     }
 }
@@ -52,7 +58,7 @@ const enabled = s => config(s).enabled && config(s).baseStake > 0;
 const money = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const rolled = stake => Math.floor(stake * ODDS);          // whole naira, never more than the return
 
-// Average BetZero Single gap at the selected loss level, from settled records up to and including `through`.
+// Average BetZero Single gap at the selected win level, from settled records up to and including `through`.
 function windowLength(records, through, level = LEVEL) {
     let settled = [], previous = null;
     for (const r of [...records].sort((a,b) => Number(a.drawId)-Number(b.drawId))) {
@@ -63,16 +69,22 @@ function windowLength(records, through, level = LEVEL) {
         if (previous !== null && id !== previous + 1) settled = [];
         settled.push(r); previous = id;
     }
-    const { history } = seed(settled, 'betzeroSingle', level);
+    const { history } = seed(settled.map(r => ({ ...r, result: { ...r.result, betzeroSingle: r.result.betzeroSingle === 'WIN' ? 'LOSS' : r.result.betzeroSingle === 'LOSS' ? 'WIN' : r.result.betzeroSingle } })), 'betzeroSingle', level);
     if (history.gaps.length < 2) return null;
     const average = history.gaps.reduce((a, b) => a + b, 0) / history.gaps.length;
     return { length: Math.max(1, Math.ceil(average)), average, samples: history.gaps.length, level };
 }
 
+function configuredWindow(records, through, cfg) {
+    return cfg.windowMode === 'manual'
+        ? { length: cfg.manualDraws, average: null, samples: 0, level: cfg.gapLosses, mode: 'manual' }
+        : windowLength(records, through, cfg.gapLosses);
+}
+
 function closeRun(st, at, result, collected, number) {
     const run = st.run, profit = money(collected - run.stakeStart);
     st.history = [{ start: run.start, end: at, length: run.length, played: run.played, bets: run.bets,
-        sourcePolicy: run.sourcePolicy || 'LEGACY_BET49_GAPS', gapLosses: run.gapLosses || 1, stakeStart: run.stakeStart, collected: money(collected), profit, result, number }, ...st.history].slice(0, 50);
+        sourcePolicy: run.sourcePolicy || 'LEGACY_BET49_GAPS', gapLosses: run.gapLosses || 1, windowMode: run.windowMode || 'automatic', stakeStart: run.stakeStart, collected: money(collected), profit, result, number }, ...st.history].slice(0, 50);
     st.profit = money(st.profit + profit);
     st.run = null; st.plan = null; st.placed = null; st.phase = 'WAITING'; st.armedAt = null;
 }
@@ -86,7 +98,7 @@ function observe(s, records) {
     // was watching must not start a run; it waits for the next one.
     if (!st.lastObserved && settled.length) {
         st.lastObserved = Number(settled.at(-1).drawId);
-        const size = windowLength(records, st.lastObserved, cfg.gapLosses);
+        const size = configuredWindow(records, st.lastObserved, cfg);
         st.estimate = size ? { ...size, through: st.lastObserved } : null;
         return;
     }
@@ -129,7 +141,7 @@ function observe(s, records) {
     }
     // The window the next run would get, from the same BetZero Single history, so it can be shown while waiting.
     if (settled.length || st.estimate === undefined) {
-        const size = windowLength(records, st.lastObserved, cfg.gapLosses);
+        const size = configuredWindow(records, st.lastObserved, cfg);
         st.estimate = size ? { ...size, through: st.lastObserved } : null;
     }
 }
@@ -151,10 +163,10 @@ function decide(s, drawId, prediction, records) {
     if (st.phase === 'WAITING') {
         if (!st.armedAt || id <= st.armedAt) { st.reason = 'Waiting for a BetZero Single win'; return null; }
         if (id - st.armedAt > STALE_ARM) { st.armedAt = null; st.reason = 'Waiting for a BetZero Single win'; return null; }
-        const size = windowLength(records, id - 1, cfg.gapLosses);
-        if (!size) { st.reason = `Need at least two BetZero Single gaps at loss level ${cfg.gapLosses} in the current history.`; return null; }
+        const size = configuredWindow(records, id - 1, cfg);
+        if (!size) { st.reason = `Need at least two BetZero Single gaps at win level ${cfg.gapLosses} in the current history.`; return null; }
         const stakeStart = cfg.baseStake * 2 ** st.doublings;
-        st.run = { sourcePolicy: SOURCE_POLICY, gapLosses: cfg.gapLosses, start: id, length: size.length, average: size.average, samples: size.samples, played: 0, bets: 0, stakeStart, stake: stakeStart, lastDraw: null };
+        st.run = { sourcePolicy: SOURCE_POLICY, gapLosses: cfg.gapLosses, windowMode: cfg.windowMode, start: id, length: size.length, average: size.average, samples: size.samples, played: 0, bets: 0, stakeStart, stake: stakeStart, lastDraw: null };
         st.phase = 'PLAYING'; st.armedAt = null;
     }
     const picks = bet49Numbers(prediction?.betzeroSinglePick);
