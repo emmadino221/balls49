@@ -1,13 +1,13 @@
 'use strict';
 // BetZero Single Number Rollover.
 // Uses the saved single-number Lab selection and its own WIN/LOSS history.
-// A fresh Single WIN arms a run; its own selected win-level spacing sizes the run.
-// Wins roll the entire return at 1.10. A losing run doubles the next start, but
-// waits for another Single WIN. Skips consume a draw slot without changing stake.
+// Every eligible prediction can start a run; win-level gaps or a manual count size it.
+// Wins roll the entire return at 1.10. Losses multiply the next starting stake.
+// Skips consume an active draw slot without changing stake.
 const { seed } = require('./automation-gap-entry');
 const { bet49Numbers } = require('./bet49');
 
-const SOURCE_POLICY = 'SINGLE_WIN_WIN_GAPS_V2';
+const SOURCE_POLICY = 'SINGLE_CONTINUOUS_WIN_GAPS_V3';
 const ODDS = 1.1, LEVEL = 1, STALE_ARM = 3, MAX_BASE = 50000, MAX_STEPS = 20, DEFAULT_STEPS = 4;
 const fail = message => Object.assign(new Error(message), { status: 409 });
 
@@ -24,7 +24,10 @@ function normalize(input = {}) {
     const manualDraws = Number(input.manualDraws ?? 10);
     if (!['automatic', 'manual'].includes(windowMode)) throw fail('Unknown rollover window mode.');
     if (!Number.isSafeInteger(manualDraws) || manualDraws < 1 || manualDraws > 100) throw fail('Manual rollover window must be 1 to 100 draws.');
-    return { enabled, baseStake, lossSteps, gapLosses, windowMode, manualDraws };
+    const recoveryMultiplier = Number(input.recoveryMultiplier ?? 2);
+    if (!Number.isFinite(recoveryMultiplier) || recoveryMultiplier <= 1) throw fail('Recovery multiplier must be a finite number greater than 1.');
+    if (!Number.isSafeInteger(Math.ceil(Math.max(1, baseStake) * recoveryMultiplier ** (lossSteps - 1)))) throw fail('Recovery progression exceeds the supported stake range. Reduce the multiplier or loss steps.');
+    return { enabled, baseStake, lossSteps, gapLosses, windowMode, manualDraws, recoveryMultiplier };
 }
 function config(s) {
     const c = s.config.rollover ||= { enabled: false, baseStake: 0, lossSteps: DEFAULT_STEPS };
@@ -32,16 +35,17 @@ function config(s) {
     if (c.gapLosses == null) c.gapLosses = LEVEL;
     c.windowMode ??= 'automatic';
     c.manualDraws ??= 10;
+    c.recoveryMultiplier ??= 2;
     return c;
 }
-function fresh() { return { sourcePolicy: SOURCE_POLICY, phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, lastObserved: 0, history: [], profit: 0, completed: 0, lost: 0, reason: 'Waiting for a BetZero Single win' }; }
+function fresh() { return { sourcePolicy: SOURCE_POLICY, phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, lastObserved: 0, history: [], profit: 0, completed: 0, lost: 0, reason: 'Waiting for an eligible BetZero Single prediction' }; }
 function state(s) {
     const st = s.rollover ||= fresh();
     // Finish an already planned run without rewriting its window or its placed bet.
     // On return to idle discard the old Bet49 trigger/estimate, keeping money/history.
     if (st.sourcePolicy !== SOURCE_POLICY && !st.run && !st.plan && !st.placed) {
         Object.assign(st, { sourcePolicy: SOURCE_POLICY, armedAt: null, lastObserved: 0, estimate: null });
-        if (st.phase !== 'PAUSED') st.reason = 'Waiting for a fresh BetZero Single win';
+        if (st.phase !== 'PAUSED') st.reason = 'Waiting for an eligible BetZero Single prediction';
     }
     return st;
 }
@@ -50,8 +54,8 @@ function reset(s) { s.rollover = fresh(); }
 function configure(s, next) {
     const before = config(s), st = state(s);
     s.config.rollover = next;
-    if (st.phase === 'PAUSED' || before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.lossSteps !== next.lossSteps || before.gapLosses !== next.gapLosses || before.windowMode !== next.windowMode || before.manualDraws !== next.manualDraws) {
-        Object.assign(st, { sourcePolicy: SOURCE_POLICY, lastObserved: 0, estimate: null, phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, reason: 'Waiting for a BetZero Single win' });
+    if (st.phase === 'PAUSED' || before.enabled !== next.enabled || before.baseStake !== next.baseStake || before.lossSteps !== next.lossSteps || before.gapLosses !== next.gapLosses || before.windowMode !== next.windowMode || before.manualDraws !== next.manualDraws || before.recoveryMultiplier !== next.recoveryMultiplier) {
+        Object.assign(st, { sourcePolicy: SOURCE_POLICY, lastObserved: 0, estimate: null, phase: 'WAITING', armedAt: null, run: null, doublings: 0, plan: null, placed: null, reason: 'Waiting for an eligible BetZero Single prediction' });
     }
 }
 const enabled = s => config(s).enabled && config(s).baseStake > 0;
@@ -84,7 +88,7 @@ function configuredWindow(records, through, cfg) {
 function closeRun(st, at, result, collected, number) {
     const run = st.run, profit = money(collected - run.stakeStart);
     st.history = [{ start: run.start, end: at, length: run.length, played: run.played, bets: run.bets,
-        sourcePolicy: run.sourcePolicy || 'LEGACY_BET49_GAPS', gapLosses: run.gapLosses || 1, windowMode: run.windowMode || 'automatic', stakeStart: run.stakeStart, collected: money(collected), profit, result, number }, ...st.history].slice(0, 50);
+        recoveryMultiplier: run.recoveryMultiplier ?? 2, sourcePolicy: run.sourcePolicy || 'LEGACY_BET49_GAPS', gapLosses: run.gapLosses || 1, windowMode: run.windowMode || 'automatic', stakeStart: run.stakeStart, collected: money(collected), profit, result, number }, ...st.history].slice(0, 50);
     st.profit = money(st.profit + profit);
     st.run = null; st.plan = null; st.placed = null; st.phase = 'WAITING'; st.armedAt = null;
 }
@@ -94,8 +98,7 @@ function observe(s, records) {
     const st = state(s), cfg = config(s);
     const settled = records.filter(r => r?.result && Array.isArray(r.result.balls) && Number(r.drawId) > st.lastObserved)
         .sort((a, b) => Number(a.drawId) - Number(b.drawId));
-    // First look at the history: start from its newest draw. A BetZero Single win from before the rollover
-    // was watching must not start a run; it waits for the next one.
+    // Baseline the history without replaying old draws as new placements.
     if (!st.lastObserved && settled.length) {
         st.lastObserved = Number(settled.at(-1).drawId);
         const size = configuredWindow(records, st.lastObserved, cfg);
@@ -103,7 +106,6 @@ function observe(s, records) {
         return;
     }
     for (const r of settled) {
-        const wasWaiting = st.phase === 'WAITING';
         const id = Number(r.drawId), balls = r.result.balls.map(Number);
         if (st.plan && Number(st.plan.drawId) === id && st.run) {
             const plan = st.plan, run = st.run;
@@ -115,28 +117,26 @@ function observe(s, records) {
                     closeRun(st, id, 'LOST', 0, number); st.lost++;
                     st.doublings++;
                     if (st.doublings >= cfg.lossSteps) { st.phase = 'PAUSED'; st.reason = `Paused: all ${cfg.lossSteps} loss steps lost in a row. Save the rollover settings to start again from step 1.`; }
-                    else { st.armedAt = null; st.reason = `Lost step ${st.doublings} of ${cfg.lossSteps} on #${id}. Step ${st.doublings + 1} starts at ${2 ** st.doublings}x the base stake after the next BetZero Single win.`; }
+                    else { st.armedAt = null; st.reason = `Lost step ${st.doublings} of ${cfg.lossSteps} on #${id}. Step ${st.doublings + 1} starts at ${cfg.recoveryMultiplier ** st.doublings}x the base stake on the next eligible BetZero Single prediction.`; }
                 } else {
                     run.played++;
                     run.stake = rolled(stake);
                     if (run.played >= run.length) {
                         closeRun(st, id, 'COMPLETE', money(stake * ODDS), number); st.completed++;
-                        st.doublings = 0; st.reason = `Run collected on #${id}. Waiting for a BetZero Single win.`;
+                        st.doublings = 0; st.reason = `Run collected on #${id}. Waiting for an eligible BetZero Single prediction.`;
                     }
                 }
             } else {
                 // Expected bet was not placed (stopped, failed or cut short): collect what was rolled.
                 closeRun(st, id, 'STOPPED', run.bets ? run.stake : run.stakeStart, plan.number);
-                st.reason = 'Run ended because its bet was not placed. Waiting for a BetZero Single win.';
+                st.reason = 'Run ended because its bet was not placed. Waiting for an eligible BetZero Single prediction.';
             }
             if (st.run && st.run.played >= st.run.length) {     // a counted skip can finish the run
                 closeRun(st, id, 'COMPLETE', st.run.bets ? st.run.stake : st.run.stakeStart, null); st.completed++;
-                st.doublings = 0; st.reason = `Run collected on #${id}. Waiting for a BetZero Single win.`;
+                st.doublings = 0; st.reason = `Run collected on #${id}. Waiting for an eligible BetZero Single prediction.`;
             }
             if (st.plan && Number(st.plan.drawId) === id) { st.plan = null; st.placed = null; }
         }
-        // Only while switched on: a win seen while off (or before a settings change) never starts a run.
-        if (st.sourcePolicy === SOURCE_POLICY && wasWaiting && st.phase === 'WAITING' && enabled(s) && r.result.betzeroSingle === 'WIN') st.armedAt = id;
         st.lastObserved = id;
     }
     // The window the next run would get, from the same BetZero Single history, so it can be shown while waiting.
@@ -149,26 +149,29 @@ function observe(s, records) {
 // The bet for the upcoming draw, or null. Call after observe().
 function decide(s, drawId, prediction, records) {
     const st = state(s), cfg = config(s), id = Number(drawId);
-    if (!enabled(s) || st.phase === 'PAUSED' || !Number.isSafeInteger(id)) return null;
+    if (!enabled(s) || st.phase === 'PAUSED' || !Number.isSafeInteger(id) || id < 1) return null;
     if (st.plan && Number(st.plan.drawId) === id) return st.plan.skip ? null : { number: st.plan.number, stake: st.plan.stake };
     if (st.plan && id > Number(st.plan.drawId) + STALE_ARM && st.run) {
         closeRun(st, Number(st.plan.drawId), 'STOPPED', st.run.bets ? st.run.stake : st.run.stakeStart, st.plan.number);
-        st.reason = 'Run ended: a result never arrived. Waiting for a BetZero Single win.';
+        st.reason = 'Run ended: a result never arrived. Waiting for an eligible BetZero Single prediction.';
     }
     if (st.plan) { st.reason = `Waiting for the result of #${st.plan.drawId}.`; return null; }
     if (st.phase === 'PLAYING' && st.run?.lastDraw && id > st.run.lastDraw + 1 + STALE_ARM) {
         closeRun(st, st.run.lastDraw, 'STOPPED', st.run.bets ? st.run.stake : st.run.stakeStart, null);
-        st.reason = 'Run ended after missed draws. Waiting for a BetZero Single win.';
+        st.reason = 'Run ended after missed draws. Waiting for an eligible BetZero Single prediction.';
     }
     if (st.phase === 'WAITING') {
-        if (!st.armedAt || id <= st.armedAt) { st.reason = 'Waiting for a BetZero Single win'; return null; }
-        if (id - st.armedAt > STALE_ARM) { st.armedAt = null; st.reason = 'Waiting for a BetZero Single win'; return null; }
+        // Never replay a settled draw or create a new window without a valid pick.
+        if (id <= Math.max(st.lastObserved || 0, st.history?.[0]?.end || 0)) return null;
+        if (bet49Numbers(prediction?.betzeroSinglePick).length !== 1) { st.reason = 'Waiting for an eligible BetZero Single prediction'; return null; }
         const size = configuredWindow(records, id - 1, cfg);
         if (!size) { st.reason = `Need at least two BetZero Single gaps at win level ${cfg.gapLosses} in the current history.`; return null; }
-        const stakeStart = cfg.baseStake * 2 ** st.doublings;
-        st.run = { sourcePolicy: SOURCE_POLICY, gapLosses: cfg.gapLosses, windowMode: cfg.windowMode, start: id, length: size.length, average: size.average, samples: size.samples, played: 0, bets: 0, stakeStart, stake: stakeStart, lastDraw: null };
+        const stakeStart = Math.ceil(cfg.baseStake * cfg.recoveryMultiplier ** st.doublings);
+        if (!Number.isSafeInteger(stakeStart) || stakeStart < 1) { st.phase = 'PAUSED'; st.reason = 'Recovery stake exceeds the supported range. Review rollover settings.'; return null; }
+        st.run = { recoveryMultiplier: cfg.recoveryMultiplier, sourcePolicy: SOURCE_POLICY, gapLosses: cfg.gapLosses, windowMode: cfg.windowMode, start: id, length: size.length, average: size.average, samples: size.samples, played: 0, bets: 0, stakeStart, stake: stakeStart, lastDraw: null };
         st.phase = 'PLAYING'; st.armedAt = null;
     }
+    if (!Number.isSafeInteger(st.run.stake) || st.run.stake < 1) { st.phase = 'PAUSED'; st.reason = 'Rollover stake exceeds the supported range. Review settings.'; return null; }
     const picks = bet49Numbers(prediction?.betzeroSinglePick);
     const number = picks.length === 1 ? picks[0] : null;
     st.plan = { drawId: id, number, stake: st.run.stake, skip: number === null };
@@ -185,7 +188,7 @@ function placed(s, drawId, number, stake) {
 function view(s) {
     const st = state(s), cfg = config(s);
     return { sourcePolicy: st.sourcePolicy, settings: { ...cfg }, odds: ODDS, phase: st.phase, reason: st.reason, doublings: st.doublings, estimate: st.estimate || null,
-        nextStartStake: cfg.baseStake * 2 ** st.doublings, armedAt: st.armedAt,
+        nextStartStake: Math.ceil(cfg.baseStake * cfg.recoveryMultiplier ** st.doublings), armedAt: st.armedAt,
         run: st.run ? { ...st.run, average: st.run.average } : null,
         plan: st.plan, profit: st.profit, completed: st.completed, lost: st.lost, history: st.history.slice(0, 20) };
 }
