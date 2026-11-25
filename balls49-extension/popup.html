@@ -140,12 +140,13 @@
             <div class="section-label">🔁 BZ Single Rollover (BetZero 1.10)</div>
             <div class="grid-2" style="margin-bottom: 4px;">
                 <input type="number" id="stake-rollover" min="0" max="50000" step="1" placeholder="Rollover base stake" title="Starting stake of each rollover run">
+                <label>Recovery multiplier (default ?2)<input type="text" inputmode="decimal" id="rollover-recovery-multiplier" value="2"></label>
                 <select id="rollover-window-mode" aria-label="Rollover window calculation"><option value="automatic">Automatic winning-streak gap</option><option value="manual">Manual draw count</option></select>
                 <input type="number" id="rollover-manual-draws" min="1" max="100" value="10" aria-label="Manual rollover draws (1-100)">
                 <input type="number" id="rollover-gap-level" min="1" max="100" step="1" placeholder="Gap win level (1-100)" aria-label="BetZero Single gap win level" title="Uses BetZero Single historical gaps at this win level">
                 <input type="number" id="rollover-steps" min="1" max="20" step="1" placeholder="Loss steps (1-20)" title="Each lost run moves to the next step and doubles the starting stake. Only a loss at the last step pauses the rollover.">
             </div>
-            <small id="rollover-status" style="display:block;margin-bottom:10px;color:var(--text-muted);">Starts after a BetZero Single win and rolls each return over for the BetZero Single average gap. Change it only while stopped.</small>
+            <small id="rollover-status" style="display:block;margin-bottom:10px;color:var(--text-muted);">Starts on the next eligible prediction and rolls each return for the selected window. Change it only while stopped.</small>
             
             <div class="section-label" style="color: var(--accent-red);">🛡️ Risk Limits</div>
             <div style="margin-bottom: 4px; font-size: 9px; color: var(--text-muted);">Max Step Constraints:</div>

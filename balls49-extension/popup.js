@@ -278,6 +278,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         enabled: !!document.getElementById('btn-rollover')?.classList.contains('active'),
         baseStake: Math.min(50000, Math.max(0, parseInt(document.getElementById('stake-rollover')?.value, 10) || 0)),
         lossSteps: Math.min(20, Math.max(1, parseInt(document.getElementById('rollover-steps')?.value, 10) || 4)),
+        recoveryMultiplier: Number(document.getElementById('rollover-recovery-multiplier').value),
         windowMode: document.getElementById('rollover-window-mode').value,
         manualDraws: Number(document.getElementById('rollover-manual-draws').value),
         gapLosses: Math.min(100, Math.max(1, parseInt(document.getElementById('rollover-gap-level')?.value, 10) || 1))
@@ -389,6 +390,7 @@ function loadParameters() {
         const rollover = data.rollover || {};
         document.getElementById('btn-rollover')?.classList.toggle('active', rollover.enabled === true);
         if (document.getElementById('stake-rollover')) document.getElementById('stake-rollover').value = rollover.baseStake || '';
+        document.getElementById('rollover-recovery-multiplier').value = rollover.recoveryMultiplier ?? 2;
         document.getElementById('rollover-window-mode').value = rollover.windowMode ?? 'automatic';
         document.getElementById('rollover-manual-draws').value = rollover.manualDraws ?? 10;
         if (document.getElementById('rollover-gap-level')) document.getElementById('rollover-gap-level').value = rollover.gapLosses ?? 1;
