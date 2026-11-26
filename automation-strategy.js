@@ -84,6 +84,10 @@ function preview(input, records) {
 }
 
 function install(s, plan, previous) {
+    for (const key of ['u4','color','sum']) {
+        if (s.martingaleState[key]?.accumulatingCycle?.count > 0) throw fail('Finish or reset the accumulating-profit recovery before applying a suggested plan.');
+    }
+    for (const key of ['u4','color','sum']) if (s.martingaleState[key]) delete s.martingaleState[key].accumulatingCycle;
     const config = s.config;
     config.unifiedMode = plan.request.games[0] === 'unified';
     for (const key of Object.values(games)) {
@@ -91,6 +95,7 @@ function install(s, plan, previous) {
         const p = config.unifiedMode ? plan.plans[0] : plan.plans.find(p => games[p.key] === key);
         if (p) { config.initialStakes[key] = p.base; config.maxSteps[key] = p.steps; }
     }
+    config.accumulatingProfit = { betzero: false, rainbow: false, hilo: false };
     for (const key of ['flatBetting', 'weightedStaking', 'bzRbRollover', 'hiloRollover', 'tc3Rollover']) config[key] = false;
     config.dynamicStakePercent = 0;
     config.tc1ProfitMode = 'fixed'; config.hiloMultiplier = 2;

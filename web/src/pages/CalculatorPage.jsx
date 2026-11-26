@@ -20,7 +20,7 @@ const naira = value => `₦${Number(value).toLocaleString('en-NG', { minimumFrac
 const FIRST_DETAIL_ROWS = 100;
 const LAST_DETAIL_ROWS = 20;
 
-function buildSequence(strategy, baseStake, steps, customOdds) {
+function buildSequence(strategy, baseStake, steps, customOdds, accumulating = false) {
   const firstBets = [];
   const lastBets = [];
   let totalCost = 0;
@@ -46,7 +46,14 @@ function buildSequence(strategy, baseStake, steps, customOdds) {
     let profit;
     let exposure;
 
-    if (strategy.type === 'bet49') {
+    if (accumulating) {
+      // Match accumulating-profit.js: actual rounded losses + normal first profit + base per loss.
+      const target = targetProfit + (step - 1) * baseStake;
+      bet = Math.ceil((totalCost + target) / (odds - 1) - 1e-9);
+      if (!Number.isSafeInteger(bet) || bet < 1) { overflow = true; overflowAtStep = step; break; }
+      exposure = bet;
+      profit = roundMoney(bet * (odds - 1) - totalCost);
+    } else if (strategy.type === 'bet49') {
       // One number at 7.80 odds, the same recovery the extension and automation use.
       bet = globalThis.Bet49Staking.nextStake(baseStake, totalCost, step - 1, strategy.mode);
       if (!bet) { overflow = true; overflowAtStep = step; break; }
@@ -82,7 +89,7 @@ function buildSequence(strategy, baseStake, steps, customOdds) {
     totalCost += exposure;
     calculatedSteps = step;
     largestStake = Math.max(largestStake, bet);
-    const row = { step, bet, exposure: roundMoney(exposure), cumulativeRisk: roundMoney(totalCost), profit };
+    const row = { step, bet, target: roundMoney(targetProfit + (step - 1) * baseStake), exposure: roundMoney(exposure), cumulativeRisk: roundMoney(totalCost), profit };
     if (step <= FIRST_DETAIL_ROWS) {
       firstBets.push(row);
     } else {
@@ -109,6 +116,9 @@ export default function CalculatorPage() {
   const [steps, setSteps] = useState('5');
   const [capital, setCapital] = useState('10000');
   const [customOdds, setCustomOdds] = useState('2');
+  const [accumulatingModes, setAccumulatingModes] = useState({ betzero: false, rainbow: false, hilo: false });
+  const profitMarket = strategyId === 'hilo140' ? 'hilo' : strategyId;
+  const accumulating = accumulatingModes[profitMarket] === true;
   const strategy = strategies.find(item => item.id === strategyId) || strategies[0];
   const parsedStake = Number(baseStake);
   const safeStake = Number.isFinite(parsedStake) ? Math.max(0, parsedStake) : 0;
@@ -117,8 +127,8 @@ export default function CalculatorPage() {
   const safeCapital = Math.max(0, Number(capital) || 0);
   const safeOdds = Math.min(1000, Math.max(1.01, Number(customOdds) || 1.01));
   const result = useMemo(
-    () => buildSequence(strategy, safeStake, safeSteps, safeOdds),
-    [strategy, safeStake, safeSteps, safeOdds],
+    () => buildSequence(strategy, safeStake, safeSteps, safeOdds, accumulating),
+    [strategy, safeStake, safeSteps, safeOdds, accumulating],
   );
   const riskPercent = safeCapital > 0 ? (result.total / safeCapital) * 100 : null;
 
@@ -143,6 +153,13 @@ export default function CalculatorPage() {
               {strategies.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label>
+          <fieldset className="calculator-field">
+            <legend>Optional accumulating profit ? off by default</legend>
+            {[['betzero','BetZero'],['rainbow','Rainbow'],['hilo','High / Low']].map(([id,label]) => (
+              <label key={id} className="automation-check"><input type="checkbox" checked={accumulatingModes[id]} onChange={event => setAccumulatingModes(current => ({ ...current, [id]: event.target.checked }))} />{label}: add one base stake to profit per loss</label>
+            ))}
+          </fieldset>
+          {accumulating && <p className="calculator-input-note">Recovers all previous stakes, plus the first stake?s normal profit, plus one base stake for each previous loss. Stakes round up to whole naira; the result after rounding may exceed the target. This replaces the selected High/Low multiplier when enabled. These checkboxes affect this calculator only.</p>}
           <div className="calculator-field-row">
             <label className="calculator-field">
               <span>Starting stake (₦)</span>
@@ -169,7 +186,7 @@ export default function CalculatorPage() {
         <aside className="calculator-summary" aria-live="polite">
           <div className="calculator-card-heading">
             <span className="overline">SEQUENCE SUMMARY</span>
-            <h2>{strategy.label}</h2>
+            <h2>{accumulating ? `${profitMarket === 'hilo' ? 'High / Low' : strategy.label} ? accumulating profit` : strategy.label}</h2>
           </div>
           <div className="calculator-total-label">Total risk across {result.calculatedSteps} of {safeSteps} requested {safeSteps === 1 ? 'step' : 'steps'}</div>
           <strong className="calculator-total">{naira(result.total)}</strong>
@@ -194,14 +211,15 @@ export default function CalculatorPage() {
         </div>
         <div className="calculator-table-scroll">
           <table className="calculator-table">
-            <thead><tr><th scope="col">Step</th><th scope="col">Stake</th><th scope="col">Exposure this step</th><th scope="col">Cumulative risk</th><th scope="col">Calculated result if won</th></tr></thead>
+            <thead><tr><th scope="col">Step</th><th scope="col">Stake</th><th scope="col">Exposure this step</th><th scope="col">Cumulative risk</th>{accumulating && <th scope="col">Target net profit</th>}<th scope="col">Calculated result if won</th></tr></thead>
             <tbody>{result.bets.map(item => item.gap
-              ? <tr key="omitted-steps"><td colSpan="5" className="calculator-omitted-steps">… {item.gap.toLocaleString()} intermediate steps omitted from the table …</td></tr>
+              ? <tr key="omitted-steps"><td colSpan={accumulating ? 6 : 5} className="calculator-omitted-steps">… {item.gap.toLocaleString()} intermediate steps omitted from the table …</td></tr>
               : <tr key={item.step}>
                 <th scope="row">{String(item.step).padStart(2, '0')}</th>
                 <td>{naira(item.bet)}</td>
                 <td>{naira(item.exposure)}</td>
                 <td>{naira(item.cumulativeRisk)}</td>
+                {accumulating && <td>{naira(item.target)}</td>}
                 <td className={item.profit >= 0 ? 'calculator-profit' : 'calculator-loss'}>{item.profit < 0 ? '−' : '+'}{naira(Math.abs(item.profit))}</td>
               </tr>
             )}</tbody>

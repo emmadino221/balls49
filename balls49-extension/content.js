@@ -1673,7 +1673,7 @@ async function startApp() {
             'enabledGames', 'schedule', 'telegramChatId', 'step1Only', 
             'hiloStrategy', 'flatBetting', 'sniperSettings', 'sniperMode', 'sniperStep', 'sniperResetLosses',
             'dynamicStakePercent', 'cbMaxLosses', 'cbCooldown',
-            'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
+            'unifiedMode', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'accumulatingProfit', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters'
         ], (data) => {
             if (data) {
                 data.unifiedMode = false;

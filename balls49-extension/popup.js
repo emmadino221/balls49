@@ -252,6 +252,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
         : Math.min(10, Math.max(2, requestedTc3Target));
     if (tc3TargetInput) tc3TargetInput.value = String(tc3RolloverTarget);
     const bet49ProfitMode = Bet49Staking.mode(document.getElementById('bet49-profit-mode')?.value);
+    const accumulatingProfit = Object.fromEntries(['betzero','rainbow','hilo'].map(key => [key, document.getElementById(`accumulating-${key}`).checked]));
     const tc1ProfitMode = TC1Staking.mode(document.getElementById('tc1-profit-mode')?.value);
     const hiloMultiplier = parseFloat(document.getElementById('hilo-multiplier')?.value) || 2.0;
 
@@ -292,7 +293,7 @@ document.getElementById('save-btn')?.addEventListener('click', async () => {
     const payload = { 
         stakes, gameSteps, takeProfit, stopLoss, enabledGames: currentGames, 
         telegramChatId, flatBetting, sniperSettings, cbMaxLosses,
-        unifiedMode, bzRbRollover, hiloRollover, cbCooldown, hiloMultiplier, tc1ProfitMode, bet49ProfitMode, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
+        unifiedMode, bzRbRollover, hiloRollover, cbCooldown, hiloMultiplier, tc1ProfitMode, bet49ProfitMode, accumulatingProfit, tc3Rollover, tc3RolloverTarget, summaryModelMarkets, summaryModelTargets, strategyFilters,
         shadowMode, weightedStaking, rollover, gapEntry, manualSave: true
     };
 
@@ -384,7 +385,7 @@ function loadParameters() {
     chrome.storage.sync.get([
         'enabledGames', 'stakes', 'gameSteps', 'running', 'takeProfit', 
         'stopLoss', 'soundEnabled', 'telegramChatId', 'flatBetting', 'sniperSettings', 'sniperMode',
-        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloRollover', 'cbCooldown', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode',
+        'sniperStep', 'sniperResetLosses', 'cbMaxLosses', 'unifiedMode', 'bzRbRollover', 'hiloRollover', 'cbCooldown', 'hiloMultiplier', 'tc1ProfitMode', 'bet49ProfitMode', 'accumulatingProfit',
         'tc3Rollover', 'tc3RolloverTarget', 'summaryModelMarkets', 'summaryModelTargets', 'strategyFilters', 'shadowMode', 'weightedStaking', 'rollover'
     ], (data) => {
         const rollover = data.rollover || {};
@@ -444,6 +445,7 @@ function loadParameters() {
         setCheckState('shadowMode', data.shadowMode);
         setCheckState('weightedStaking', data.weightedStaking);
         setCheckState('tc3-rollover', data.tc3Rollover);
+        for (const key of ['betzero','rainbow','hilo']) document.getElementById(`accumulating-${key}`).checked = data.accumulatingProfit?.[key] === true;
         document.getElementById('bet49-profit-mode').value = Bet49Staking.mode(data.bet49ProfitMode);
         document.getElementById('tc1-profit-mode').value = TC1Staking.mode(data.tc1ProfitMode);
         if (document.getElementById('hilo-multiplier')) document.getElementById('hilo-multiplier').value = data.hiloMultiplier || '2.00';

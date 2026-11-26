@@ -130,6 +130,10 @@
             <div class="grid-2" style="margin-bottom: 10px;">
                 <input type="number" id="stake-totalColor" placeholder="TC 3-Way Stake">
                 <input type="number" id="stake-totalColor1" placeholder="Winning Color Stake">
+                <label class="check-wrap"><input type="checkbox" id="accumulating-betzero">BetZero: add base stake profit per loss</label>
+                <label class="check-wrap"><input type="checkbox" id="accumulating-rainbow">Rainbow: add base stake profit per loss</label>
+                <label class="check-wrap"><input type="checkbox" id="accumulating-hilo">High/Low: add base stake profit per loss</label>
+                <small>Off by default. Next recovery cycle only. Recovers losses + initial normal profit + one base stake per loss. Overrides High/Low progression; incompatible with flat/weighted staking and affected rollovers. Suggested plans use their own staking.</small>
                 <label for="bet49-profit-mode">Bet49 recovery target (7.80 odds)</label>
                 <select id="bet49-profit-mode"><option value="fixed">Same profit</option><option value="accumulating">Accumulating profit</option></select>
                 <small>Mode changes apply to the next recovery cycle. Each settled loss advances the target; skips do not.</small>
