@@ -44,6 +44,7 @@ const { getStrategyResults, getSelectedStrategy, calculateStrategyStats } = requ
 
 const TC1Staking = require('./balls49-extension/tc1-staking');
 const Bet49Staking = require('./balls49-extension/bet49-staking');
+const accumulatingProfit = require('./accumulating-profit');
 const { singleColorPrediction, singleColorWins } = require('./total-color');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -2095,6 +2096,10 @@ function getMartingaleStake(clientId, key, localStep, mlScore = 0) {
             state.cycleBets || 0, state.cycleMode || session.config.bet49ProfitMode), odds: 7.8 };
 
     }
+    if (!session.config.flatBetting) {
+        const accumulated = accumulatingProfit.quote(session, key, initialBaseUnit, walletConfig.odds, localStep);
+        if (accumulated) return accumulated;
+    }
     if (session.config.flatBetting || localStep <= 1) return { stake: initialBaseUnit, odds: walletConfig.odds };
 
 
@@ -3173,6 +3178,7 @@ function evaluateSessionBets(clientId, session, pLogItem) {
                 const displayStake = key === 'bet49' ? Number(details.stakes.bet49 || 0) * placedBet49.length : (key === 'totalColor') ? (calc.stake * 3) : (key === 'totalColor2') ? (calc.stake * 2) : calc.stake;
                 const gLabel = key === 'totalColor1' ? 'Winning Color' : key === 'u4' ? '🎯 BetZero' : key === 'bet49' ? '🟠 Bet49' : key === 'color' ? '🌈 Rainbow' : key === 'sum' ? '📊 Hi/Lo' : key === 'totalColor' ? '🎨 TC (3W)' : '🎭 TC (2W)';
 
+                accumulatingProfit.settle(session, key, pLogItem.drawId, activeWin, details.stakes[key]);
                 if (key === 'bet49') {
                     if (activeWin) { state.cycleLosses = 0; state.cycleBets = 0; state.cycleBase = null; state.cycleMode = null; }
                     else { state.cycleLosses = (state.cycleLosses || 0) + Number(details.stakes.bet49 || 0) * placedBet49.length; state.cycleBets = (state.cycleBets || 0) + 1; }
@@ -5489,6 +5495,7 @@ async function handleHttpRequest(req, res) {
                     session.stats.haltReason = "🛑 Stopped by User";
                 }
 
+                if (cfg.accumulatingProfit !== undefined) session.config.accumulatingProfit = accumulatingProfit.normalize(cfg.accumulatingProfit);
                 if (cfg.tc1ProfitMode !== undefined) session.config.tc1ProfitMode = TC1Staking.mode(cfg.tc1ProfitMode);
                 if (cfg.bet49ProfitMode !== undefined) session.config.bet49ProfitMode = Bet49Staking.mode(cfg.bet49ProfitMode);
                 if (cfg.stakes) {

@@ -1,4 +1,5 @@
 "use strict";
+const accumulatingProfit = require('./accumulating-profit');
 const strategy = require('./automation-strategy');
 const gapEntry = require('./automation-gap-entry');
 const rollover = require('./betzero-rollover');
@@ -14,6 +15,7 @@ function settings(s) {
  const out = { stakes: {}, gameSteps: {}, enabledGames: {} };
  for (const [key, name] of Object.entries(aliases)) { out.stakes[name] = s.config.initialStakes[key]; out.gameSteps[name] = s.config.maxSteps[key]; out.enabledGames[name] = !!s.config.enabledGames[key]; }
  for (const key of ['takeProfit','stopLoss','hiloMultiplier','tc1ProfitMode','bet49ProfitMode','flatBetting','unifiedMode','gapEntry','sniperSettings','summaryModelMarkets','summaryModelTargets','bzRbRollover','hiloRollover','tc3Rollover','tc3RolloverTarget','cbMaxLosses','cbCooldown','shadowMode','weightedStaking']) out[key] = s.config[key];
+ out.accumulatingProfit = accumulatingProfit.normalize(s.config.accumulatingProfit);
  out.rollover = { ...rollover.config(s) };
  return out;
 }
@@ -22,6 +24,8 @@ function view(s) { guard(s); const c = state(s); return { rollover: rollover.vie
 // so neither can store a combination that silently stops a game or makes two bets cancel out.
 // c: { gapEntry, shadowMode, cbMaxLosses, cbCooldown, bzRbRollover, hiloRollover, tc3Rollover, enabledGames, rollover }
 function conflict(c) {
+ const accumulated = Object.values(accumulatingProfit.normalize(c.accumulatingProfit)).some(Boolean);
+ if (accumulated && (c.flatBetting || c.weightedStaking || c.bzRbRollover || (c.accumulatingProfit?.hilo && c.hiloRollover))) return 'Accumulating profit requires ordinary recovery: turn off flat betting, weighted staking and the affected market rollover.';
  const gap = Object.values(c.gapEntry || {}).some(v => v?.enabled);
  if (gap && (c.shadowMode || c.bzRbRollover || c.hiloRollover || c.tc3Rollover)) return 'Gap playing windows cannot be used with Shadow mode or the BetZero / Rainbow, High / Low or 3-way rollovers: a game with gap windows would never play. Turn those off, or turn gap windows off.';
  if (c.shadowMode && !(Number(c.cbMaxLosses) > 0)) return 'Shadow mode needs Circuit-breaker losses above 0: it starts after that many losses in a row, so with 0 it never starts.';
@@ -38,6 +42,7 @@ function normalize(input) {
  out.enabledGames = {}; for (const key of Object.values(aliases)) out.enabledGames[key] = input.enabledGames?.[key] === true;
  for (const [field,min,max] of [['takeProfit',0,10000000],['stopLoss',-10000000,0],['cbMaxLosses',0,50],['cbCooldown',0,300],['tc3RolloverTarget',2,10]]) { const n = Number(input[field] ?? (field === 'tc3RolloverTarget' ? 3 : 0)); if (!Number.isSafeInteger(n) || n < min || n > max) throw fail(`Invalid ${field}.`); out[field] = n; }
  out.hiloMultiplier = Number(input.hiloMultiplier); if (![1.4,2].includes(out.hiloMultiplier)) throw fail('Choose a supported High/Low multiplier.');
+ out.accumulatingProfit = accumulatingProfit.normalize(input.accumulatingProfit);
  out.tc1ProfitMode = input.tc1ProfitMode === 'accumulating' ? 'accumulating' : 'fixed';
  out.bet49ProfitMode = input.bet49ProfitMode === 'accumulating' ? 'accumulating' : 'fixed';
  for (const key of ['flatBetting','unifiedMode','bzRbRollover','hiloRollover','tc3Rollover','shadowMode','weightedStaking']) out[key] = input[key] === true;
@@ -54,6 +59,14 @@ function normalize(input) {
 // A placed bet the bot is still waiting on (or a bet slip being confirmed).
 function unsettled(s) { return Boolean(s.pendingBetPayload || s.betExecutionClaim || s.lastBetDetails || s.failedBetRecovery || s.balanceVerification?.pendingWinSync); }
 function command(s, cfg, busy, records = []) {
+ // A checkbox change takes effect next cycle; do not let other modes override a frozen recovery.
+ const requested = cfg.dashboardAction === 'save' ? (cfg.settings || {}) : cfg;
+ const activeAccumulation = Object.fromEntries(Object.entries({ u4: 'betzero', color: 'rainbow', sum: 'hilo' }).map(([key, market]) => [market, !!s.martingaleState[key]?.accumulatingCycle]));
+ if (Object.values(activeAccumulation).some(Boolean) && ['flatBetting','weightedStaking','bzRbRollover','hiloRollover'].some(key => requested[key] === true)) {
+   const problem = conflict({ ...s.config, ...requested, accumulatingProfit: activeAccumulation });
+   if (problem) throw fail('Finish or explicitly reset the accumulating-profit recovery before changing to that staking mode.');
+ }
+
  const c = state(s), action = cfg.dashboardAction;
  if (!action) {
   // From the extension. Under website control it may only stop. Under extension control its
@@ -61,7 +74,7 @@ function command(s, cfg, busy, records = []) {
   if (c.controller === 'website') { if (cfg.running === false) { stop(s); c.revision++; return { done: true }; } throw fail('Website controls this session. Stop or switch back to extension control first.'); }
   if (Object.keys(cfg).some(key => key !== 'running' && key !== 'revision')) {
    const pick = key => cfg[key] !== undefined ? cfg[key] : s.config[key];
-   const problem = conflict({ gapEntry: cfg.gapEntry !== undefined ? gapEntry.normalize(cfg.gapEntry) : s.config.gapEntry, shadowMode: pick('shadowMode'), cbMaxLosses: pick('cbMaxLosses'), cbCooldown: pick('cbCooldown'),
+   const problem = conflict({ accumulatingProfit: pick('accumulatingProfit'), flatBetting: pick('flatBetting'), weightedStaking: pick('weightedStaking'), gapEntry: cfg.gapEntry !== undefined ? gapEntry.normalize(cfg.gapEntry) : s.config.gapEntry, shadowMode: pick('shadowMode'), cbMaxLosses: pick('cbMaxLosses'), cbCooldown: pick('cbCooldown'),
     bzRbRollover: pick('bzRbRollover'), hiloRollover: pick('hiloRollover'), tc3Rollover: pick('tc3Rollover'),
     enabledGames: { bet49: cfg.enabledGames?.bet49 !== undefined ? cfg.enabledGames.bet49 === true : !!s.config.enabledGames?.bet49 },
     rollover: cfg.rollover !== undefined ? rollover.normalize(cfg.rollover) : rollover.config(s) });
