@@ -1258,7 +1258,9 @@ async function pollOverlayData() {
         const settings = await getStorage(['enabledGames', 'unifiedMode']);
         setSelectedGameFromSettings(settings);
 
-        const statsRes = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboardProtocol=1&executor=${EXECUTION_CLIENT_TOKEN}`);
+        const runtimeStorage = await chrome.storage.local.get(RUNTIME_START_KEY);
+        const runtimeStart = Number(runtimeStorage[RUNTIME_START_KEY]) || 0;
+        const statsRes = await extensionFetch(`${SERVER_URL}/stats?clientId=${CLIENT_ID}&dashboardProtocol=1&executor=${EXECUTION_CLIENT_TOKEN}&runtimeStartedAt=${runtimeStart}`);
         const stats = statsRes.ok ? await statsRes.json() : null;
         const control = stats?.automationControl;
         let resetOverlay = false;

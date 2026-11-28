@@ -5,6 +5,7 @@ import './automation.css';
 import './balls49-automation.css';
 import AutomationSuggestion from '../components/AutomationSuggestion';
 import AutomationRollover from '../components/AutomationRollover';
+import AutomationRuntime from '../components/AutomationRuntime';
 const games = [['betzero','BetZero','u4'],['bet49','Bet49','bet49'],['rainbow','Rainbow','color'],['hilo','High / Low','sum'],['totalColor','Total Color 3-way','totalColor'],['totalColor1','Winning Color','totalColor1']];
 const money = n => n == null ? '--' : new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN',maximumFractionDigits:2}).format(n);
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -125,6 +126,7 @@ export default function AutomationPage() {
      <span className="ba-board-cell"><small>Record</small><b>{c.wins} W {c.losses} L</b></span>
      <span className="ba-board-cell"><small>Losing streak</small><b>{c.currentLossStreak || 0}</b></span>
      <span className="ba-board-cell"><small>Control</small><b>{web?'Website':'Extension'}</b></span>
+     <AutomationRuntime startedAt={c.runtimeStartedAt} online={c.online} stale={stale} />
     </div>}
     {c && <div className="ba-controls"><button className="btn btn-primary" disabled={busy||stale||!web||!c.online||c.running||!canStart||!!c.suggestionStrategy?.needsReview} onClick={()=>command('start')}>Start automation</button><button className="btn automation-stop" disabled={busy} onClick={()=>command('stop')}>Stop automation</button><button className="btn btn-secondary" disabled={busy||stale} onClick={()=>command(web?'extension':'website')}>{web?'Use extension control':'Use website control'}</button></div>}
    </section>

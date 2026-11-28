@@ -10,7 +10,16 @@ const fail = message => Object.assign(new Error(message), { status: 409 });
 function state(s) { return s.automationControl ||= { controller: 'extension', revision: 0, executorAt: 0, executorToken: '' }; }
 function stop(s, reason = 'Stopped by user') { s.stats.isHalted = true; s.stats.haltReason = reason; if (!s.betExecutionClaim) s.pendingBetPayload = null; s.failedBetRecovery = null; }
 function guard(s) { const c = state(s); if (c.controller === 'website' && !s.stats.isHalted && Date.now() - c.executorAt > 15000) stop(s, 'Extension connection expired. Reconnect Bet9ja, then start again.'); }
-function heartbeat(s, token) { const c = state(s); if (/^[a-f0-9]{32}$/.test(token) && (!c.executorToken || c.executorToken === token || Date.now() - c.executorAt > 15000)) { c.executorToken = token; c.executorAt = Date.now(); } }
+function heartbeat(s, token, runtimeStartedAt = null) {
+ const c = state(s), now = Date.now();
+ if (/^[a-f0-9]{32}$/.test(token) && (!c.executorToken || c.executorToken === token || now - c.executorAt > 15000)) {
+  c.executorToken = token; c.executorAt = now;
+  // Read-only overlay telemetry; never used by execution or staking decisions.
+  const start = runtimeStartedAt === null ? NaN : Number(runtimeStartedAt);
+  c.runtimeStartedAt = Number.isSafeInteger(start) && start >= 0 && start <= now + 60000
+   ? (start && start < (c.resetAt || 0) ? 0 : start) : null;
+ }
+}
 function settings(s) {
  const out = { stakes: {}, gameSteps: {}, enabledGames: {} };
  for (const [key, name] of Object.entries(aliases)) { out.stakes[name] = s.config.initialStakes[key]; out.gameSteps[name] = s.config.maxSteps[key]; out.enabledGames[name] = !!s.config.enabledGames[key]; }
@@ -19,7 +28,7 @@ function settings(s) {
  out.rollover = { ...rollover.config(s) };
  return out;
 }
-function view(s) { guard(s); const c = state(s); return { rollover: rollover.view(s), gapEntry: gapEntry.view(s), suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, settledDraws: s.stats.settledDraws || 0, currentLossStreak: s.stats.currentLossStreak || 0, maxLossStreak: s.stats.maxLossStreak || 0, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
+function view(s) { guard(s); const c = state(s); return { rollover: rollover.view(s), gapEntry: gapEntry.view(s), suggestionStrategy: s.config.suggestionStrategy || null, controller: c.controller, revision: c.revision, resetAt: c.resetAt || null, runtimeStartedAt: c.runtimeStartedAt != null && c.runtimeStartedAt < (c.resetAt || 0) ? 0 : c.runtimeStartedAt ?? null, online: Date.now() - c.executorAt < 15000, lastSeen: c.executorAt || null, running: !s.stats.isHalted, reason: s.stats.haltReason || (s.lastBetDetails ? 'Waiting for settlement' : s.pendingBetPayload ? 'Bet queued' : 'Waiting for next eligible draw'), settings: settings(s), busy: presetSessionBusy(s) || strategy.recovery(s), balanceAt: s.stats.balanceAt || null, liveBalance: s.stats.balanceAt ? s.stats.liveAccountBalance : null, virtualBalance: s.stats.virtualBalance, profit: s.stats.totalReturned, settledDraws: s.stats.settledDraws || 0, currentLossStreak: s.stats.currentLossStreak || 0, maxLossStreak: s.stats.maxLossStreak || 0, wins: s.stats.wins, losses: s.stats.losses, steps: Object.fromEntries(Object.entries(s.martingaleState).map(([key,value]) => [aliases[key] || key, (s.config.unifiedMode ? s.masterState.step : value.localStep)])), history: s.automationHistory || [] }; }
 // Settings that cannot work together. Checked on every save, from the website or the extension,
 // so neither can store a combination that silently stops a game or makes two bets cancel out.
 // c: { gapEntry, shadowMode, cbMaxLosses, cbCooldown, bzRbRollover, hiloRollover, tc3Rollover, enabledGames, rollover }
