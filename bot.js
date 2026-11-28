@@ -4961,7 +4961,7 @@ async function handleHttpRequest(req, res) {
     const session = getSession(clientId);
     if (automationControl.state(session).controller !== "website") syncSessionFromParams(session, parsedUrl.searchParams);
     automationControl.guard(session);
-    if (parsedUrl.pathname === "/stats" && parsedUrl.searchParams.get("dashboardProtocol") === "1") automationControl.heartbeat(session, parsedUrl.searchParams.get("executor") || "");
+    if (parsedUrl.pathname === "/stats" && parsedUrl.searchParams.get("dashboardProtocol") === "1") automationControl.heartbeat(session, parsedUrl.searchParams.get("executor") || "", parsedUrl.searchParams.get("runtimeStartedAt"));
     if (parsedUrl.pathname === "/stats" && parsedUrl.searchParams.get("dashboard") === "1") {
         return sendJson(res, 200, { clientId, control: automationControl.view(session) });
     }
